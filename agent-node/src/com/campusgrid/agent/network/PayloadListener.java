@@ -89,10 +89,11 @@ public class PayloadListener implements Runnable {
                 if (obj instanceof GridTask) {
                     GridTask task = (GridTask) obj;
                     System.out.println("[TASK] Executing...");
+                    com.campusgrid.agent.os.LinuxTelemetry.isExecutingTask = true;
                     Object result = task.execute();
+                    com.campusgrid.agent.os.LinuxTelemetry.isExecutingTask = false;
 
-                    oos.writeObject(result);
-                    oos.flush();
+                    connection.sendObject(result);
                     System.out.println("[TASK] Result sent");
                 }
             } catch (IOException | ClassNotFoundException e) {

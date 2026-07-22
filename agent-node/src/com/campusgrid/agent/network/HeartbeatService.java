@@ -73,21 +73,6 @@ public class HeartbeatService implements Runnable {
 
     @Override
     public void run() {
-        PrintWriter writer = null;
-        try {
-            ObjectOutputStream oos = connection.getObjectOutputStream();
-            if (oos == null) {
-                System.out.println("[HEARTBEAT] Connection lost");
-                stop();
-                return;
-            }
-            writer = new PrintWriter(oos, true);
-        } catch (Exception e) {
-            System.out.println("[HEARTBEAT] Connection lost");
-            stop();
-            return;
-        }
-
         while (running) {
             if (!connection.isConnected()) {
                 System.out.println("[HEARTBEAT] Connection lost");
@@ -100,8 +85,11 @@ public class HeartbeatService implements Runnable {
                 System.out.println("[HEARTBEAT] User activity detected.");
                 
                 // Send EVICTED to the Master
-                writer.println("EVICTED");
-                writer.flush();
+                try {
+                    connection.sendObject("EVICTED");
+                } catch (IOException e) {
+                    System.out.println("[HEARTBEAT] Eviction notification failed: " + e.getMessage());
+                }
 
                 // Stop the PayloadListener thread gracefully
                 PayloadListener listener = connection.getPayloadListener();
@@ -124,10 +112,11 @@ public class HeartbeatService implements Runnable {
             // Call LinuxTelemetry to retrieve temperature dynamically before sending heartbeat
             String temp = LinuxTelemetry.getCpuTemperature();
 
-            // Send heartbeat message with CPU temperature to Master node
-            writer.println("HEARTBEAT | TEMP: " + temp);
-            if (writer.checkError()) {
-                System.out.println("[HEARTBEAT] Connection lost");
+            // Send heartbeat message with CPU temperature to Master node as a String object
+            try {
+                connection.sendObject("HEARTBEAT | TEMP: " + temp);
+            } catch (IOException e) {
+                System.out.println("[HEARTBEAT] Connection lost: " + e.getMessage());
                 stop();
                 break;
             }

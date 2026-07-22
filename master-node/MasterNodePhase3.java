@@ -36,7 +36,7 @@ public class MasterNodePhase3 {
     /**
      * Thread-safe registry mapping connected agent IP addresses to their Socket objects.
      */
-    private static final ConcurrentHashMap<String, Socket> connectionRegistry = 
+    private static final ConcurrentHashMap<String, AgentState> connectionRegistry =
         new ConcurrentHashMap<>();
 
     /**
@@ -117,6 +117,44 @@ public class MasterNodePhase3 {
      * Used to ensure abort operations complete atomically.
      */
     private static final Object abortLock = new Object();
+
+    // ============================================================================
+    // AGENT STATE REPRESENTATION (NEW FOR OBJECT STREAM PROTOCOL)
+    // ============================================================================
+
+    /**
+     * Represents the real-time state of a connected agent, encapsulating its
+     * network resources (socket, object streams) and metadata.
+     * This class is crucial for adopting an object-stream based protocol.
+     */
+    private static class AgentState {
+        private final String ipAddress;
+        private final Socket socket;
+        private final ObjectInputStream input;
+        private final ObjectOutputStream output;
+
+        public AgentState(String ipAddress, Socket socket) throws IOException {
+            this.ipAddress = ipAddress;
+            this.socket = socket;
+            // Write and flush header immediately to prevent ObjectInputStream deadlocks
+            this.output = new ObjectOutputStream(socket.getOutputStream());
+            this.output.flush();
+            this.input = new ObjectInputStream(socket.getInputStream());
+        }
+
+        public String getIpAddress() { return ipAddress; }
+        public Socket getSocket() { return socket; }
+        public ObjectInputStream getInput() { return input; }
+        public ObjectOutputStream getOutput() { return output; }
+
+        public synchronized void send(Object obj) throws IOException {
+            if (!socket.isClosed()) {
+                output.writeObject(obj);
+                output.flush();
+                output.reset(); // Clear object serialization cache to save memory
+            }
+        }
+    }
 
     // ============================================================================
     // MAIN ENTRY POINT
@@ -213,12 +251,14 @@ public class MasterNodePhase3 {
                 Socket incomingConnection = masterServerSocket.accept();
                 String clientIP = incomingConnection.getInetAddress().getHostAddress();
                 System.out.println("[ACCEPT] New connection from: " + clientIP);
-                connectionRegistry.put(clientIP, incomingConnection);
 
-                // PHASE 3.B: Create handler with reference to pending queue (for re-queuing on failure)
-                connectionThreadPool.submit(
-                    new AgentConnectionHandler(incomingConnection, clientIP, pendingTaskQueue)
-                );
+                // Use the helper method to create the AgentConnectionHandler
+                AgentConnectionHandler handler = createAgentConnectionHandler(incomingConnection, clientIP, pendingTaskQueue);
+                
+                // Store the AgentState in the registry
+                connectionRegistry.put(clientIP, handler.agentState);
+
+                connectionThreadPool.submit(handler);
 
             } catch (SocketException e) {
                 if (isServerRunning && !abortInitiated) {
@@ -356,9 +396,9 @@ public class MasterNodePhase3 {
             int totalAgents = connectionRegistry.size();
             int successfulNotifications = 0;
 
-            for (String agentIP : connectionRegistry.keySet()) {
+            for (AgentState agentState : connectionRegistry.values()) {
                 try {
-                    Socket agentSocket = connectionRegistry.get(agentIP);
+                    Socket agentSocket = agentState.getSocket();
                     if (agentSocket != null && !agentSocket.isClosed()) {
                         // Send poison pill message
                         PrintWriter agentOutput = new PrintWriter(
@@ -368,11 +408,11 @@ public class MasterNodePhase3 {
                         agentOutput.println("<TERMINATE>");
                         agentOutput.flush();
                         
-                        System.out.println("[ABORT-KILL-SWITCH] Poison pill sent to: " + agentIP);
+                        System.out.println("[ABORT-KILL-SWITCH] Poison pill sent to: " + agentState.getIpAddress());
                         successfulNotifications++;
                     }
                 } catch (IOException e) {
-                    System.out.println("[ABORT-KILL-SWITCH] Could not notify " + agentIP + ": " + e.getMessage());
+                    System.out.println("[ABORT-KILL-SWITCH] Could not notify " + agentState.getIpAddress() + ": " + e.getMessage());
                 }
             }
 
@@ -381,17 +421,16 @@ public class MasterNodePhase3 {
             // Step 3: Force close all sockets
             System.out.println("[ABORT-KILL-SWITCH] Step 3: Force-closing all connections...");
             int closedCount = 0;
-
-            for (String agentIP : connectionRegistry.keySet()) {
+            for (AgentState agentState : connectionRegistry.values()) {
                 try {
-                    Socket agentSocket = connectionRegistry.remove(agentIP);
+                    Socket agentSocket = agentState.getSocket();
                     if (agentSocket != null && !agentSocket.isClosed()) {
                         agentSocket.close();
                         closedCount++;
-                        System.out.println("[ABORT-KILL-SWITCH] Closed connection: " + agentIP);
+                        System.out.println("[ABORT-KILL-SWITCH] Closed connection: " + agentState.getIpAddress());
                     }
                 } catch (IOException e) {
-                    System.err.println("[ABORT-KILL-SWITCH] Error closing " + agentIP + ": " + e.getMessage());
+                    System.err.println("[ABORT-KILL-SWITCH] Error closing " + agentState.getIpAddress() + ": " + e.getMessage());
                 }
             }
 
@@ -432,18 +471,16 @@ public class MasterNodePhase3 {
      */
     private static class AgentConnectionHandler implements Runnable {
 
-        private final Socket clientSocket;
-        private final String clientIP;
+        private final AgentState agentState;
         private final ConcurrentLinkedQueue<String> taskQueue;
         private String currentAssignment = null;
 
         /**
          * Constructs handler with task queue reference for re-queuing on failure.
          */
-        public AgentConnectionHandler(Socket clientSocket, String clientIP, 
+        public AgentConnectionHandler(AgentState agentState,
                                      ConcurrentLinkedQueue<String> taskQueue) {
-            this.clientSocket = clientSocket;
-            this.clientIP = clientIP;
+            this.agentState = agentState;
             this.taskQueue = taskQueue;
         }
 
@@ -461,21 +498,15 @@ public class MasterNodePhase3 {
          */
         @Override
         public void run() {
+            String clientIP = agentState.getIpAddress();
             try {
                 // Register connection
                 System.out.println("[HANDLER] [" + clientIP + "] Connected. Registry size: " + connectionRegistry.size());
 
-                // Set up I/O
-                BufferedReader agentInput = new BufferedReader(
-                    new InputStreamReader(clientSocket.getInputStream())
-                );
-                PrintWriter agentOutput = new PrintWriter(
-                    clientSocket.getOutputStream(),
-                    true
-                );
-
                 // Send confirmation
-                agentOutput.println("[MASTER] Welcome to Campus Grid. Requesting task...");
+                // Using ObjectOutputStream to send String objects
+                agentState.send("[MASTER] Welcome to Campus Grid. Requesting task...");
+
 
                 // PHASE 3.A: Poll pending task queue
                 currentAssignment = taskQueue.poll();
@@ -483,13 +514,14 @@ public class MasterNodePhase3 {
                 if (currentAssignment == null) {
                     System.out.println("[HANDLER] [" + clientIP + "] No tasks available in queue.");
                     agentOutput.println("[MASTER] No tasks queued. Goodbye.");
+                    agentState.send("[MASTER] No tasks queued. Goodbye.");
                     return;
                 }
 
                 System.out.println("[HANDLER] [" + clientIP + "] Polled task from queue: " + currentAssignment);
 
                 // Send task to agent
-                agentOutput.println("[MASTER] Your task: " + currentAssignment);
+                agentState.send("[MASTER] Your task: " + currentAssignment);
                 System.out.println("[HANDLER] [" + clientIP + "] Dispatched: " + currentAssignment);
 
                 // Simulate processing delay (agent executing task)
@@ -497,16 +529,22 @@ public class MasterNodePhase3 {
 
                 // Wait for agent result
                 System.out.println("[HANDLER] [" + clientIP + "] Waiting for agent result...");
-                String agentResult = agentInput.readLine();
+                Object receivedObject = agentState.getInput().readObject(); // Read object
 
-                if (agentResult == null) {
+                if (receivedObject == null) { // This might not happen with ObjectInputStream, EOF is usually an exception
                     // Client disconnected before sending result
                     throw new SocketException("Agent disconnected without providing result");
                 }
+                
+                String agentResult;
+                if (receivedObject instanceof String) {
+                    agentResult = (String) receivedObject;
+                } else {
+                    throw new IOException("Unexpected object type received from agent: " + receivedObject.getClass().getName());
+                }
 
                 System.out.println("[HANDLER] [" + clientIP + "] Result received: " + agentResult);
-                agentOutput.println("[MASTER] Result acknowledged: " + agentResult);
-
+                agentState.send("[MASTER] Result acknowledged: " + agentResult);
             } catch (SocketException e) {
                 // PHASE 3.B: FAIL-FAST RE-QUEUE ON SOCKET EXCEPTION
                 System.err.println("[HANDLER] [" + clientIP + "] SocketException: " + e.getMessage());
@@ -517,7 +555,7 @@ public class MasterNodePhase3 {
                     System.out.println("[HANDLER] [" + clientIP + "] Task re-queued. Pending queue size: " + taskQueue.size());
                 }
 
-            } catch (IOException e) {
+            } catch (IOException | ClassNotFoundException e) { // Added ClassNotFoundException for ObjectInputStream
                 // PHASE 3.B: FAIL-FAST RE-QUEUE ON IO EXCEPTION
                 System.err.println("[HANDLER] [" + clientIP + "] IOException: " + e.getMessage());
 
@@ -549,8 +587,8 @@ public class MasterNodePhase3 {
             } finally {
                 // GUARANTEED CLEANUP
                 try {
-                    if (clientSocket != null && !clientSocket.isClosed()) {
-                        clientSocket.close();
+                    if (!agentState.getSocket().isClosed()) {
+                        agentState.getSocket().close();
                     }
                     connectionRegistry.remove(clientIP);
                     System.out.println("[HANDLER] [" + clientIP + "] Unregistered. Registry size: " + connectionRegistry.size());
@@ -585,12 +623,12 @@ public class MasterNodePhase3 {
             }
             System.out.println("[SHUTDOWN] Thread pool terminated.");
 
-            for (String agentIP : connectionRegistry.keySet()) {
-                Socket clientSocket = connectionRegistry.remove(agentIP);
-                if (clientSocket != null && !clientSocket.isClosed()) {
-                    clientSocket.close();
+            for (AgentState agentState : connectionRegistry.values()) {
+                if (!agentState.getSocket().isClosed()) {
+                    agentState.getSocket().close();
                 }
             }
+            connectionRegistry.clear(); // Clear the registry
 
             System.out.println("[SHUTDOWN] All connections closed.");
             System.out.println("[SHUTDOWN] Master Node terminated successfully.");

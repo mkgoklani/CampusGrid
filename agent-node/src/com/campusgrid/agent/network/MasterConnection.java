@@ -100,6 +100,24 @@ public class MasterConnection {
     }
 
     /**
+     * Safely and thread-safely sends a serialized object to the Master node.
+     * Synchronizes on the ObjectOutputStream to prevent interleaved writes from multiple threads.
+     * Also calls reset() to prevent serialization memory leaks.
+     *
+     * @param obj the object to send
+     * @throws IOException if a network error occurs
+     */
+    public synchronized void sendObject(Object obj) throws IOException {
+        if (isConnected() && objectOutputStream != null) {
+            objectOutputStream.writeObject(obj);
+            objectOutputStream.flush();
+            objectOutputStream.reset();
+        } else {
+            throw new IOException("Cannot send object: not connected to Master.");
+        }
+    }
+
+    /**
      * Safely disconnects the socket and streams from the Master node.
      * Closes the streams and active socket connection, handling any IOExceptions internally.
      * Also stops the heartbeat service and payload listener.
