@@ -17,7 +17,8 @@ import com.campusgrid.agent.os.IdleDetector;
 public class HeartbeatService implements Runnable {
 
     private static final int HEARTBEAT_INTERVAL_MS = 5000;
-    private static final int EVICTION_SLEEP_MS = 300000; // 5 minutes in milliseconds
+    private static final int EVICTION_SLEEP_MS = 30000; // 30 seconds in milliseconds
+    private static final int STARTUP_GRACE_PERIOD_MS = 15000; // 15 seconds startup grace period
 
     private final MasterConnection connection;
     private volatile boolean running = false;
@@ -73,6 +74,8 @@ public class HeartbeatService implements Runnable {
 
     @Override
     public void run() {
+        long startTime = System.currentTimeMillis();
+
         while (running) {
             if (!connection.isConnected()) {
                 System.out.println("[HEARTBEAT] Connection lost");
@@ -80,8 +83,13 @@ public class HeartbeatService implements Runnable {
                 break;
             }
 
-            // Check for user activity before sending every heartbeat
-            if (IdleDetector.isUserActive()) {
+            long elapsedTime = System.currentTimeMillis() - startTime;
+            boolean inGracePeriod = elapsedTime < STARTUP_GRACE_PERIOD_MS;
+
+            if (inGracePeriod) {
+                long remainingSec = (STARTUP_GRACE_PERIOD_MS - elapsedTime) / 1000;
+                System.out.println("[HEARTBEAT] Startup grace period active (" + remainingSec + "s remaining)");
+            } else if (IdleDetector.isUserActive()) {
                 System.out.println("[HEARTBEAT] User activity detected.");
                 
                 // Send EVICTED to the Master
