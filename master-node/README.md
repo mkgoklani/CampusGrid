@@ -7,12 +7,12 @@
 ### Compile
 ```bash
 cd master-node
-javac MasterNode.java
+javac MasterNodePhase1V1.java
 ```
 
 ### Run
 ```bash
-java MasterNode
+java MasterNodePhase1V1
 ```
 
 ### Test with Telnet (From separate terminals)
@@ -43,7 +43,7 @@ TYPE: EXIT
 
 ## Files
 
-- **MasterNode.java** - Complete implementation (fully compiled)
+- **MasterNodePhase1V1.java** - Complete implementation (fully compiled)
 - **IMPLEMENTATION_GUIDE.md** - Detailed architecture documentation
 - **README.md** - This file
 
@@ -85,7 +85,7 @@ Master Node (TCP 8080)
 
 **Terminal 1:**
 ```
-$ java MasterNode
+$ java MasterNodePhase1V1
 ╔════════════════════════════════════════════════════════════╗
 ║  CAMPUS GRID - MASTER NODE CONTROL PLANE                   ║
 ║  Listening on: 0.0.0.0:8080                               ║
@@ -148,7 +148,7 @@ STATUS
 ## See Also
 
 - **IMPLEMENTATION_GUIDE.md** - Deep dive into architecture and thread safety
-- **MasterNode.java** - Complete source with JavaDoc comments
+- **MasterNodePhase1V1.java** - Complete source with JavaDoc comments
 
 ---
 

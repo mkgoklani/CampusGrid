@@ -101,7 +101,7 @@ User: ABORT
 
 ```bash
 # Terminal 1 - Start Master Node
-java MasterNodePhase3
+java MasterNodePhase1V3
 
 # Output:
 # CAMPUS GRID - MASTER NODE (PHASE 1 + 2 + 3)
@@ -265,7 +265,7 @@ All errors lead to: **RE-QUEUE → GRACEFUL TERMINATION → REGISTRY CLEANUP**
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| MasterNodePhase3.java | 605 | Complete Phase 3 implementation |
+| MasterNodePhase1V3.java | 605 | Complete Phase 3 implementation |
 | PHASE3_IMPLEMENTATION_GUIDE.md | ~550 | Detailed technical analysis |
 | PHASE3_README.md | This file | Quick reference |
 
@@ -275,10 +275,10 @@ All errors lead to: **RE-QUEUE → GRACEFUL TERMINATION → REGISTRY CLEANUP**
 
 ```bash
 # Compile
-javac MasterNodePhase3.java
+javac MasterNodePhase1V3.java
 
 # Run
-java MasterNodePhase3
+java MasterNodePhase1V3
 
 # Test connection loss scenario
 # Terminal 2: telnet localhost 8080

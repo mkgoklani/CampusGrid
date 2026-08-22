@@ -183,12 +183,12 @@ Main thread blocks efficiently:
 ### Compile
 ```bash
 cd master-node
-javac MasterNodePhase2.java
+javac MasterNodePhase1V2.java
 ```
 
 ### Run
 ```bash
-java MasterNodePhase2
+java MasterNodePhase1V2
 ```
 
 Then type `EXIT` to shutdown.
@@ -240,7 +240,7 @@ Then type `EXIT` to shutdown.
 
 | File | Purpose |
 |------|---------|
-| MasterNodePhase2.java | Implementation (556 LOC) |
+| MasterNodePhase1V2.java | Implementation (556 LOC) |
 | PHASE2_IMPLEMENTATION_GUIDE.md | Deep technical analysis |
 | PHASE2_README.md | This quick reference |
 

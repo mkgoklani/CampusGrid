@@ -7,7 +7,9 @@ import com.campusgrid.core.MandelbrotTask;
 import com.campusgrid.core.MatrixMultiplicationTask;
 
 /**
- * CAMPUS GRID - MASTER NODE - PERFORMANCE BENCHMARK ORCHESTRATOR
+ * CAMPUS GRID - MASTER NODE CONTROL PLANE - PHASE 1 VERSION 5
+ * 
+ * PERFORMANCE BENCHMARK ORCHESTRATOR
  * 
  * Supports two massive distributed workloads to showcase Grid performance speedups:
  * 1. Heavy 8K Mandelbrot set (7,680 x 4,320 binned down to 80x40 ASCII preview).
@@ -17,9 +19,9 @@ import com.campusgrid.core.MatrixMultiplicationTask;
  * and stitches results back together cleanly.
  * 
  * Compile and run:
- *   javac master-node/MandelbrotMaster.java && java -cp "out:master-node" MandelbrotMaster
+ *   javac MasterNodePhase1V5.java && java -cp "out:master-node" MasterNodePhase1V5
  */
-public class MandelbrotMaster {
+public class MasterNodePhase1V5 {
 
     private static final int PORT = 8080;
     private static final int DISPATCH_TIMEOUT_SECONDS = 45;
@@ -118,7 +120,7 @@ public class MandelbrotMaster {
         try {
             masterServerSocket = new ServerSocket(PORT);
             System.out.println("╔════════════════════════════════════════════════════════════╗");
-            System.out.println("║  CAMPUS GRID - PERFORMANCE BENCHMARK ORCHESTRATOR          ║");
+            System.out.println("║  CAMPUS GRID - PERFORMANCE BENCHMARK ORCHESTRATOR - PH1 V5 ║");
             System.out.println("║  Listening on port: " + PORT + "                                   ║");
             System.out.println("║  Workloads: 8K Mandelbrot & 4,000x4,000 Matrix Mult.       ║");
             System.out.println("║  Telemetry & Load Balancing: ENABLED                       ║");
@@ -127,19 +129,19 @@ public class MandelbrotMaster {
             System.out.println();
 
             // 1. Start Telemetry CLI
-            Thread telemetryDaemon = new Thread(MandelbrotMaster::startTelemetryInterface);
+            Thread telemetryDaemon = new Thread(MasterNodePhase1V5::startTelemetryInterface);
             telemetryDaemon.setDaemon(true);
             telemetryDaemon.setName("Telemetry-CLI");
             telemetryDaemon.start();
 
             // 2. Start Accept Loop
-            Thread acceptLoopThread = new Thread(MandelbrotMaster::runAcceptLoop);
+            Thread acceptLoopThread = new Thread(MasterNodePhase1V5::runAcceptLoop);
             acceptLoopThread.setDaemon(false);
             acceptLoopThread.setName("Accept-Loop");
             acceptLoopThread.start();
 
             // 3. Start Dispatcher Loop
-            Thread dispatchThread = new Thread(MandelbrotMaster::runOrchestratorDispatch);
+            Thread dispatchThread = new Thread(MasterNodePhase1V5::runOrchestratorDispatch);
             dispatchThread.setDaemon(true);
             dispatchThread.setName("Orchestrator-Dispatch");
             dispatchThread.start();

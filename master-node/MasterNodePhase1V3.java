@@ -4,7 +4,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * CAMPUS GRID - MASTER NODE CONTROL PLANE - PHASE 3
+ * CAMPUS GRID - MASTER NODE CONTROL PLANE - PHASE 1 VERSION 3
  * 
  * FAULT TOLERANCE & GLOBAL KILL SWITCH
  * 
@@ -27,7 +27,7 @@ import java.util.concurrent.*;
  * @author Campus Grid Engineering Team
  * @version 3.0
  */
-public class MasterNodePhase3 {
+public class MasterNodePhase1V3 {
 
     // ============================================================================
     // PHASE 1 GLOBALS (Networking Foundation)
@@ -173,7 +173,7 @@ public class MasterNodePhase3 {
             // Initialize networking
             masterServerSocket = new ServerSocket(8080);
             System.out.println("╔════════════════════════════════════════════════════════════╗");
-            System.out.println("║  CAMPUS GRID - MASTER NODE (PHASE 1 + 2 + 3)               ║");
+            System.out.println("║  CAMPUS GRID - MASTER NODE (PHASE 1 + 2 + 3) - PHASE 1 V3  ║");
             System.out.println("║  Listening on: 0.0.0.0:8080                               ║");
             System.out.println("║  Fault Tolerance: ENABLED (Fail-Fast Re-Queue)            ║");
             System.out.println("║  Kill Switch: ENABLED (Type 'ABORT' for instant shutdown) ║");
@@ -184,13 +184,13 @@ public class MasterNodePhase3 {
             initializePendingTaskQueue();
 
             // Start telemetry daemon (enhanced with ABORT command)
-            Thread telemetryDaemon = new Thread(MasterNodePhase3::startTelemetryInterface);
+            Thread telemetryDaemon = new Thread(MasterNodePhase1V3::startTelemetryInterface);
             telemetryDaemon.setDaemon(true);
             telemetryDaemon.setName("Telemetry-Daemon");
             telemetryDaemon.start();
 
             // Start accept loop
-            Thread acceptLoopThread = new Thread(MasterNodePhase3::runAcceptLoop);
+            Thread acceptLoopThread = new Thread(MasterNodePhase1V3::runAcceptLoop);
             acceptLoopThread.setDaemon(false);
             acceptLoopThread.setName("Accept-Loop");
             acceptLoopThread.start();
@@ -252,11 +252,12 @@ public class MasterNodePhase3 {
                 String clientIP = incomingConnection.getInetAddress().getHostAddress();
                 System.out.println("[ACCEPT] New connection from: " + clientIP);
 
-                // Use the helper method to create the AgentConnectionHandler
-                AgentConnectionHandler handler = createAgentConnectionHandler(incomingConnection, clientIP, pendingTaskQueue);
+                // Create the AgentState and AgentConnectionHandler directly
+                AgentState agentState = new AgentState(clientIP, incomingConnection);
+                AgentConnectionHandler handler = new AgentConnectionHandler(agentState, pendingTaskQueue);
                 
                 // Store the AgentState in the registry
-                connectionRegistry.put(clientIP, handler.agentState);
+                connectionRegistry.put(clientIP, agentState);
 
                 connectionThreadPool.submit(handler);
 
@@ -513,7 +514,6 @@ public class MasterNodePhase3 {
 
                 if (currentAssignment == null) {
                     System.out.println("[HANDLER] [" + clientIP + "] No tasks available in queue.");
-                    agentOutput.println("[MASTER] No tasks queued. Goodbye.");
                     agentState.send("[MASTER] No tasks queued. Goodbye.");
                     return;
                 }
@@ -531,8 +531,7 @@ public class MasterNodePhase3 {
                 System.out.println("[HANDLER] [" + clientIP + "] Waiting for agent result...");
                 Object receivedObject = agentState.getInput().readObject(); // Read object
 
-                if (receivedObject == null) { // This might not happen with ObjectInputStream, EOF is usually an exception
-                    // Client disconnected before sending result
+                if (receivedObject == null) { // EOF is usually an exception
                     throw new SocketException("Agent disconnected without providing result");
                 }
                 

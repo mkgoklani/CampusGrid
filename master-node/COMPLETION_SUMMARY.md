@@ -3,7 +3,7 @@
 ## Deliverables Checklist
 
 ### ✅ Phase 1.A: Single-Threaded Handshake (Foundation)
-- [x] MasterNode Java class established
+- [x] MasterNodePhase1V1 Java class established
 - [x] ServerSocket configured on TCP Port 8080
 - [x] Accept() block catches incoming connections
 - [x] InputStreamReader and BufferedReader for input handling
@@ -54,7 +54,7 @@
 ## Architecture Summary
 
 ```
-MasterNode
+MasterNodePhase1V1
 ├── main()
 │   ├── ServerSocket initialization (port 8080)
 │   ├── Telemetry daemon thread startup
@@ -168,18 +168,18 @@ finally {
 ### Compilation
 ```bash
 cd master-node
-javac MasterNode.java
+javac MasterNodePhase1V1.java
 ```
 
 ### Execution
 ```bash
-java MasterNode
+java MasterNodePhase1V1
 ```
 
 ### Testing
 ```bash
 # Terminal 1
-java MasterNode
+java MasterNodePhase1V1
 
 # Terminal 2-6
 telnet localhost 8080
@@ -191,7 +191,7 @@ EXIT
 
 ## Files Delivered
 
-1. **MasterNode.java** (409 lines)
+1. **MasterNodePhase1V1.java** (409 lines)
    - Complete implementation
    - 95+ JavaDoc blocks
    - Thread-safe design patterns
