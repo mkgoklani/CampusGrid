@@ -518,12 +518,12 @@ latch.countDown();       // Signal completion
 ### Compilation
 ```bash
 cd master-node
-javac MasterNodePhase2.java
+javac MasterNodePhase1V2.java
 ```
 
 ### Execution
 ```bash
-java MasterNodePhase2
+java MasterNodePhase1V2
 ```
 
 ### Expected Behavior

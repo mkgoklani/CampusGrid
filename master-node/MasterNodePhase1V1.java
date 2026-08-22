@@ -4,7 +4,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * CAMPUS GRID - MASTER NODE CONTROL PLANE
+ * CAMPUS GRID - MASTER NODE CONTROL PLANE - PHASE 1 VERSION 1
  * 
  * Principal Java Systems Engineer Implementation
  * 
@@ -12,7 +12,7 @@ import java.util.concurrent.*;
  * cluster. It operates under a strict Star Topology (Master-Worker model) where this node
  * dictates all network interactions and maintains the authoritative connection registry.
  * 
- * The MasterNode handles:
+ * The MasterNodePhase1V1 handles:
  * - Simultaneous TCP connections on port 8080 via ServerSocket
  * - Thread-safe connection state management using ConcurrentHashMap
  * - Asynchronous request handling via ExecutorService thread pool
@@ -27,7 +27,7 @@ import java.util.concurrent.*;
  * @author Campus Grid Engineering Team
  * @version 1.0
  */
-public class MasterNode {
+public class MasterNodePhase1V1 {
 
     // ============================================================================
     // GLOBAL STATE & CONCURRENCY PRIMITIVES
@@ -96,7 +96,7 @@ public class MasterNode {
             // Initialize the ServerSocket on port 8080
             masterServerSocket = new ServerSocket(8080);
             System.out.println("╔════════════════════════════════════════════════════════════╗");
-            System.out.println("║  CAMPUS GRID - MASTER NODE CONTROL PLANE                   ║");
+            System.out.println("║  CAMPUS GRID - MASTER NODE CONTROL PLANE - PHASE 1 V1      ║");
             System.out.println("║  Listening on: 0.0.0.0:8080                               ║");
             System.out.println("║  Thread Pool Size: 10                                      ║");
             System.out.println("║  Type 'STATUS' to view connected agents                   ║");
@@ -105,7 +105,7 @@ public class MasterNode {
             System.out.println();
 
             // PHASE 1.D: Start the telemetry daemon thread for diagnostic monitoring
-            Thread telemetryDaemon = new Thread(MasterNode::startTelemetryInterface);
+            Thread telemetryDaemon = new Thread(MasterNodePhase1V1::startTelemetryInterface);
             telemetryDaemon.setDaemon(true);
             telemetryDaemon.setName("Telemetry-Daemon");
             telemetryDaemon.start();
@@ -198,7 +198,7 @@ public class MasterNode {
     /**
      * Displays the current status of all connected agents.
      * 
-     * This method safely iterates over the ConcurrentHashMap without acquiring
+     * This method safely evaluates the ConcurrentHashMap without acquiring
      * any explicit locks (the ConcurrentHashMap guarantees atomic visibility).
      * The iteration is snapshot-consistent—it reflects the state at the moment
      * the iterator was created.

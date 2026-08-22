@@ -5,7 +5,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * CAMPUS GRID - MASTER NODE CONTROL PLANE - PHASE 4 (EXTENDED)
+ * CAMPUS GRID - MASTER NODE CONTROL PLANE - PHASE 1 VERSION 4
  * 
  * GENERIC TILE & FRAME WORKLOAD ORCHESTRATOR
  * 
@@ -22,12 +22,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  *    routing to coolest available agent, and fail-fast re-queue on crash.
  * 
  * Compile and run (requires BypassSandbox: true for local TCP loopback socket testing):
- *   javac MasterNodePhase4.java && java MasterNodePhase4
+ *   javac MasterNodePhase1V4.java && java MasterNodePhase1V4
  * 
  * @author Campus Grid Engineering Team
  * @version 4.1
  */
-public class MasterNodePhase4 {
+public class MasterNodePhase1V4 {
 
     // ============================================================================
     // GLOBAL STRUCTURES & CONFIGURATION
@@ -197,7 +197,7 @@ public class MasterNodePhase4 {
         try {
             masterServerSocket = new ServerSocket(PORT);
             System.out.println("╔════════════════════════════════════════════════════════════╗");
-            System.out.println("║  CAMPUS GRID - GENERIC WORKLOAD ORCHESTRATOR               ║");
+            System.out.println("║  CAMPUS GRID - GENERIC WORKLOAD ORCHESTRATOR - PHASE 1 V4  ║");
             System.out.println("║  Listening on port: " + PORT + "                                   ║");
             System.out.println("║  Workload Agnostic Serialization: Object stream            ║");
             System.out.println("║  Thermal Load Balancing: ENABLED                          ║");
@@ -206,19 +206,19 @@ public class MasterNodePhase4 {
             System.out.println();
 
             // 1. Start Telemetry CLI interface thread
-            Thread telemetryDaemon = new Thread(MasterNodePhase4::startTelemetryInterface);
+            Thread telemetryDaemon = new Thread(MasterNodePhase1V4::startTelemetryInterface);
             telemetryDaemon.setDaemon(true);
             telemetryDaemon.setName("Telemetry-CLI");
             telemetryDaemon.start();
 
             // 2. Start Network Accept Loop thread
-            Thread acceptLoopThread = new Thread(MasterNodePhase4::runAcceptLoop);
+            Thread acceptLoopThread = new Thread(MasterNodePhase1V4::runAcceptLoop);
             acceptLoopThread.setDaemon(false);
             acceptLoopThread.setName("Accept-Loop");
             acceptLoopThread.start();
 
             // 3. Start Central Routing & Dispatcher thread
-            Thread dispatchThread = new Thread(MasterNodePhase4::runOrchestratorDispatch);
+            Thread dispatchThread = new Thread(MasterNodePhase1V4::runOrchestratorDispatch);
             dispatchThread.setDaemon(true);
             dispatchThread.setName("Orchestrator-Dispatch");
             dispatchThread.start();
@@ -685,8 +685,8 @@ public class MasterNodePhase4 {
                 try (Socket socket = new Socket("127.0.0.1", PORT);
                      ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
                      
-                    out.flush();
-                    try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+                     out.flush();
+                     try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
                         System.out.println("  [SIMULATOR-" + name + "] Connected to Master.");
 
                         // Continuous Telemetry Thread

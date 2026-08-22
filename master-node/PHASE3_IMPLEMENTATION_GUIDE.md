@@ -417,7 +417,7 @@ Pending Tasks: [Chunk_2, Chunk_3, Chunk_4, Chunk_5]  ← Chunk_1 COMPLETE!
 
 ```bash
 # Terminal 1
-java MasterNodePhase3
+java MasterNodePhase1V3
 
 # Terminal 2, 3, 4, etc. (multiple telnet connections)
 telnet localhost 8080
@@ -432,7 +432,7 @@ telnet localhost 8080
 
 ```bash
 # Terminal 1
-java MasterNodePhase3
+java MasterNodePhase1V3
 
 # Terminal 2
 telnet localhost 8080
@@ -456,7 +456,7 @@ telnet localhost 8080
 
 ```bash
 # Terminal 1
-java MasterNodePhase3
+java MasterNodePhase1V3
 
 # Terminal 2, 3, 4 (multiple telnet connections)
 telnet localhost 8080

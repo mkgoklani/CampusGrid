@@ -57,7 +57,7 @@ The Master Node serves as the **central Control Plane** of the Campus Grid distr
 
 ### PHASE 1.A: Single-Threaded Handshake (Foundation)
 
-**Objective:** Establish the primary MasterNode class with ServerSocket listening on port 8080.
+**Objective:** Establish the primary MasterNodePhase1V1 class with ServerSocket listening on port 8080.
 
 **Key Components:**
 - `ServerSocket` bound to TCP port 8080
@@ -209,13 +209,13 @@ javac -version
 ### Compilation
 ```bash
 cd master-node
-javac MasterNode.java
+javac MasterNodePhase1V1.java
 ```
 
 ### Execution
 ```bash
 cd master-node
-java MasterNode
+java MasterNodePhase1V1
 ```
 
 Expected output:
@@ -233,7 +233,7 @@ Expected output:
 
 **Terminal 1 (Start Master Node):**
 ```bash
-java MasterNode
+java MasterNodePhase1V1
 ```
 
 **Terminal 2-6 (Spawn client connections):**
@@ -328,7 +328,7 @@ Thread B: Socket s = connectionRegistry.get("192.168.1.100")  ✓ Sees write
 ## Code Organization & Design Patterns
 
 ### Single Responsibility Principle
-- **MasterNode:** Server initialization, accept loop, shutdown
+- **MasterNodePhase1V1:** Server initialization, accept loop, shutdown
 - **AgentConnectionHandler:** Single client connection lifecycle
 - **startTelemetryInterface():** Diagnostic monitoring only
 
@@ -377,7 +377,7 @@ Solution: Kill the process or use a different port
 ### "Connection refused" when running telnet
 ```
 Master Node not running
-Solution: Start Master Node first with: java MasterNode
+Solution: Start Master Node first with: java MasterNodePhase1V1
 ```
 
 ### Telnet connection closes immediately
@@ -398,15 +398,15 @@ If occurs: Check for exception messages in handler threads
 
 ```
 master-node/
-├── MasterNode.java                 (Source code)
-├── MasterNode.class                (Compiled bytecode)
-├── MasterNode$AgentConnectionHandler.class  (Inner class bytecode)
+├── MasterNodePhase1V1.java                 (Source code)
+├── MasterNodePhase1V1.class                (Compiled bytecode)
+├── MasterNodePhase1V1$AgentConnectionHandler.class  (Inner class bytecode)
 └── IMPLEMENTATION_GUIDE.md         (This file)
 ```
 
 **Bytecode Verification:**
 ```bash
-javap -c MasterNode | grep -E "ServerSocket|ExecutorService|ConcurrentHashMap"
+javap -c MasterNodePhase1V1 | grep -E "ServerSocket|ExecutorService|ConcurrentHashMap"
 ```
 
 ---

@@ -4,7 +4,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * CAMPUS GRID - MASTER NODE CONTROL PLANE - PHASE 2
+ * CAMPUS GRID - MASTER NODE CONTROL PLANE - PHASE 1 VERSION 2
  * 
  * SYNCHRONIZATION BARRIER & SCATTER-GATHER ROUTING
  * 
@@ -23,7 +23,7 @@ import java.util.concurrent.*;
  * @author Campus Grid Engineering Team
  * @version 2.0
  */
-public class MasterNodePhase2 {
+public class MasterNodePhase1V2 {
 
     // ============================================================================
     // PHASE 1 GLOBALS (Inherited from Phase 1)
@@ -112,20 +112,20 @@ public class MasterNodePhase2 {
             // PHASE 1: Initialize networking components
             masterServerSocket = new ServerSocket(8080);
             System.out.println("╔════════════════════════════════════════════════════════════╗");
-            System.out.println("║  CAMPUS GRID - MASTER NODE (PHASE 1 + 2)                   ║");
+            System.out.println("║  CAMPUS GRID - MASTER NODE (PHASE 1 + 2) - PHASE 1 V2      ║");
             System.out.println("║  Listening on: 0.0.0.0:8080                               ║");
             System.out.println("║  Scatter-Gather Simulation: 5 Worker Tasks                ║");
             System.out.println("╚════════════════════════════════════════════════════════════╝");
             System.out.println();
 
             // Start Phase 1 telemetry daemon
-            Thread telemetryDaemon = new Thread(MasterNodePhase2::startTelemetryInterface);
+            Thread telemetryDaemon = new Thread(MasterNodePhase1V2::startTelemetryInterface);
             telemetryDaemon.setDaemon(true);
             telemetryDaemon.setName("Telemetry-Daemon");
             telemetryDaemon.start();
 
             // Start Phase 1 accept loop in background
-            Thread acceptLoopThread = new Thread(MasterNodePhase2::runAcceptLoop);
+            Thread acceptLoopThread = new Thread(MasterNodePhase1V2::runAcceptLoop);
             acceptLoopThread.setDaemon(false);
             acceptLoopThread.setName("Accept-Loop");
             acceptLoopThread.start();
@@ -137,7 +137,6 @@ public class MasterNodePhase2 {
             // PHASE 2: SCATTER-GATHER SIMULATION
             // ====================================================================
 
-            System.out.println();
             System.out.println("╔════════════════════════════════════════════════════════════╗");
             System.out.println("║  PHASE 2: SCATTER-GATHER BARRIER TEST                      ║");
             System.out.println("╚════════════════════════════════════════════════════════════╝");

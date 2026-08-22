@@ -9,18 +9,18 @@
 ## Quick Navigation
 
 ### Phase 3 (Latest - Fault Tolerance & Kill Switch)
-- **MasterNodePhase3.java** — 605 lines, complete implementation
+- **MasterNodePhase1V3.java** — 605 lines, complete implementation
 - **PHASE3_IMPLEMENTATION_GUIDE.md** — Technical deep-dive
 - **PHASE3_README.md** — Quick reference
 - **PHASE3_COMPLETION_SUMMARY.md** — Verification checklist
 
 ### Phase 2 (Scatter-Gather)
-- **MasterNodePhase2.java** — 556 lines, CountDownLatch + CopyOnWriteArrayList
+- **MasterNodePhase1V2.java** — 556 lines, CountDownLatch + CopyOnWriteArrayList
 - **PHASE2_IMPLEMENTATION_GUIDE.md** — Detailed analysis
 - **PHASE2_README.md** — Quick reference
 
 ### Phase 1 (Networking Foundation)
-- **MasterNode.java** — 409 lines, ServerSocket + ExecutorService
+- **MasterNodePhase1V1.java** — 409 lines, ServerSocket + ExecutorService
 - **IMPLEMENTATION_GUIDE.md** — Comprehensive documentation
 - **README.md** — Quick start guide
 - **COMPLETION_SUMMARY.md** — Phase 1 verification
@@ -61,13 +61,13 @@ Phase 3.C: Global Kill Switch (Poison Pill)
 cd master-node
 
 # Phase 1
-javac MasterNode.java
+javac MasterNodePhase1V1.java
 
 # Phase 2
-javac MasterNodePhase2.java
+javac MasterNodePhase1V2.java
 
 # Phase 3 (Latest)
-javac MasterNodePhase3.java
+javac MasterNodePhase1V3.java
 ```
 
 All compile successfully with **zero warnings**.
@@ -78,11 +78,11 @@ All compile successfully with **zero warnings**.
 
 ```bash
 # Start latest version (Phase 3)
-java MasterNodePhase3
+java MasterNodePhase1V3
 
 # Or earlier versions
-java MasterNode          # Phase 1
-java MasterNodePhase2    # Phase 2
+java MasterNodePhase1V1          # Phase 1
+java MasterNodePhase1V2    # Phase 2
 ```
 
 ---
@@ -127,25 +127,25 @@ master-node/
 ├── COMPLETION_SUMMARY.md               (Phase 1 verification)
 ├── IMPLEMENTATION_GUIDE.md             (Phase 1 deep-dive)
 │
-├── MasterNode.java                     (Phase 1 source, 409 LOC)
-├── MasterNode.class                    (Phase 1 bytecode)
-├── MasterNode$AgentConnectionHandler.class
+├── MasterNodePhase1V1.java                     (Phase 1 source, 409 LOC)
+├── MasterNodePhase1V1.class                    (Phase 1 bytecode)
+├── MasterNodePhase1V1$AgentConnectionHandler.class
 │
 ├── PHASE2_README.md                    (Phase 2 quick ref)
 ├── PHASE2_IMPLEMENTATION_GUIDE.md      (Phase 2 deep-dive)
 │
-├── MasterNodePhase2.java               (Phase 2 source, 556 LOC)
-├── MasterNodePhase2.class              (Phase 2 bytecode)
-├── MasterNodePhase2$DummyTaskWorker.class
-├── MasterNodePhase2$AgentConnectionHandler.class
+├── MasterNodePhase1V2.java               (Phase 2 source, 556 LOC)
+├── MasterNodePhase1V2.class              (Phase 2 bytecode)
+├── MasterNodePhase1V2$DummyTaskWorker.class
+├── MasterNodePhase1V2$AgentConnectionHandler.class
 │
 ├── PHASE3_README.md                    (Phase 3 quick ref)
 ├── PHASE3_IMPLEMENTATION_GUIDE.md      (Phase 3 deep-dive)
 ├── PHASE3_COMPLETION_SUMMARY.md        (Phase 3 verification)
 │
-├── MasterNodePhase3.java               (Phase 3 source, 605 LOC)
-├── MasterNodePhase3.class              (Phase 3 bytecode)
-└── MasterNodePhase3$AgentConnectionHandler.class
+├── MasterNodePhase1V3.java               (Phase 3 source, 605 LOC)
+├── MasterNodePhase1V3.class              (Phase 3 bytecode)
+└── MasterNodePhase1V3$AgentConnectionHandler.class
 ```
 
 ---
@@ -162,7 +162,7 @@ master-node/
 → **PHASE3_COMPLETION_SUMMARY.md** lists all requirements met
 
 ### For Deep Technical Dive
-→ Read JavaDoc comments in **MasterNodePhase3.java** (60+ blocks)
+→ Read JavaDoc comments in **MasterNodePhase1V3.java** (60+ blocks)
 
 ---
 
@@ -170,9 +170,9 @@ master-node/
 
 | Phase | File | Lines | Classes | Bytecode | Features |
 |-------|------|-------|---------|----------|----------|
-| **1** | MasterNode.java | 409 | 2 | 11.7 KB | Networking, Thread Pool, Registry |
-| **2** | MasterNodePhase2.java | 556 | 2 | 16.0 KB | + Scatter-Gather, CountDownLatch |
-| **3** | MasterNodePhase3.java | 605 | 2 | 17.4 KB | + Fault Tolerance, Kill Switch |
+| **1** | MasterNodePhase1V1.java | 409 | 2 | 11.7 KB | Networking, Thread Pool, Registry |
+| **2** | MasterNodePhase1V2.java | 556 | 2 | 16.0 KB | + Scatter-Gather, CountDownLatch |
+| **3** | MasterNodePhase1V3.java | 605 | 2 | 17.4 KB | + Fault Tolerance, Kill Switch |
 
 **Total:** 1,570 LOC, 6 inner classes, 45.1 KB bytecode
 
@@ -257,20 +257,20 @@ PHASE 3: ADD FAULT TOLERANCE
 **New to Campus Grid?**
 1. Read: `/master-node/README.md`
 2. Review: `/master-node/IMPLEMENTATION_GUIDE.md`
-3. Compile: `javac MasterNode.java`
-4. Run: `java MasterNode`
+3. Compile: `javac MasterNodePhase1V1.java`
+4. Run: `java MasterNodePhase1V1`
 
 **Ready for Scatter-Gather?**
 1. Read: `/master-node/PHASE2_README.md`
 2. Review: `/master-node/PHASE2_IMPLEMENTATION_GUIDE.md`
-3. Compile: `javac MasterNodePhase2.java`
-4. Run: `java MasterNodePhase2`
+3. Compile: `javac MasterNodePhase1V2.java`
+4. Run: `java MasterNodePhase1V2`
 
 **Need Fault Tolerance?**
 1. Read: `/master-node/PHASE3_README.md`
 2. Review: `/master-node/PHASE3_IMPLEMENTATION_GUIDE.md`
-3. Compile: `javac MasterNodePhase3.java`
-4. Run: `java MasterNodePhase3`
+3. Compile: `javac MasterNodePhase1V3.java`
+4. Run: `java MasterNodePhase1V3`
 
 **Verify Implementation?**
 1. Review: `/master-node/PHASE3_COMPLETION_SUMMARY.md`

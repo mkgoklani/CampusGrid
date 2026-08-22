@@ -47,6 +47,14 @@ The system follows a strict Star Topology (Master-Worker model) engineered for h
 | [Eviction]|     | [Eviction]|     | [Eviction]|
 +===========+     +===========+     +===========+
 
+## Master Node Versions (Phase 1)
+The `master-node` directory contains the evolution of the Control Plane through five successive versions:
+* **[MasterNodePhase1V1.java](file:///Users/mohitkumar/CampusGrid/master-node/MasterNodePhase1V1.java)**: Networking foundation using `ServerSocket`, a fixed thread pool of 10 threads, and a `ConcurrentHashMap` registry.
+* **[MasterNodePhase1V2.java](file:///Users/mohitkumar/CampusGrid/master-node/MasterNodePhase1V2.java)**: Adds scatter-gather routing using a synchronization barrier (`CountDownLatch`) and thread-safe result aggregator (`CopyOnWriteArrayList`).
+* **[MasterNodePhase1V3.java](file:///Users/mohitkumar/CampusGrid/master-node/MasterNodePhase1V3.java)**: Introduces fault tolerance (fail-fast re-queueing via `ConcurrentLinkedQueue`) and a poison-pill emergency abort command (`ABORT`).
+* **[MasterNodePhase1V4.java](file:///Users/mohitkumar/CampusGrid/master-node/MasterNodePhase1V4.java)**: Upgrades to type-agnostic parallel workloads, out-of-order sequence aggregation, continuous streaming pipelines, and thermal load balancing.
+* **[MasterNodePhase1V5.java](file:///Users/mohitkumar/CampusGrid/master-node/MasterNodePhase1V5.java)**: Advanced performance benchmark orchestrator supporting heavy 8K Mandelbrot rendering (with ASCII console preview) and massive $2,000 \times 2,000$ matrix multiplication.
+
 @The 4 Architectural Pillars:
 ->The Control Plane (Master Node): Utilizes an ExecutorService Dispatcher to maintain dedicated threads for every connected Agent. Workloads are sliced and placed into a thread-safe ConcurrentLinkedQueue. Access is secured via java.security.MessageDigest.  
 ->The Data Plane: Runs entirely on raw TCP (java.net.Socket). Data is serialized into binary (java.io.ObjectOutputStream) and pushed across the wire for maximum throughput.  
