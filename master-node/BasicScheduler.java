@@ -148,7 +148,7 @@ public class BasicScheduler implements Runnable {
             jobId,
             taskId,
             task.getWorkloadType(),
-            task.getTaskPayloadBytes(),
+            task.getTaskData() != null ? task.getTaskData() : task.getTaskPayloadBytes(),
             frameRange
         );
 

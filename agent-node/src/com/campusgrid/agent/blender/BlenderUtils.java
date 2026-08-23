@@ -80,13 +80,18 @@ public class BlenderUtils {
                 }
             }
             
-            // 2. Try common installation paths on Ubuntu/Linux
-            String[] commonLinuxPaths = {
-                "/usr/bin/blender",
+            // 2. Try common installation paths on macOS & Linux
+            String userHome = System.getProperty("user.home");
+            String[] commonUnixPaths = {
+                "/Applications/Blender.app/Contents/MacOS/Blender",
+                "/Applications/Blender.app/Contents/MacOS/blender",
+                userHome + "/Applications/Blender.app/Contents/MacOS/Blender",
+                "/opt/homebrew/bin/blender",
                 "/usr/local/bin/blender",
+                "/usr/bin/blender",
                 "/snap/bin/blender"
             };
-            for (String p : commonLinuxPaths) {
+            for (String p : commonUnixPaths) {
                 File f = new File(p);
                 if (f.exists() && f.canExecute()) {
                     return f.getAbsolutePath();

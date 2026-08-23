@@ -217,16 +217,21 @@ public class DashboardServer {
             String jobId = "JOB_" + System.currentTimeMillis();
             String jobName = "Web Submitted Job";
             String workloadType = "BLENDER";
+            String blendFilePath = "test.blend";
             int totalFrames = 100;
             int framesPerTask = 25;
 
-            // Simple key-value parser for JSON/Form payload
+            // Key-value parser for JSON payload
             if (body.contains("jobName")) jobName = extractJsonString(body, "jobName", jobName);
             if (body.contains("workloadType")) workloadType = extractJsonString(body, "workloadType", workloadType);
+            if (body.contains("blendFilePath")) blendFilePath = extractJsonString(body, "blendFilePath", blendFilePath);
             if (body.contains("totalFrames")) totalFrames = extractJsonInt(body, "totalFrames", totalFrames);
             if (body.contains("framesPerTask")) framesPerTask = extractJsonInt(body, "framesPerTask", framesPerTask);
 
-            Job job = new Job(jobId, jobName, workloadType, totalFrames, Collections.emptyMap());
+            Map<String, Object> params = new HashMap<>();
+            params.put("blendFilePath", blendFilePath);
+
+            Job job = new Job(jobId, jobName, workloadType, totalFrames, params);
             jobManager.submitJob(job, framesPerTask);
 
             String response = String.format("{\"success\":true,\"jobId\":\"%s\",\"subTasks\":%d}",

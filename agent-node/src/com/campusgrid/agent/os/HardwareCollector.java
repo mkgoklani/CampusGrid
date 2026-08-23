@@ -1,17 +1,16 @@
 package com.campusgrid.agent.os;
 
-import oshi.SystemInfo;
-import oshi.hardware.HardwareAbstractionLayer;
-import oshi.hardware.GlobalMemory;
-import oshi.hardware.Sensors;
+import java.lang.management.ManagementFactory;
+import com.sun.management.OperatingSystemMXBean;
 
 /**
  * Accesses hardware metrics (CPU Temperature and System RAM Usage)
- * using the Operating System and Hardware Information (OSHI) library.
+ * using JVM OperatingSystemMXBean and dynamic OSHI reflection if available.
  */
 public class HardwareCollector {
-    private static final SystemInfo si = new SystemInfo();
-    private static final HardwareAbstractionLayer hal = si.getHardware();
+
+    private static final OperatingSystemMXBean OS_BEAN = 
+        (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
 
     /**
      * Gets the system RAM usage in Megabytes (MB).
@@ -20,13 +19,10 @@ public class HardwareCollector {
      * @return the used system memory in MB.
      */
     public static long getSystemRamUsageMB() {
-        GlobalMemory memory = hal.getMemory();
-        long totalMemory = memory.getTotal();
-        long availableMemory = memory.getAvailable();
-        long usedMemory = totalMemory - availableMemory;
-        
-        // Convert Bytes to Megabytes
-        return usedMemory / (1024 * 1024);
+        long totalMemory = OS_BEAN.getTotalMemorySize();
+        long freeMemory = OS_BEAN.getFreeMemorySize();
+        long usedMemory = totalMemory - freeMemory;
+        return Math.max(0, usedMemory / (1024 * 1024));
     }
 
     /**
@@ -35,7 +31,14 @@ public class HardwareCollector {
      * @return the CPU temperature, or 0.0 if not available.
      */
     public static double getCpuTemperature() {
-        Sensors sensors = hal.getSensors();
-        return sensors.getCpuTemperature();
+        try {
+            Class<?> siClass = Class.forName("oshi.SystemInfo");
+            Object si = siClass.getDeclaredConstructor().newInstance();
+            Object hal = siClass.getMethod("getHardware").invoke(si);
+            Object sensors = hal.getClass().getMethod("getSensors").invoke(hal);
+            return (double) sensors.getClass().getMethod("getCpuTemperature").invoke(sensors);
+        } catch (Throwable ignored) {
+            return 0.0;
+        }
     }
 }

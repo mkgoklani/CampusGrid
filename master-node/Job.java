@@ -61,12 +61,16 @@ public class Job implements Serializable {
         List<SubTask> generated = new ArrayList<>();
         int taskSeq = 1;
 
+        String blendPath = (parameters != null && parameters.containsKey("blendFilePath")) 
+            ? parameters.get("blendFilePath").toString() : "test.blend";
+
         for (int start = 1; start <= totalFrames; start += chunkSize) {
             int end = Math.min(start + chunkSize - 1, totalFrames);
             String taskId = String.format("%s_T%03d", jobId, taskSeq++);
             String frameRange = (start == end) ? String.valueOf(start) : (start + "-" + end);
 
             SubTask subTask = new SubTask(taskId, jobId, start, end, frameRange, workloadType);
+            subTask.setTaskData(blendPath);
             subTasks.put(taskId, subTask);
             pendingSubTasks.add(subTask);
             generated.add(subTask);
@@ -184,6 +188,7 @@ public class Job implements Serializable {
         private volatile String assignedWorkerId;
         private volatile int retryCount;
         private volatile byte[] taskPayloadBytes;
+        private volatile Object taskData;
 
         public SubTask(String taskId, String jobId, int startFrame, int endFrame, String frameRange, String workloadType) {
             this.taskId = taskId;
@@ -214,6 +219,9 @@ public class Job implements Serializable {
 
         public byte[] getTaskPayloadBytes() { return taskPayloadBytes; }
         public void setTaskPayloadBytes(byte[] taskPayloadBytes) { this.taskPayloadBytes = taskPayloadBytes; }
+
+        public Object getTaskData() { return taskData; }
+        public void setTaskData(Object taskData) { this.taskData = taskData; }
 
         @Override
         public String toString() {

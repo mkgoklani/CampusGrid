@@ -140,6 +140,10 @@ public class MasterNodeApplication {
 
                 if (obj instanceof GridMessage message) {
                     handleProtocolEnvelope(worker, message);
+                } else if (obj != null && obj.getClass().getName().contains("RenderResult")) {
+                    handleRenderResultPacket(worker, obj);
+                } else if (obj != null && obj.getClass().getName().contains("BlenderStatusReport")) {
+                    handleBlenderStatusPacket(worker, obj);
                 } else if (obj instanceof String rawString) {
                     handleLegacyStringPacket(worker, rawString);
                 } else {
@@ -194,6 +198,45 @@ public class MasterNodeApplication {
             }
             default -> System.out.println("[RECEIVER] Message type " + type + " received from [" + workerId + "]");
         }
+    }
+
+    private void handleRenderResultPacket(WorkerState worker, Object resultObj) {
+        String workerId = worker.getWorkerId();
+        try {
+            Class<?> clazz = resultObj.getClass();
+            String jobId = (String) clazz.getMethod("getJobId").invoke(resultObj);
+            String status = (String) clazz.getMethod("getStatus").invoke(resultObj);
+            boolean success = "SUCCESS".equalsIgnoreCase(status);
+
+            String taskId = worker.getCurrentTaskId() != null ? worker.getCurrentTaskId() : (jobId + "_T001");
+            System.out.printf("[RECEIVER] RenderResult for Job [%s] Task [%s] from [%s]: %s\n",
+                jobId, taskId, workerId, status);
+
+            TaskResultPayload resultPayload = new TaskResultPayload(
+                jobId, taskId, success, new byte[0], success ? null : "Render status: " + status
+            );
+            resultCollector.handleTaskResult(workerId, resultPayload);
+        } catch (Exception e) {
+            System.err.println("[RECEIVER-ERR] Error unpacking RenderResult: " + e.getMessage());
+        }
+    }
+
+    private void handleBlenderStatusPacket(WorkerState worker, Object statusObj) {
+        String workerId = worker.getWorkerId();
+        try {
+            Class<?> clazz = statusObj.getClass();
+            String jobId = (String) clazz.getMethod("getJobId").invoke(statusObj);
+            int currentFrame = (int) clazz.getMethod("getCurrentFrame").invoke(statusObj);
+            int totalFrames = (int) clazz.getMethod("getTotalFrames").invoke(statusObj);
+            double pct = (double) clazz.getMethod("getPercentage").invoke(statusObj);
+            String state = (String) clazz.getMethod("getState").invoke(statusObj);
+
+            if ("RENDERING".equalsIgnoreCase(state) || "BUSY".equalsIgnoreCase(state)) {
+                workerRegistry.updateStatus(workerId, WorkerStatus.BUSY);
+            } else if ("READY".equalsIgnoreCase(state) || "IDLE".equalsIgnoreCase(state)) {
+                workerRegistry.updateStatus(workerId, WorkerStatus.IDLE);
+            }
+        } catch (Exception ignored) {}
     }
 
     /**

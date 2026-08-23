@@ -207,10 +207,12 @@ public class LinuxTelemetry {
     public static double getRamUsagePercent() {
         if (oshiAvailable) {
             try {
-                oshi.SystemInfo si = new oshi.SystemInfo();
-                oshi.hardware.GlobalMemory memory = si.getHardware().getMemory();
-                long total = memory.getTotal();
-                long available = memory.getAvailable();
+                Class<?> siClass = Class.forName("oshi.SystemInfo");
+                Object si = siClass.getDeclaredConstructor().newInstance();
+                Object hal = siClass.getMethod("getHardware").invoke(si);
+                Object mem = hal.getClass().getMethod("getMemory").invoke(hal);
+                long total = (long) mem.getClass().getMethod("getTotal").invoke(mem);
+                long available = (long) mem.getClass().getMethod("getAvailable").invoke(mem);
                 if (total > 0) {
                     return ((double) (total - available) / total) * 100.0;
                 }

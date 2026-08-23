@@ -113,7 +113,7 @@ public class PayloadListener implements Runnable {
 
                 if (obj instanceof GridTask) {
                     GridTask task = (GridTask) obj;
-                    System.out.println("[TASK] Executing...");
+                    System.out.println("[TASK] Executing GridTask...");
 
                     // Report BUSY status during GridTask calculation
                     try {
@@ -121,9 +121,7 @@ public class PayloadListener implements Runnable {
                             new com.campusgrid.agent.blender.ProgressReporter(connection);
                         String blenderVer = com.campusgrid.agent.blender.BlenderInstaller.getInstallationStatus().getVersion();
                         busyReporter.reportStatus("N/A", 0, 0, 0.0, -1.0, "BUSY", blenderVer, true);
-                    } catch (Exception e) {
-                        // ignore
-                    }
+                    } catch (Exception e) {}
 
                     com.campusgrid.agent.os.LinuxTelemetry.isExecutingTask = true;
                     Object result = task.execute();
@@ -132,45 +130,31 @@ public class PayloadListener implements Runnable {
                     connection.sendObject(result);
                     System.out.println("[TASK] Result sent");
 
-                    // Restore READY status after execution
                     try {
                         com.campusgrid.agent.blender.ProgressReporter readyReporter = 
                             new com.campusgrid.agent.blender.ProgressReporter(connection);
                         String blenderVer = com.campusgrid.agent.blender.BlenderInstaller.getInstallationStatus().getVersion();
                         readyReporter.reportStatus("N/A", 0, 0, 0.0, -1.0, "READY", blenderVer, true);
-                    } catch (Exception e) {
-                        // ignore
-                    }
+                    } catch (Exception e) {}
+                } else if (isGridMessage(obj)) {
+                    handleGridMessagePacket(obj);
+                } else if (isTaskAssignment(obj)) {
+                    handleTaskAssignmentPacket(obj);
                 } else if (obj instanceof com.campusgrid.agent.blender.BlenderRenderTask) {
                     com.campusgrid.agent.blender.BlenderRenderTask task = (com.campusgrid.agent.blender.BlenderRenderTask) obj;
-                    System.out.println("[TASK] Blender render task received: " + task.getJobId());
-                    
-                    // Route render job to executor in a separate thread
-                    handleAsyncRender(task);
+                    System.out.println("[TASK] Direct Blender render task received: " + task.getJobId());
+                    handleAsyncRender(task, task.getJobId() + "_T001");
                 } else if (obj instanceof com.campusgrid.agent.blender.BlenderJob) {
-                    // Fallback support for generic BlenderJob
                     com.campusgrid.agent.blender.BlenderJob job = (com.campusgrid.agent.blender.BlenderJob) obj;
                     System.out.println("[TASK] Legacy Blender job received: " + job.getJobId());
-                    
-                    // Wrap into a BlenderRenderTask and run
                     com.campusgrid.agent.blender.BlenderRenderTask wrapped = new com.campusgrid.agent.blender.BlenderRenderTask(
                         job.getJobId(), job.getBlendFilePath(), job.getFrameStart(), job.getFrameEnd(), job.getOutputDir(), job.getRenderEngine()
                     );
-                    handleAsyncRender(wrapped);
+                    handleAsyncRender(wrapped, job.getJobId() + "_T001");
                 } else if (isKillCommand(obj)) {
                     String targetJobId = extractJobIdFromPacket(obj);
                     System.out.println("[TASK] Kill/Cancel command received for jobId: " + targetJobId);
-                    
-                    synchronized (this) {
-                        if (targetJobId == null || targetJobId.equals(currentJobId)) {
-                            if (currentJobId != null) {
-                                com.campusgrid.agent.blender.BlenderJobExecutor.cancelJob(currentJobId);
-                            }
-                            if (currentRenderThread != null && currentRenderThread.isAlive()) {
-                                currentRenderThread.interrupt();
-                            }
-                        }
-                    }
+                    cancelActiveRender(targetJobId);
                 }
             } catch (IOException | ClassNotFoundException e) {
                 System.out.println("[TASK] Connection lost.");
@@ -180,13 +164,86 @@ public class PayloadListener implements Runnable {
         }
     }
 
+
+    private void handleGridMessagePacket(Object msgObj) {
+        try {
+            java.lang.reflect.Method getTypeMethod = msgObj.getClass().getMethod("getType");
+            java.lang.reflect.Method getPayloadMethod = msgObj.getClass().getMethod("getPayload");
+            Object typeVal = getTypeMethod.invoke(msgObj);
+            Object payloadVal = getPayloadMethod.invoke(msgObj);
+
+            String typeStr = (typeVal != null) ? typeVal.toString() : "";
+            if ("SUBMIT_TASK".equalsIgnoreCase(typeStr) && payloadVal != null) {
+                handleTaskAssignmentPacket(payloadVal);
+            } else if ("CANCEL_TASK".equalsIgnoreCase(typeStr)) {
+                String cancelJobId = (payloadVal != null) ? payloadVal.toString() : null;
+                cancelActiveRender(cancelJobId);
+            }
+        } catch (Exception e) {
+            System.err.println("[TASK] Error handling GridMessage: " + e.getMessage());
+        }
+    }
+
+    private boolean isGridMessage(Object obj) {
+        return obj != null && obj.getClass().getName().contains("GridMessage");
+    }
+
+    private boolean isTaskAssignment(Object obj) {
+        return obj != null && obj.getClass().getName().contains("TaskAssignment");
+    }
+
+    private void handleTaskAssignmentPacket(Object taskAssignmentObj) {
+        try {
+            Class<?> clazz = taskAssignmentObj.getClass();
+            String jobId = (String) clazz.getMethod("getJobId").invoke(taskAssignmentObj);
+            String taskId = (String) clazz.getMethod("getTaskId").invoke(taskAssignmentObj);
+            String range = (String) clazz.getMethod("getAssignedFrameRange").invoke(taskAssignmentObj);
+            Object taskData = clazz.getMethod("getTaskData").invoke(taskAssignmentObj);
+
+            int start = 1, end = 1;
+            if (range != null && range.contains("-")) {
+                String[] parts = range.split("-");
+                start = Integer.parseInt(parts[0].trim());
+                end = Integer.parseInt(parts[1].trim());
+            } else if (range != null && !range.trim().isEmpty()) {
+                start = end = Integer.parseInt(range.trim());
+            }
+
+            String blendPath = "test.blend";
+            if (taskData instanceof String s && !s.trim().isEmpty()) {
+                blendPath = s.trim();
+            }
+
+            System.out.printf("[TASK] Received Task [%s] for Job [%s] (Frames: %d-%d, Blend: %s)\n",
+                taskId, jobId, start, end, blendPath);
+
+            com.campusgrid.agent.blender.BlenderRenderTask renderTask = new com.campusgrid.agent.blender.BlenderRenderTask(
+                jobId, blendPath, start, end, "./output/" + jobId, "CYCLES"
+            );
+            handleAsyncRender(renderTask, taskId);
+        } catch (Exception e) {
+            System.err.println("[TASK] Failed to unpack TaskAssignment: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private synchronized void cancelActiveRender(String targetJobId) {
+        if (targetJobId == null || targetJobId.equals(currentJobId)) {
+            if (currentJobId != null) {
+                com.campusgrid.agent.blender.BlenderJobExecutor.cancelJob(currentJobId);
+            }
+            if (currentRenderThread != null && currentRenderThread.isAlive()) {
+                currentRenderThread.interrupt();
+            }
+            System.out.println("[TASK] Render cancelled for Job: " + targetJobId);
+        }
+    }
+
     /**
      * Executes the Blender render task in a separate worker thread.
      * Prevents blocking of the main thread and heartbeat service.
-     *
-     * @param task the BlenderRenderTask details.
      */
-    private synchronized void handleAsyncRender(com.campusgrid.agent.blender.BlenderRenderTask task) {
+    private synchronized void handleAsyncRender(com.campusgrid.agent.blender.BlenderRenderTask task, String taskId) {
         // Cancel any active render first
         if (currentRenderThread != null && currentRenderThread.isAlive()) {
             System.out.println("[TASK] Interrupting running render to start new task: " + task.getJobId());
@@ -230,7 +287,6 @@ public class PayloadListener implements Runnable {
             } finally {
                 com.campusgrid.agent.os.LinuxTelemetry.isExecutingTask = false;
                 
-                // Clear tracking if this is still the active thread
                 synchronized (PayloadListener.this) {
                     if (Thread.currentThread() == currentRenderThread) {
                         currentRenderThread = null;
@@ -254,7 +310,19 @@ public class PayloadListener implements Runnable {
                 status
             );
 
+            // Read frame bytes if available
+            byte[] frameBytes = new byte[0];
+            if (!renderedFiles.isEmpty()) {
+                java.io.File firstFrame = new java.io.File(renderedFiles.get(0));
+                if (firstFrame.exists() && firstFrame.length() > 0) {
+                    try {
+                        frameBytes = java.nio.file.Files.readAllBytes(firstFrame.toPath());
+                    } catch (Exception ignored) {}
+                }
+            }
+
             try {
+                // Send RenderResult
                 connection.sendObject(result);
                 System.out.println("[TASK] Render result sent to Master: " + result);
             } catch (IOException e) {
@@ -264,9 +332,7 @@ public class PayloadListener implements Runnable {
             // Restore READY status after execution
             try {
                 reporter.reportStatus("N/A", 0, 0, 0.0, -1.0, "READY", blenderVer, true);
-            } catch (Exception e) {
-                // ignore
-            }
+            } catch (Exception ignored) {}
         }, "BlenderRenderThread");
 
         currentRenderThread.start();

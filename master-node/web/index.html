@@ -4,27 +4,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CampusGrid Command Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            /* Warm, minimalist earthy palette matching the image */
-            --bg-color: #f3f0ea; 
-            --text-main: #2b2b2b;
-            --text-muted: #737373;
-            --button-bg: #1a1a1a;
-            --button-text: #f3f0ea;
+            --bg-color: #f4f1ea; 
+            --panel-bg: #f4f1ea;
+            --text-main: #202020;
+            --text-muted: #6e6e6e;
+            --button-bg: #181818;
+            --button-text: #f4f1ea;
+            --accent-green: #2e7d32;
+            --accent-blue: #1565c0;
+            --accent-red: #c62828;
+            --accent-orange: #e65100;
             
-            /* Neumorphic shadow colors */
-            --shadow-dark: #d5d1c8;
+            --shadow-dark: #d8d4cb;
             --shadow-light: #ffffff;
         }
         
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             background-color: var(--bg-color);
             color: var(--text-main);
-            /* Mixing serif for headings, sans-serif for UI elements */
             font-family: 'Inter', -apple-system, sans-serif;
             margin: 0;
             padding: 40px;
+            min-height: 100vh;
         }
 
         h1, h2, h3 {
@@ -38,185 +48,436 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 40px;
+            margin-bottom: 35px;
+            flex-wrap: wrap;
+            gap: 20px;
         }
 
-        .header h1 {
-            font-size: 32px;
-            color: #1a1a1a;
+        .header-title h1 {
+            font-size: 34px;
+            color: #151515;
+            line-height: 1.15;
+        }
+
+        .header-title p {
+            margin: 6px 0 0 0;
+            color: var(--text-muted);
+            font-size: 14px;
         }
 
         .stats-bar {
             display: flex;
-            gap: 30px;
+            gap: 20px;
         }
 
-        /* Neumorphic Raised Card */
         .neumorphic-outset {
-            background: var(--bg-color);
-            border-radius: 20px;
-            box-shadow: 10px 10px 20px var(--shadow-dark), 
-                       -10px -10px 20px var(--shadow-light);
+            background: var(--panel-bg);
+            border-radius: 18px;
+            box-shadow: 8px 8px 18px var(--shadow-dark), 
+                       -8px -8px 18px var(--shadow-light);
         }
 
         .stat-card {
-            padding: 20px 35px;
+            padding: 18px 28px;
             text-align: center;
-            min-width: 100px;
+            min-width: 110px;
         }
 
-        .stat-card h3 { font-size: 28px; margin-bottom: 5px; }
-        .stat-card p { margin: 0; color: var(--text-muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+        .stat-card h3 { font-size: 30px; margin-bottom: 4px; color: #111; font-weight: 600; }
+        .stat-card p { margin: 0; color: var(--text-muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; font-weight: 600; }
 
         .dashboard-grid {
             display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 40px;
+            grid-template-columns: 1.8fr 1.2fr;
+            gap: 35px;
+        }
+
+        @media (max-width: 1024px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         .panel {
-            padding: 35px;
+            padding: 30px;
         }
 
-        .panel h2 { 
-            font-size: 24px; 
-            margin-bottom: 25px; 
-            color: #1a1a1a;
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 22px;
         }
 
-        /* Table Styling - Clean and Minimal */
+        .panel-header h2 { 
+            font-size: 22px; 
+            color: #181818;
+        }
+
+        .badge-live {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--accent-green);
+            background: rgba(46, 125, 50, 0.1);
+            padding: 4px 10px;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .badge-live::before {
+            content: '';
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background-color: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+            animation: pulse 1.8s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.3); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0.7; }
+        }
+
+        /* Table Styling */
+        .table-responsive {
+            overflow-x: auto;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
         }
 
         th, td {
-            padding: 15px 10px;
+            padding: 13px 10px;
             text-align: left;
-            border-bottom: 1px solid rgba(0,0,0,0.05);
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+            font-size: 13.5px;
         }
 
         th { 
             color: var(--text-muted); 
-            font-weight: normal; 
-            font-size: 12px; 
+            font-weight: 600; 
+            font-size: 11px; 
             text-transform: uppercase;
             letter-spacing: 1px;
         }
 
-        /* Neumorphic Inset (Track for progress bars) */
+        .status-tag {
+            display: inline-block;
+            padding: 3px 9px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        /* Progress Bar */
         .progress-container {
-            background: var(--bg-color);
+            background: var(--panel-bg);
             border-radius: 50px;
-            box-shadow: inset 5px 5px 10px var(--shadow-dark), 
-                        inset -5px -5px 10px var(--shadow-light);
-            height: 12px;
+            box-shadow: inset 4px 4px 8px var(--shadow-dark), 
+                        inset -4px -4px 8px var(--shadow-light);
+            height: 10px;
             width: 100%;
-            margin-top: 15px;
+            margin-top: 10px;
             overflow: hidden;
         }
 
-        /* Smooth, dark fill for the progress bar to match the buttons */
         .progress-bar {
-            background: var(--text-main);
+            background: linear-gradient(90deg, #181818, #404040);
             height: 100%;
-            width: 0%; /* Will be updated via JS */
+            width: 0%;
             border-radius: 50px;
             transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        /* Dark contrasting button from the image */
+        /* Buttons */
         .btn {
             background: var(--button-bg);
             color: var(--button-text);
             border: none;
-            padding: 16px 32px;
-            border-radius: 4px; /* Slightly square like the image */
+            padding: 14px 26px;
+            border-radius: 6px;
             cursor: pointer;
             font-family: inherit;
             font-size: 12px;
-            letter-spacing: 1.5px;
+            font-weight: 600;
+            letter-spacing: 1.2px;
             text-transform: uppercase;
-            transition: opacity 0.2s ease;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
         
         .btn:hover { 
-            opacity: 0.85; 
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.16);
         }
-        
+
+        .btn-cancel {
+            background: rgba(198, 40, 40, 0.1);
+            color: var(--accent-red);
+            border: 1px solid rgba(198, 40, 40, 0.25);
+            padding: 6px 12px;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-cancel:hover {
+            background: var(--accent-red);
+            color: #fff;
+        }
+
         .job-card {
-            margin-bottom: 25px;
+            background: rgba(255, 255, 255, 0.45);
+            border: 1px solid rgba(0, 0, 0, 0.04);
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 18px;
+            transition: transform 0.2s ease;
         }
-        
-        .job-card strong {
-            font-family: 'Playfair Display', 'Georgia', serif;
-            font-size: 18px;
+
+        .job-card:hover {
+            background: rgba(255, 255, 255, 0.7);
+        }
+
+        /* Modal Overlay */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(20, 20, 20, 0.45);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: var(--bg-color);
+            width: 90%;
+            max-width: 540px;
+            padding: 35px;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.12);
+            background: rgba(255, 255, 255, 0.8);
+            font-family: inherit;
+            font-size: 14px;
+            color: var(--text-main);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-control:focus {
+            border-color: #111;
+            background: #fff;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 25px;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid rgba(0,0,0,0.15);
+            box-shadow: none;
+        }
+        .btn-secondary:hover {
+            background: rgba(0,0,0,0.05);
+            color: var(--text-main);
         }
     </style>
 </head>
 <body>
 
     <div class="header">
-        <h1>Timeless compute, <br>made for the grid.</h1>
+        <div class="header-title">
+            <h1>CampusGrid Master Center</h1>
+            <p>Distributed Edge Rendering &amp; Compute Telemetry</p>
+        </div>
         <div class="stats-bar">
             <div class="stat-card neumorphic-outset">
                 <h3 id="stat-total">0</h3>
                 <p>Total Nodes</p>
             </div>
             <div class="stat-card neumorphic-outset">
-                <h3 id="stat-idle">0</h3>
+                <h3 id="stat-idle" style="color: var(--accent-green);">0</h3>
                 <p>Available</p>
             </div>
             <div class="stat-card neumorphic-outset">
-                <h3 id="stat-busy">0</h3>
+                <h3 id="stat-busy" style="color: var(--accent-blue);">0</h3>
                 <p>Rendering</p>
             </div>
         </div>
     </div>
 
     <div class="dashboard-grid">
-        <!-- Left Column: Worker Telemetry -->
+        <!-- Left Column: Live Telemetry Table -->
         <div class="panel neumorphic-outset">
-            <h2>Active Worker Nodes</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Node ID</th>
-                        <th>Status</th>
-                        <th>CPU Usage</th>
-                        <th>RAM Usage</th>
-                        <th>Temp</th>
-                        <th>Current Job</th>
-                    </tr>
-                </thead>
-                <tbody id="worker-table-body">
-                    <tr>
-                        <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 40px 0;">Awaiting node connections...</td>
-                    </tr>
-                </tbody>
-            </table>
+            <div class="panel-header">
+                <h2>Worker Nodes Telemetry</h2>
+                <div class="badge-live" id="stream-indicator">Live Stream</div>
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Node Endpoint</th>
+                            <th>Status</th>
+                            <th>CPU Usage</th>
+                            <th>RAM Usage</th>
+                            <th>Core Temp</th>
+                            <th>Active Task</th>
+                        </tr>
+                    </thead>
+                    <tbody id="worker-table-body">
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 40px 0;">
+                                Awaiting worker agent connections...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <!-- Right Column: Active Jobs & Controls -->
         <div class="panel neumorphic-outset">
-            <h2>Execution Queue</h2>
-            <div id="job-container">
-                <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 30px;">No active workloads.</p>
+            <div class="panel-header">
+                <h2>Execution Queue</h2>
+                <button class="btn" onclick="openSubmitModal()">+ New Workload</button>
             </div>
 
-            <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.05); margin: 30px 0;">
+            <div id="job-container">
+                <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">No active workloads.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Submit Workload Modal -->
+    <div class="modal-overlay" id="submit-modal">
+        <div class="modal-box neumorphic-outset">
+            <h2 style="font-size: 24px; margin-bottom: 20px;">Submit Blender Workload</h2>
             
-            <button class="btn" onclick="submitTestJob()">Submit Workload</button>
+            <div class="form-group">
+                <label for="modal-job-name">Workload Name</label>
+                <input type="text" id="modal-job-name" class="form-control" value="Blender 3D Scene Animation" placeholder="e.g. Physics Simulation">
+            </div>
+
+            <div class="form-group">
+                <label for="modal-blend-path">Target .blend File</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="modal-blend-path" class="form-control" value="test.blend" placeholder="Path to .blend file (e.g. test.blend)">
+                    <button type="button" class="btn btn-secondary" style="padding: 0 15px; font-size: 11px;" onclick="document.getElementById('blend-file-picker').click()">Browse</button>
+                </div>
+                <input type="file" id="blend-file-picker" accept=".blend" style="display: none;" onchange="handleFilePicked(event)">
+                <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;">Default: <code>test.blend</code> in project root</small>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="modal-start-frame">Start Frame</label>
+                    <input type="number" id="modal-start-frame" class="form-control" value="1" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="modal-end-frame">End Frame</label>
+                    <input type="number" id="modal-end-frame" class="form-control" value="50" min="1">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="modal-chunk-size">Frames Per Worker</label>
+                    <input type="number" id="modal-chunk-size" class="form-control" value="25" min="1" max="500">
+                </div>
+                <div class="form-group">
+                    <label for="modal-render-engine">Render Engine</label>
+                    <select id="modal-render-engine" class="form-control">
+                        <option value="CYCLES">Cycles (Raytracing)</option>
+                        <option value="BLENDER_EEVEE">Eevee (Realtime)</option>
+                        <option value="WORKBENCH">Workbench (Fast)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeSubmitModal()">Cancel</button>
+                <button class="btn" onclick="submitWorkloadForm()">🚀 Launch Grid Job</button>
+            </div>
         </div>
     </div>
 
     <script>
-        // 1. Submit Workload to Master REST API
-        async function submitTestJob() {
-            const jobName = prompt("Enter Workload Name:", "Blender Render Scene");
-            if (!jobName) return;
-            const totalFrames = parseInt(prompt("Enter Total Frames (e.g. 50, 100, 300):", "50") || "50");
+        function openSubmitModal() {
+            document.getElementById('submit-modal').style.display = 'flex';
+        }
+
+        function closeSubmitModal() {
+            document.getElementById('submit-modal').style.display = 'none';
+        }
+
+        function handleFilePicked(e) {
+            if (e.target.files && e.target.files.length > 0) {
+                document.getElementById('modal-blend-path').value = e.target.files[0].name;
+            }
+        }
+
+        // 1. Submit Workload Form
+        async function submitWorkloadForm() {
+            const jobName = document.getElementById('modal-job-name').value.trim() || 'Blender Render Scene';
+            const blendFilePath = document.getElementById('modal-blend-path').value.trim() || 'test.blend';
+            const startFrame = parseInt(document.getElementById('modal-start-frame').value || '1');
+            const endFrame = parseInt(document.getElementById('modal-end-frame').value || '50');
+            const framesPerTask = parseInt(document.getElementById('modal-chunk-size').value || '25');
+            const engine = document.getElementById('modal-render-engine').value;
+
+            const totalFrames = Math.max(1, endFrame - startFrame + 1);
 
             try {
                 const res = await fetch('/api/jobs/submit', {
@@ -225,13 +486,16 @@
                     body: JSON.stringify({
                         jobName: jobName,
                         workloadType: "BLENDER",
+                        blendFilePath: blendFilePath,
                         totalFrames: totalFrames,
-                        framesPerTask: 25
+                        framesPerTask: framesPerTask,
+                        renderEngine: engine
                     })
                 });
+
                 const result = await res.json();
                 if (result.success) {
-                    alert(`Workload [${result.jobId}] successfully submitted with ${result.subTasks} sub-tasks!`);
+                    closeSubmitModal();
                     fetchJobs();
                 } else {
                     alert("Submission failed: " + JSON.stringify(result));
@@ -241,7 +505,28 @@
             }
         }
 
-        // 2. Fetch and render Active Jobs from REST API
+        // 2. Cancel Job Request
+        async function cancelJob(jobId) {
+            if (!confirm(`Are you sure you want to cancel Job [${jobId}]?`)) return;
+
+            try {
+                const res = await fetch('/api/jobs/cancel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jobId: jobId })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    fetchJobs();
+                } else {
+                    alert("Cancel failed: " + JSON.stringify(result));
+                }
+            } catch (err) {
+                alert("Error sending cancel request: " + err.message);
+            }
+        }
+
+        // 3. Fetch Active Jobs from Master REST API
         async function fetchJobs() {
             try {
                 const res = await fetch('/api/jobs');
@@ -255,7 +540,7 @@
         function renderJobs(jobs) {
             const container = document.getElementById('job-container');
             if (!jobs || jobs.length === 0) {
-                container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px; margin-bottom: 30px;">No active workloads.</p>';
+                container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">No active workloads in queue.</p>';
                 return;
             }
 
@@ -266,32 +551,50 @@
                 jobCard.id = `job-${job.jobId}`;
                 const percentage = Math.round(parseFloat(job.progress) || 0);
 
+                let statusColor = '#6e6e6e';
+                if (job.status === 'COMPLETED') statusColor = 'var(--accent-green)';
+                else if (job.status === 'RUNNING') statusColor = 'var(--accent-blue)';
+                else if (job.status === 'CANCELLED' || job.status === 'FAILED') statusColor = 'var(--accent-red)';
+
+                const canCancel = (job.status === 'RUNNING' || job.status === 'QUEUED');
+
                 jobCard.innerHTML = `
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong>${job.workloadType} - ${job.jobName || job.jobId}</strong>
-                        <span style="font-size: 11px; font-weight: bold; color: ${job.status === 'COMPLETED' ? '#2e7d32' : (job.status === 'RUNNING' ? '#1565c0' : '#737373')};">
-                            ${job.status}
-                        </span>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                        <div>
+                            <strong style="font-size: 16px; color: #111;">${job.jobName || job.jobId}</strong>
+                            <div style="font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 2px;">
+                                #${job.jobId} &bull; ${job.workloadType}
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="status-tag" style="background: ${statusColor}15; color: ${statusColor};">
+                                ${job.status}
+                            </span>
+                            ${canCancel ? `<button class="btn-cancel" onclick="cancelJob('${job.jobId}')">✕ Cancel</button>` : ''}
+                        </div>
                     </div>
+
                     <div class="progress-container">
                         <div class="progress-bar" style="width: ${percentage}%;"></div>
                     </div>
-                    <small style="color: var(--text-muted); display: flex; justify-content: space-between; margin-top: 8px;">
-                        <span>${percentage}% Complete (${job.completedTasks} / ${job.totalTasks} Tasks)</span>
+
+                    <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+                        <span><strong>${percentage}%</strong> Complete (${job.completedTasks} / ${job.totalTasks} Tasks)</span>
                         <span>Total: ${job.totalFrames} Frames</span>
-                    </small>
+                    </div>
                 `;
                 container.appendChild(jobCard);
             });
         }
 
-        // 3. Establish WebSocket Connection to the Master Node Telemetry Stream
+        // 4. WebSocket Real-time Telemetry Stream
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsHost = window.location.hostname || 'localhost';
         const ws = new WebSocket(`${wsProtocol}//${wsHost}:8082/ws/telemetry`);
 
         ws.onopen = () => {
             console.log('✓ Connected to Master Node Real-Time Telemetry Stream');
+            document.getElementById('stream-indicator').innerText = 'Live Stream';
             fetchJobs();
         };
 
@@ -301,7 +604,7 @@
                 if (data.cluster && data.workers) {
                     updateDashboardStats(data.cluster);
                     updateWorkerTable(data.workers);
-                    fetchJobs(); // Keep jobs synchronized
+                    fetchJobs();
                 }
             } catch (e) {
                 console.error("Error parsing telemetry frame:", e);
@@ -309,8 +612,10 @@
         };
 
         ws.onclose = () => {
-            console.warn('WebSocket stream disconnected. Falling back to HTTP polling...');
-            setInterval(fetchClusterFallback, 3000);
+            console.warn('WebSocket disconnected. Polling fallback active...');
+            document.getElementById('stream-indicator').innerText = 'Polling (HTTP)';
+            document.getElementById('stream-indicator').style.color = 'var(--accent-orange)';
+            setInterval(fetchClusterFallback, 2500);
         };
 
         async function fetchClusterFallback() {
@@ -325,45 +630,51 @@
             } catch (e) {}
         }
 
-        // 4. Update Worker Telemetry Table with Real Live Metrics
+        // 5. Update Worker Telemetry Table with Authentic Hardware Values
         function updateWorkerTable(workers) {
             const tbody = document.getElementById('worker-table-body');
             
-            if (workers.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 40px 0;">Awaiting node connections...</td></tr>';
+            if (!workers || workers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 35px 0;">Awaiting node connections...</td></tr>';
                 return;
             }
 
             tbody.innerHTML = '';
             workers.forEach(worker => {
                 const row = document.createElement('tr');
-                const tempColor = worker.cpuTemp > 75 ? '#d32f2f' : (worker.cpuTemp > 60 ? '#f57c00' : '#2e7d32');
-                const statusColor = worker.status === 'IDLE' ? '#2e7d32' : (worker.status === 'BUSY' ? '#1565c0' : '#d32f2f');
+                const temp = parseInt(worker.cpuTemp) || 0;
+                const tempColor = temp > 75 ? 'var(--accent-red)' : (temp > 60 ? 'var(--accent-orange)' : 'var(--accent-green)');
+                
+                let statusColor = 'var(--accent-green)';
+                if (worker.status === 'BUSY') statusColor = 'var(--accent-blue)';
+                else if (worker.status === 'OFFLINE') statusColor = 'var(--accent-red)';
+                else if (worker.status === 'EVICTED') statusColor = 'var(--accent-orange)';
 
                 row.innerHTML = `
-                    <td style="font-weight: bold; font-family: monospace;">${worker.workerId}</td>
+                    <td style="font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 13px;">${worker.workerId}</td>
                     <td>
-                        <span style="display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; background: ${statusColor}15; color: ${statusColor};">
+                        <span class="status-tag" style="background: ${statusColor}18; color: ${statusColor};">
                             ${worker.status}
                         </span>
                     </td>
-                    <td style="font-weight: 500;">${worker.cpuUsage || '0.0'}%</td>
-                    <td style="font-weight: 500;">${worker.ramUsage}%</td>
-                    <td style="font-weight: bold; color: ${tempColor};">${worker.cpuTemp}°C</td>
-                    <td style="color: var(--text-muted); font-size: 13px;">${worker.currentJobId ? worker.currentJobId + ' (' + (worker.assignedFrames || 'Active') + ')' : 'None'}</td>
+                    <td style="font-weight: 600;">${worker.cpuUsage || '0.0'}%</td>
+                    <td style="font-weight: 600;">${worker.ramUsage}%</td>
+                    <td style="font-weight: 700; color: ${tempColor};">${temp > 0 ? temp + '°C' : 'N/A'}</td>
+                    <td style="color: var(--text-muted); font-size: 12.5px;">
+                        ${worker.currentJobId ? `<strong>${worker.currentJobId}</strong> <span style="font-size: 11px;">(Frames ${worker.assignedFrames || ''})</span>` : 'None'}
+                    </td>
                 `;
                 tbody.appendChild(row);
             });
         }
 
-        // 5. Update the Top Dashboard Stats
         function updateDashboardStats(clusterStats) {
             document.getElementById('stat-total').innerText = clusterStats.total;
             document.getElementById('stat-idle').innerText = clusterStats.available;
             document.getElementById('stat-busy').innerText = clusterStats.busy;
         }
 
-        // Initial Load
+        // Initial fetch
         fetchJobs();
         fetchClusterFallback();
     </script>
