@@ -53,14 +53,16 @@ public class DashboardServer {
      * Starts the HTTP REST server and WebSocket broadcaster daemon.
      */
     public synchronized void start() throws IOException {
-        // 1. Initialize HTTP REST Server
+        // 1. Initialize HTTP REST Server & Web UI
         httpServer = HttpServer.create(new InetSocketAddress(httpPort), 0);
         httpServer.createContext("/api/cluster/status", new ClusterStatusHandler());
         httpServer.createContext("/api/jobs", new JobsHandler());
         httpServer.createContext("/api/jobs/submit", new SubmitJobHandler());
         httpServer.createContext("/api/jobs/cancel", new CancelJobHandler());
+        httpServer.createContext("/", new StaticWebHandler());
         httpServer.setExecutor(threadPool);
         httpServer.start();
+        System.out.println("[DASHBOARD-HTTP] Web Dashboard active at http://localhost:" + httpPort + "/");
         System.out.println("[DASHBOARD-HTTP] REST API active at http://localhost:" + httpPort + "/api/");
 
         // 2. Initialize WebSocket Telemetry Broadcaster
@@ -258,6 +260,33 @@ public class DashboardServer {
                 sendJsonResponse(exchange, 200, "{\"success\":true,\"message\":\"Job cancelled\"}");
             } else {
                 sendJsonResponse(exchange, 400, "{\"error\":\"Missing jobId parameter\"}");
+            }
+        }
+    }
+
+    private class StaticWebHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            File htmlFile = new File("master-node/web/index.html");
+            if (!htmlFile.exists()) {
+                htmlFile = new File("web/index.html");
+            }
+
+            if (htmlFile.exists()) {
+                byte[] htmlBytes = java.nio.file.Files.readAllBytes(htmlFile.toPath());
+                exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+                exchange.sendResponseHeaders(200, htmlBytes.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(htmlBytes);
+                }
+            } else {
+                String fallback = "<html><body><h1>CampusGrid Dashboard</h1><p>Running on port " + httpPort + "</p></body></html>";
+                byte[] bytes = fallback.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+                exchange.sendResponseHeaders(200, bytes.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(bytes);
+                }
             }
         }
     }
