@@ -26,6 +26,17 @@ public class LinuxTelemetry {
 
     public static volatile boolean isExecutingTask = false;
 
+    private static boolean oshiAvailable = false;
+    static {
+        try {
+            Class.forName("oshi.SystemInfo");
+            oshiAvailable = true;
+            System.out.println("[TELEMETRY] OSHI library detected. Using authentic hardware sensors.");
+        } catch (ClassNotFoundException e) {
+            System.out.println("[TELEMETRY] OSHI library not detected. Falling back to default system diagnostics.");
+        }
+    }
+
     private static final OperatingSystemMXBean OS_BEAN = 
         (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
 
@@ -50,6 +61,15 @@ public class LinuxTelemetry {
      * @return integer temperature in Celsius.
      */
     public static int getCpuTemperatureCelsius() {
+        if (oshiAvailable) {
+            try {
+                double temp = HardwareCollector.getCpuTemperature();
+                if (temp > 0.0) {
+                    return (int) Math.round(temp);
+                }
+            } catch (Throwable ignored) {}
+        }
+
         String os = System.getProperty("os.name").toLowerCase();
 
         // 1. Linux Sysfs Direct Kernel Reads (thermal_zone* and hwmon*)
@@ -185,6 +205,18 @@ public class LinuxTelemetry {
      * Returns the authentic RAM usage percentage from OS physical memory counters (0.0% to 100.0%).
      */
     public static double getRamUsagePercent() {
+        if (oshiAvailable) {
+            try {
+                oshi.SystemInfo si = new oshi.SystemInfo();
+                oshi.hardware.GlobalMemory memory = si.getHardware().getMemory();
+                long total = memory.getTotal();
+                long available = memory.getAvailable();
+                if (total > 0) {
+                    return ((double) (total - available) / total) * 100.0;
+                }
+            } catch (Throwable ignored) {}
+        }
+
         long totalMem = OS_BEAN.getTotalMemorySize();
         long freeMem = OS_BEAN.getFreeMemorySize();
         if (totalMem <= 0) return 0.0;

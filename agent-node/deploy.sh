@@ -31,14 +31,66 @@ log_deploy() {
     echo "[DEPLOY] $1"
 }
 
-# Step 1: Check Java Installation
+# Step 0: Detect Ubuntu OS
+detect_ubuntu() {
+    if [ ! -f /etc/os-release ] || ! grep -qi "ubuntu" /etc/os-release; then
+        log_deploy "Error: This script is only supported on Ubuntu lab machines."
+        exit 1
+    fi
+    log_deploy "Ubuntu OS detected."
+}
+
+# Step 1: Check Java Installation (Verify Java 17)
 check_java() {
     # Check if java binary is present in the system path
     if ! command -v java >/dev/null 2>&1; then
         log_deploy "Java not found."
         exit 1
     fi
-    log_deploy "Java detected."
+    
+    local java_ver
+    java_ver=$(java -version 2>&1 | head -n 1 | cut -d'"' -f2)
+    if [[ "$java_ver" != 17* ]]; then
+        log_deploy "Java version 17 required. Found: $java_ver"
+        exit 1
+    fi
+    log_deploy "Java 17 detected."
+}
+
+# Step 1.5: Check and Manage Blender Installation
+manage_blender() {
+    echo "[BLENDER] Checking..."
+    
+    if command -v blender >/dev/null 2>&1; then
+        local blender_ver
+        blender_ver=$(blender --version 2>&1 | head -n 1 | sed -E 's/^Blender[[:space:]]+([^[:space:]]+).*/\1/')
+        echo "[BLENDER] Installed"
+        echo "[BLENDER] Version: $blender_ver"
+        echo "[BLENDER] Ready"
+    else
+        log_deploy "Blender is missing. Installing approved Blender 4.x version..."
+        
+        # Prioritize snap as it provides official Blender 4.x packages on Ubuntu
+        if command -v snap >/dev/null 2>&1; then
+            sudo snap install blender --classic
+        else
+            # Fallback to apt-get
+            sudo apt-get update
+            sudo apt-get install -y blender
+        fi
+        
+        # Verify installation
+        if ! command -v blender >/dev/null 2>&1; then
+            log_deploy "Error: Blender installation verification failed."
+            exit 1
+        fi
+        
+        local blender_ver
+        blender_ver=$(blender --version 2>&1 | head -n 1 | sed -E 's/^Blender[[:space:]]+([^[:space:]]+).*/\1/')
+        echo "[BLENDER] Installed"
+        echo "[BLENDER] Version: $blender_ver"
+        echo "[BLENDER] Ready"
+    fi
 }
 
 # Step 2: Create Installation Directory
@@ -102,7 +154,9 @@ launch_agent() {
 # ==============================================================================
 # Execution Flow
 # ==============================================================================
+detect_ubuntu
 check_java
+manage_blender
 setup_directory
 download_agent
 stop_existing_agent
