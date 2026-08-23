@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CampusGrid Command Center</title>
+    <style>
+        :root {
+            /* Warm, minimalist earthy palette matching the image */
+            --bg-color: #f3f0ea; 
+            --text-main: #2b2b2b;
+            --text-muted: #737373;
+            --button-bg: #1a1a1a;
+            --button-text: #f3f0ea;
+            
+            /* Neumorphic shadow colors */
+            --shadow-dark: #d5d1c8;
+            --shadow-light: #ffffff;
+        }
+        
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            /* Mixing serif for headings, sans-serif for UI elements */
+            font-family: 'Inter', -apple-system, sans-serif;
+            margin: 0;
+            padding: 40px;
+        }
+
+        h1, h2, h3 {
+            font-family: 'Playfair Display', 'Georgia', serif;
+            font-weight: 500;
+            margin: 0;
+            letter-spacing: -0.5px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            color: #1a1a1a;
+        }
+
+        .stats-bar {
+            display: flex;
+            gap: 30px;
+        }
+
+        /* Neumorphic Raised Card */
+        .neumorphic-outset {
+            background: var(--bg-color);
+            border-radius: 20px;
+            box-shadow: 10px 10px 20px var(--shadow-dark), 
+                       -10px -10px 20px var(--shadow-light);
+        }
+
+        .stat-card {
+            padding: 20px 35px;
+            text-align: center;
+            min-width: 100px;
+        }
+
+        .stat-card h3 { font-size: 28px; margin-bottom: 5px; }
+        .stat-card p { margin: 0; color: var(--text-muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 40px;
+        }
+
+        .panel {
+            padding: 35px;
+        }
+
+        .panel h2 { 
+            font-size: 24px; 
+            margin-bottom: 25px; 
+            color: #1a1a1a;
+        }
+
+        /* Table Styling - Clean and Minimal */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 15px 10px;
+            text-align: left;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+
+        th { 
+            color: var(--text-muted); 
+            font-weight: normal; 
+            font-size: 12px; 
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Neumorphic Inset (Track for progress bars) */
+        .progress-container {
+            background: var(--bg-color);
+            border-radius: 50px;
+            box-shadow: inset 5px 5px 10px var(--shadow-dark), 
+                        inset -5px -5px 10px var(--shadow-light);
+            height: 12px;
+            width: 100%;
+            margin-top: 15px;
+            overflow: hidden;
+        }
+
+        /* Smooth, dark fill for the progress bar to match the buttons */
+        .progress-bar {
+            background: var(--text-main);
+            height: 100%;
+            width: 0%; /* Will be updated via JS */
+            border-radius: 50px;
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Dark contrasting button from the image */
+        .btn {
+            background: var(--button-bg);
+            color: var(--button-text);
+            border: none;
+            padding: 16px 32px;
+            border-radius: 4px; /* Slightly square like the image */
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 12px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            transition: opacity 0.2s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .btn:hover { 
+            opacity: 0.85; 
+        }
+        
+        .job-card {
+            margin-bottom: 25px;
+        }
+        
+        .job-card strong {
+            font-family: 'Playfair Display', 'Georgia', serif;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Timeless compute, <br>made for the grid.</h1>
+        <div class="stats-bar">
+            <div class="stat-card neumorphic-outset">
+                <h3 id="stat-total">0</h3>
+                <p>Total Nodes</p>
+            </div>
+            <div class="stat-card neumorphic-outset">
+                <h3 id="stat-idle">0</h3>
+                <p>Available</p>
+            </div>
+            <div class="stat-card neumorphic-outset">
+                <h3 id="stat-busy">0</h3>
+                <p>Rendering</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <!-- Left Column: Worker Telemetry -->
+        <div class="panel neumorphic-outset">
+            <h2>Active Worker Nodes</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Node ID</th>
+                        <th>Status</th>
+                        <th>CPU Usage</th>
+                        <th>RAM Usage</th>
+                        <th>Temp</th>
+                        <th>Current Job</th>
+                    </tr>
+                </thead>
+                <tbody id="worker-table-body">
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 40px 0;">Awaiting node connections...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Right Column: Active Jobs & Controls -->
+        <div class="panel neumorphic-outset">
+            <h2>Execution Queue</h2>
+            <div id="job-container">
+                <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 30px;">No active workloads.</p>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.05); margin: 30px 0;">
+            
+            <button class="btn" onclick="submitTestJob()">Submit Workload</button>
+        </div>
+    </div>
+
+    <script>
+        // Control Panel Submission (Placeholder for Mohit's final API)
+        function submitTestJob() {
+            alert("Ready to trigger the Campus Grid network payload!");
+        }
+
+        // 1. Establish WebSocket Connection to the Master Node
+        const ws = new WebSocket('ws://localhost:8082/ws/telemetry');
+
+        ws.onopen = () => {
+            console.log('Connected to Master Node Telemetry Stream');
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log("[DEBUG] Processed Payload:", data);
+
+            // Route the data based on Mohit's new JSON structure
+            if (data.cluster && data.workers) {
+                updateDashboardStats(data.cluster);
+                updateWorkerTable(data.workers);
+            } else if (data.type === 'PROGRESS') {
+                updateJobProgress(data);
+            }
+        };
+
+        ws.onclose = () => {
+            console.error('Connection lost. Master Node might be offline.');
+        };
+
+        // 2. Update the Worker Telemetry Table
+        function updateWorkerTable(workers) {
+            const tbody = document.getElementById('worker-table-body');
+            
+            // Clear the "awaiting" message if we have workers
+            if (workers.length > 0 && tbody.innerHTML.includes("Awaiting node connections")) {
+                tbody.innerHTML = '';
+            }
+
+            workers.forEach(worker => {
+                // Create a safe ID string for HTML attributes (replacing colons and dots from IPs)
+                const safeId = worker.workerId.replace(/[:.]/g, '-');
+                let row = document.getElementById(`row-${safeId}`);
+                
+                // If this is a new node, create a row for it
+                if (!row) {
+                    row = document.createElement('tr');
+                    row.id = `row-${safeId}`;
+                    tbody.appendChild(row);
+                }
+
+                // Update the row cells dynamically matching Mohit's keys
+                row.innerHTML = `
+                    <td style="font-weight: bold;">${worker.workerId}</td>
+                    <td style="color: ${worker.status === 'IDLE' ? 'var(--text-main)' : '#d9534f'}; font-weight: bold;">
+                        ${worker.status}
+                    </td>
+                    <td>N/A</td> <!-- Placeholder until Mohit adds CPU Usage back to the DTO -->
+                    <td>${worker.ramUsage}MB</td>
+                    <td>${worker.cpuTemp}°C</td>
+                    <td>${worker.currentJobId || 'None'}</td>
+                `;
+            });
+        }
+
+        // 3. Update the Top Dashboard Stats
+        function updateDashboardStats(clusterStats) {
+            document.getElementById('stat-total').innerText = clusterStats.total;
+            document.getElementById('stat-idle').innerText = clusterStats.available;
+            document.getElementById('stat-busy').innerText = clusterStats.busy;
+        }
+
+        // 4. Update the Active Job Progress Bars
+        function updateJobProgress(progress) {
+            const container = document.getElementById('job-container');
+            let jobCard = document.getElementById(`job-${progress.jobId}`);
+
+            // If this is the first progress report for this job, create the UI card
+            if (!jobCard) {
+                if (container.querySelector('p')) container.innerHTML = ''; 
+                jobCard = document.createElement('div');
+                jobCard.className = 'job-card';
+                jobCard.id = `job-${progress.jobId}`;
+                container.appendChild(jobCard);
+            }
+
+            // Calculate percentage
+            const percentage = Math.round((progress.completedFrames / progress.totalFrames) * 100);
+
+            // Update the DOM for this specific job
+            jobCard.innerHTML = `
+                <strong>${progress.jobType} - #${progress.jobId}</strong>
+                <div class="progress-container">
+                    <div class="progress-bar" style="width: ${percentage}%;"></div>
+                </div>
+                <small style="color: var(--text-muted); display: block; margin-top: 8px;">
+                    ${percentage}% Complete (Frames ${progress.completedFrames} / ${progress.totalFrames})
+                </small>
+            `;
+        }
+    </script>
+</body>
+</html>
