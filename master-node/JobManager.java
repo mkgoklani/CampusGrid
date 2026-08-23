@@ -99,6 +99,12 @@ public class JobManager {
                 if (currentActiveJob != null && currentActiveJob.getJobId().equals(jobId)) {
                     currentActiveJob = null;
                 }
+
+                // Automatic Post-Processing & Video Compilation
+                new Thread(() -> {
+                    FrameStitcher stitcher = new FrameStitcher();
+                    stitcher.processJobOutput(jobId, job.getTotalFrames());
+                }, "FrameStitcher-" + jobId).start();
             }
         } else {
             // Task failed - requeue for retry
