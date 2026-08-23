@@ -42,6 +42,8 @@ public class DashboardServer {
         this(jobManager, workerRegistry, DEFAULT_HTTP_PORT, DEFAULT_WS_PORT);
     }
 
+    private final java.util.concurrent.atomic.AtomicInteger jobSeq = new java.util.concurrent.atomic.AtomicInteger(1);
+
     public DashboardServer(JobManager jobManager, WorkerRegistry workerRegistry, int httpPort, int wsPort) {
         this.jobManager = jobManager;
         this.workerRegistry = workerRegistry;
@@ -59,6 +61,7 @@ public class DashboardServer {
         httpServer.createContext("/api/jobs", new JobsHandler());
         httpServer.createContext("/api/jobs/submit", new SubmitJobHandler());
         httpServer.createContext("/api/jobs/cancel", new CancelJobHandler());
+        httpServer.createContext("/output", new OutputFileHandler());
         httpServer.createContext("/", new StaticWebHandler());
         httpServer.setExecutor(threadPool);
         httpServer.start();
@@ -113,6 +116,10 @@ public class DashboardServer {
             sb.append("\"workerId\":\"").append(escapeJson(w.getWorkerId())).append("\",");
             sb.append("\"ipAddress\":\"").append(escapeJson(w.getIpAddress())).append("\",");
             sb.append("\"status\":\"").append(w.getStatus()).append("\",");
+            sb.append("\"osName\":\"").append(escapeJson(w.getOsName())).append("\",");
+            sb.append("\"blenderInstalled\":").append(w.isBlenderInstalled()).append(",");
+            sb.append("\"blenderVersion\":\"").append(escapeJson(w.getBlenderVersion())).append("\",");
+            sb.append("\"installProgress\":").append(String.format(Locale.US, "%.1f", w.getInstallProgress())).append(",");
             sb.append("\"cpuTemp\":").append(w.getCpuTemperature()).append(",");
             sb.append("\"cpuUsage\":").append(String.format(Locale.US, "%.1f", w.getCpuUsagePercent())).append(",");
             sb.append("\"ramUsage\":").append(String.format(Locale.US, "%.2f", w.getRamUsagePercent())).append(",");
@@ -132,10 +139,21 @@ public class DashboardServer {
         int count = 0;
         for (Job job : jobManager.getAllJobs().values()) {
             if (count++ > 0) sb.append(",");
+            String blendPath = (job.getParameters() != null && job.getParameters().containsKey("blendFilePath"))
+                ? job.getParameters().get("blendFilePath").toString() : "test.blend";
+            String blendName = (job.getParameters() != null && job.getParameters().containsKey("blendFileName"))
+                ? job.getParameters().get("blendFileName").toString() : new File(blendPath).getName();
+            boolean cleanUp = (job.getParameters() != null && job.getParameters().containsKey("deleteFramesAfterStitch"))
+                && Boolean.parseBoolean(job.getParameters().get("deleteFramesAfterStitch").toString());
+
             sb.append("{");
             sb.append("\"jobId\":\"").append(escapeJson(job.getJobId())).append("\",");
             sb.append("\"jobName\":\"").append(escapeJson(job.getJobName())).append("\",");
             sb.append("\"workloadType\":\"").append(escapeJson(job.getWorkloadType())).append("\",");
+            sb.append("\"blendFileName\":\"").append(escapeJson(blendName)).append("\",");
+            sb.append("\"blendFilePath\":\"").append(escapeJson(blendPath)).append("\",");
+            sb.append("\"cleanUpFrames\":").append(cleanUp).append(",");
+            sb.append("\"videoUrl\":\"/output/").append(escapeJson(job.getJobId())).append("/").append(escapeJson(job.getJobId())).append("_animation.mp4\",");
             sb.append("\"totalFrames\":").append(job.getTotalFrames()).append(",");
             sb.append("\"status\":\"").append(job.getStatus()).append("\",");
             sb.append("\"progress\":").append(String.format(Locale.US, "%.1f", job.getProgressPercentage())).append(",");
@@ -215,28 +233,79 @@ public class DashboardServer {
 
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             String jobId = "JOB_" + System.currentTimeMillis();
-            String jobName = "Web Submitted Job";
-            String workloadType = "BLENDER";
-            String blendFilePath = "test.blend";
-            int totalFrames = 100;
-            int framesPerTask = 25;
+            String workloadType = extractJsonString(body, "workloadType", "BLENDER");
+            String blendFilePath = extractJsonString(body, "blendFilePath", "test.blend");
+            String blendFileName = extractJsonString(body, "blendFileName", new File(blendFilePath).getName());
+            int totalFrames = extractJsonInt(body, "totalFrames", 50);
+            int framesPerTask = extractJsonInt(body, "framesPerTask", 0);
+            boolean cleanUpFrames = body.contains("\"cleanUpFrames\":true") || body.contains("\"deleteFramesAfterStitch\":true");
+            String renderEngine = extractJsonString(body, "renderEngine", "CYCLES");
 
-            // Key-value parser for JSON payload
-            if (body.contains("jobName")) jobName = extractJsonString(body, "jobName", jobName);
-            if (body.contains("workloadType")) workloadType = extractJsonString(body, "workloadType", workloadType);
-            if (body.contains("blendFilePath")) blendFilePath = extractJsonString(body, "blendFilePath", blendFilePath);
-            if (body.contains("totalFrames")) totalFrames = extractJsonInt(body, "totalFrames", totalFrames);
-            if (body.contains("framesPerTask")) framesPerTask = extractJsonInt(body, "framesPerTask", framesPerTask);
+            // 1. Process uploaded blend file base64 data if present
+            if (body.contains("\"blendFileBase64\":\"")) {
+                String b64 = extractJsonString(body, "blendFileBase64", "");
+                if (!b64.isEmpty()) {
+                    try {
+                        byte[] fileBytes = java.util.Base64.getDecoder().decode(b64);
+                        File uploadDir = new File("./uploads");
+                        if (!uploadDir.exists()) uploadDir.mkdirs();
+                        File dest = new File(uploadDir, jobId + "_" + blendFileName);
+                        java.nio.file.Files.write(dest.toPath(), fileBytes);
+                        blendFilePath = dest.getAbsolutePath();
+                        System.out.printf("[DASHBOARD] Saved uploaded blend file (%d bytes) to: %s\n", 
+                            fileBytes.length, dest.getAbsolutePath());
+                    } catch (Exception e) {
+                        System.err.println("[DASHBOARD-ERR] Failed saving uploaded blend file: " + e.getMessage());
+                    }
+                }
+            }
+
+            // 2. Auto-balance frames per task across available nodes if requested or not specified
+            if (framesPerTask <= 0) {
+                int availableNodes = Math.max(1, workerRegistry.getAvailableWorkers().size());
+                framesPerTask = (int) Math.ceil((double) totalFrames / availableNodes);
+                System.out.printf("[DASHBOARD] Auto-balanced workload: %d frames across %d node(s) -> %d frames/task\n",
+                    totalFrames, availableNodes, framesPerTask);
+            }
+
+            // 3. Unique Sequenced default Job Name if not custom specified
+            String customJobName = extractJsonString(body, "jobName", "").trim();
+            String jobName = customJobName.isEmpty() 
+                ? String.format("Render Workload #%d (%s)", jobSeq.getAndIncrement(), blendFileName)
+                : customJobName;
 
             Map<String, Object> params = new HashMap<>();
             params.put("blendFilePath", blendFilePath);
+            params.put("blendFileName", blendFileName);
+            params.put("deleteFramesAfterStitch", cleanUpFrames);
+            params.put("renderEngine", renderEngine);
 
             Job job = new Job(jobId, jobName, workloadType, totalFrames, params);
             jobManager.submitJob(job, framesPerTask);
 
-            String response = String.format("{\"success\":true,\"jobId\":\"%s\",\"subTasks\":%d}",
-                jobId, job.getSubTaskCount());
+            String response = String.format("{\"success\":true,\"jobId\":\"%s\",\"jobName\":\"%s\",\"subTasks\":%d,\"framesPerTask\":%d}",
+                jobId, escapeJson(jobName), job.getSubTaskCount(), framesPerTask);
             sendJsonResponse(exchange, 201, response);
+        }
+    }
+
+    private class OutputFileHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            String uriPath = exchange.getRequestURI().getPath(); // e.g. /output/JOB_123/JOB_123_animation.mp4
+            File file = new File("." + uriPath);
+            if (file.exists() && file.isFile()) {
+                String mime = uriPath.endsWith(".mp4") ? "video/mp4" 
+                    : (uriPath.endsWith(".png") ? "image/png" : "application/octet-stream");
+                exchange.getResponseHeaders().set("Content-Type", mime);
+                exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+                exchange.sendResponseHeaders(200, file.length());
+                try (OutputStream os = exchange.getResponseBody(); InputStream is = new FileInputStream(file)) {
+                    is.transferTo(os);
+                }
+            } else {
+                sendJsonResponse(exchange, 404, "{\"error\":\"Output file not found\"}");
+            }
         }
     }
 

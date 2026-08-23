@@ -60,6 +60,21 @@ public class WorkerRegistry {
     }
 
     /**
+     * Updates host OS and Blender runtime environment info.
+     */
+    public void updateEnvironment(String workerId, String osName, boolean blenderInstalled, String blenderVersion, double installProgress) {
+        WorkerState state = registry.get(workerId);
+        if (state != null) {
+            synchronized (state) {
+                if (osName != null && !osName.isEmpty()) state.setOsName(osName);
+                state.setBlenderInstalled(blenderInstalled);
+                if (blenderVersion != null) state.setBlenderVersion(blenderVersion);
+                state.setInstallProgress(installProgress);
+            }
+        }
+    }
+
+    /**
      * Safely updates the operational status of a worker node.
      * 
      * @param workerId Unique identifier of the worker node.

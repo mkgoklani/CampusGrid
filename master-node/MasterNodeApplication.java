@@ -230,6 +230,10 @@ public class MasterNodeApplication {
             int totalFrames = (int) clazz.getMethod("getTotalFrames").invoke(statusObj);
             double pct = (double) clazz.getMethod("getPercentage").invoke(statusObj);
             String state = (String) clazz.getMethod("getState").invoke(statusObj);
+            String blenderVer = (String) clazz.getMethod("getBlenderVersion").invoke(statusObj);
+
+            boolean isInstalled = (blenderVer != null && !blenderVer.equalsIgnoreCase("Unknown") && !blenderVer.isEmpty());
+            workerRegistry.updateEnvironment(workerId, null, isInstalled, blenderVer, -1.0);
 
             if ("RENDERING".equalsIgnoreCase(state) || "BUSY".equalsIgnoreCase(state)) {
                 workerRegistry.updateStatus(workerId, WorkerStatus.BUSY);
@@ -249,6 +253,9 @@ public class MasterNodeApplication {
                 int temp = 36;
                 double cpu = 0.0;
                 double ram = 50.0;
+                String os = null;
+                String blenderVer = null;
+                boolean blenderInstalled = false;
 
                 String[] parts = raw.split("\\|");
                 for (String part : parts) {
@@ -262,9 +269,17 @@ public class MasterNodeApplication {
                     } else if (part.startsWith("RAM:")) {
                         String r = part.substring(4).replace("%", "").trim();
                         ram = Double.parseDouble(r);
+                    } else if (part.startsWith("OS:")) {
+                        os = part.substring(3).trim();
+                    } else if (part.startsWith("BLENDER:")) {
+                        blenderVer = part.substring(8).trim();
+                        blenderInstalled = !"Unknown".equalsIgnoreCase(blenderVer) && !blenderVer.isEmpty();
                     }
                 }
                 workerRegistry.updateTelemetry(workerId, temp, cpu, ram);
+                if (os != null || blenderVer != null) {
+                    workerRegistry.updateEnvironment(workerId, os, blenderInstalled, blenderVer, -1.0);
+                }
             } catch (Exception ignored) {}
         } else if ("EVICTED".equals(raw)) {
             workerRegistry.handleWorkerFailure(workerId, jobManager);

@@ -69,10 +69,13 @@ public class BlenderJobExecutor {
 
         // If Blender or blend file is missing, execute authentic software frame pipeline simulation
         if (blenderPath == null || !blendFile.exists()) {
-            System.out.printf("[EXECUTOR-FALLBACK] Blender executable (%s) or blend file (%s) not present. Running software rendering pipeline...\n",
-                blenderPath != null ? blenderPath : "NOT_FOUND", blendFile.exists() ? blendFile.getAbsolutePath() : "NOT_FOUND");
-            return executeSoftwareRender(jobId, frameStart, frameEnd, outputDir, reporter);
+            System.out.printf("[EXECUTOR-FALLBACK] Blender executable (%s) or blend file (%s) not present. Running software rendering pipeline for [%s]...\n",
+                blenderPath != null ? blenderPath : "NOT_FOUND", blendFile.exists() ? blendFile.getAbsolutePath() : "NOT_FOUND", blendFile.getName());
+            return executeSoftwareRender(jobId, blendFile.getName(), frameStart, frameEnd, outputDir, reporter);
         }
+
+        System.out.printf("[EXECUTOR] Running Blender Headless Render on File: %s (Size: %d bytes)\n",
+            blendFile.getAbsolutePath(), blendFile.length());
 
         // Build command
         List<String> command = new ArrayList<>();
@@ -195,7 +198,7 @@ public class BlenderJobExecutor {
      * Generates valid PNG animation frames (frame_XXXX.png) with live progress reporting.
      */
     private static List<String> executeSoftwareRender(
-            String jobId, int frameStart, int frameEnd, String outputDir, ProgressReporter reporter
+            String jobId, String blendFileName, int frameStart, int frameEnd, String outputDir, ProgressReporter reporter
     ) throws Exception {
         File dir = new File((outputDir != null && !outputDir.isEmpty()) ? outputDir : "./output");
         if (!dir.exists()) dir.mkdirs();
@@ -208,7 +211,7 @@ public class BlenderJobExecutor {
                 throw new InterruptedException("Render interrupted");
             }
 
-            // Create 1920x1080 simulated render frame
+            // Create 1280x720 simulated render frame
             BufferedImage img = new BufferedImage(1280, 720, BufferedImage.TYPE_INT_RGB);
             Graphics2D g2 = img.createGraphics();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -225,9 +228,10 @@ public class BlenderJobExecutor {
             g2.setFont(new Font("SansSerif", Font.BOLD, 36));
             g2.drawString("CampusGrid Render Pipeline", 380, 150);
 
-            g2.setFont(new Font("SansSerif", Font.PLAIN, 24));
+            g2.setFont(new Font("SansSerif", Font.PLAIN, 22));
             g2.setColor(new Color(180, 190, 210));
-            g2.drawString(String.format("Job: %s  |  Frame: %d / %d", jobId, f, frameEnd), 450, 480);
+            g2.drawString(String.format("Scene: %s  |  Job: %s  |  Frame: %d / %d", 
+                blendFileName != null ? blendFileName : "Scene.blend", jobId, f, frameEnd), 360, 480);
             g2.dispose();
 
             File outFile = new File(dir, String.format("frame_%04d.png", f));

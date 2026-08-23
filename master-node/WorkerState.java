@@ -26,6 +26,12 @@ public class WorkerState {
     private String assignedFrameRange;
     private long lastHeartbeatTimestamp;
 
+    // Platform & Blender Environment
+    private String osName = "Unknown OS";
+    private boolean blenderInstalled = false;
+    private String blenderVersion = "Unknown";
+    private double installProgress = -1.0; // -1 if not installing, 0-100% when installing
+
     /**
      * Constructs a new WorkerState.
      * 
@@ -123,9 +129,41 @@ public class WorkerState {
         this.lastHeartbeatTimestamp = lastHeartbeatTimestamp;
     }
 
+    public synchronized String getOsName() {
+        return osName;
+    }
+
+    public synchronized void setOsName(String osName) {
+        this.osName = osName;
+    }
+
+    public synchronized boolean isBlenderInstalled() {
+        return blenderInstalled;
+    }
+
+    public synchronized void setBlenderInstalled(boolean blenderInstalled) {
+        this.blenderInstalled = blenderInstalled;
+    }
+
+    public synchronized String getBlenderVersion() {
+        return blenderVersion;
+    }
+
+    public synchronized void setBlenderVersion(String blenderVersion) {
+        this.blenderVersion = blenderVersion;
+    }
+
+    public synchronized double getInstallProgress() {
+        return installProgress;
+    }
+
+    public synchronized void setInstallProgress(double installProgress) {
+        this.installProgress = installProgress;
+    }
+
     @Override
     public synchronized String toString() {
-        return String.format("WorkerState[ID=%s, IP=%s, Status=%s, Temp=%d°C, RAM=%.1f%%, Job=%s, Task=%s, Frames=%s]",
-            workerId, ipAddress, status, cpuTemperature, ramUsagePercent, currentJobId, currentTaskId, assignedFrameRange);
+        return String.format("WorkerState[ID=%s, IP=%s, OS=%s, Blender=%s, Status=%s, Temp=%d°C, RAM=%.1f%%, Job=%s, Task=%s, Frames=%s]",
+            workerId, ipAddress, osName, (blenderInstalled ? blenderVersion : "Not Installed"), status, cpuTemperature, ramUsagePercent, currentJobId, currentTaskId, assignedFrameRange);
     }
 }

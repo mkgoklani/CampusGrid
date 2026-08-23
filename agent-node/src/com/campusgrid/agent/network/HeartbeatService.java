@@ -121,18 +121,21 @@ public class HeartbeatService implements Runnable {
             int tempCelsius = LinuxTelemetry.getCpuTemperatureCelsius();
             double cpuLoad = LinuxTelemetry.getCpuLoadPercent();
             double ramUsage = LinuxTelemetry.getRamUsagePercent();
+            String osName = System.getProperty("os.name");
+            String blenderVer = com.campusgrid.agent.blender.BlenderInstaller.getInstallationStatus().getVersion();
 
             // Send authentic telemetry heartbeat to Master node
             try {
-                connection.sendObject(String.format("HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%%",
-                    tempCelsius, cpuLoad, ramUsage));
+                connection.sendObject(String.format("HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | BLENDER: %s",
+                    tempCelsius, cpuLoad, ramUsage, osName, blenderVer));
             } catch (IOException e) {
                 System.out.println("[HEARTBEAT] Connection lost: " + e.getMessage());
                 stop();
                 break;
             }
 
-            System.out.printf("[HEARTBEAT] Sent (Temp: %d°C, CPU: %.1f%%, RAM: %.1f%%)\n", tempCelsius, cpuLoad, ramUsage);
+            System.out.printf("[HEARTBEAT] Sent (Temp: %d°C, CPU: %.1f%%, RAM: %.1f%%, OS: %s, Blender: %s)\n",
+                tempCelsius, cpuLoad, ramUsage, osName, blenderVer);
 
             try {
                 Thread.sleep(HEARTBEAT_INTERVAL_MS);

@@ -36,12 +36,16 @@ public class FrameStitcher {
      * @return Path to the compiled MP4 video if successful, or null if video compilation failed/skipped.
      */
     public Path processJobOutput(String jobId, int totalFrames) {
-        return processJobOutput(jobId, totalFrames, DEFAULT_FPS);
+        return processJobOutput(jobId, totalFrames, DEFAULT_FPS, false);
     }
 
     public Path processJobOutput(String jobId, int totalFrames, int fps) {
-        System.out.printf("[FRAME-STITCHER] ★ Starting post-processing for Job [%s] (%d frames expected)...\n",
-            jobId, totalFrames);
+        return processJobOutput(jobId, totalFrames, fps, false);
+    }
+
+    public Path processJobOutput(String jobId, int totalFrames, int fps, boolean deleteFramesAfterStitch) {
+        System.out.printf("[FRAME-STITCHER] ★ Starting post-processing for Job [%s] (%d frames expected, cleanUp=%b)...\n",
+            jobId, totalFrames, deleteFramesAfterStitch);
 
         Path jobDir = baseOutputDir.resolve(jobId);
         if (!Files.exists(jobDir) || !Files.isDirectory(jobDir)) {
@@ -66,10 +70,26 @@ public class FrameStitcher {
 
         if (compiled) {
             System.out.printf("[FRAME-STITCHER] ✔ Success! Master animation ready: %s\n", videoPath.toAbsolutePath());
+            if (deleteFramesAfterStitch) {
+                deleteRawFrames(jobDir, videoFileName);
+            }
             return videoPath;
         } else {
             System.out.printf("[FRAME-STITCHER] ℹ Raw image sequence preserved at: %s\n", jobDir.toAbsolutePath());
             return null;
+        }
+    }
+
+    private void deleteRawFrames(Path jobDir, String preserveVideoName) {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(jobDir)) {
+            for (Path entry : stream) {
+                if (Files.isRegularFile(entry) && !entry.getFileName().toString().equals(preserveVideoName)) {
+                    Files.deleteIfExists(entry);
+                }
+            }
+            System.out.printf("[FRAME-STITCHER] 🗑 Cleaned up intermediate raw frame images in: %s\n", jobDir.getFileName());
+        } catch (IOException e) {
+            System.err.printf("[FRAME-STITCHER-WARN] Failed to delete raw frames: %s\n", e.getMessage());
         }
     }
 

@@ -102,8 +102,12 @@ public class JobManager {
 
                 // Automatic Post-Processing & Video Compilation
                 new Thread(() -> {
+                    boolean cleanUp = false;
+                    if (job.getParameters() != null && job.getParameters().containsKey("deleteFramesAfterStitch")) {
+                        cleanUp = Boolean.parseBoolean(job.getParameters().get("deleteFramesAfterStitch").toString());
+                    }
                     FrameStitcher stitcher = new FrameStitcher();
-                    stitcher.processJobOutput(jobId, job.getTotalFrames());
+                    stitcher.processJobOutput(jobId, job.getTotalFrames(), 30, cleanUp);
                 }, "FrameStitcher-" + jobId).start();
             }
         } else {

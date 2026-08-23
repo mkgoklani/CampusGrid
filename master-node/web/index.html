@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CampusGrid Command Center</title>
+    <title>CampusGrid Master Center</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-color: #f4f1ea; 
@@ -31,9 +31,9 @@
         body {
             background-color: var(--bg-color);
             color: var(--text-main);
-            font-family: 'Inter', -apple-system, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             margin: 0;
-            padding: 40px;
+            padding: 35px 40px;
             min-height: 100vh;
         }
 
@@ -48,7 +48,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 35px;
+            margin-bottom: 30px;
             flex-wrap: wrap;
             gap: 20px;
         }
@@ -67,7 +67,7 @@
 
         .stats-bar {
             display: flex;
-            gap: 20px;
+            gap: 18px;
         }
 
         .neumorphic-outset {
@@ -78,35 +78,35 @@
         }
 
         .stat-card {
-            padding: 18px 28px;
+            padding: 16px 24px;
             text-align: center;
-            min-width: 110px;
+            min-width: 105px;
         }
 
-        .stat-card h3 { font-size: 30px; margin-bottom: 4px; color: #111; font-weight: 600; }
-        .stat-card p { margin: 0; color: var(--text-muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; font-weight: 600; }
+        .stat-card h3 { font-size: 28px; margin-bottom: 3px; color: #111; font-weight: 600; }
+        .stat-card p { margin: 0; color: var(--text-muted); font-size: 11px; letter-spacing: 0.8px; text-transform: uppercase; font-weight: 600; }
 
         .dashboard-grid {
             display: grid;
-            grid-template-columns: 1.8fr 1.2fr;
-            gap: 35px;
+            grid-template-columns: 1.85fr 1.15fr;
+            gap: 30px;
         }
 
-        @media (max-width: 1024px) {
+        @media (max-width: 1100px) {
             .dashboard-grid {
                 grid-template-columns: 1fr;
             }
         }
 
         .panel {
-            padding: 30px;
+            padding: 28px;
         }
 
         .panel-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 22px;
+            margin-bottom: 20px;
         }
 
         .panel-header h2 { 
@@ -152,50 +152,77 @@
         table {
             width: 100%;
             border-collapse: collapse;
-        }
-
-        th, td {
-            padding: 13px 10px;
-            text-align: left;
-            border-bottom: 1px solid rgba(0,0,0,0.06);
             font-size: 13.5px;
         }
 
-        th { 
-            color: var(--text-muted); 
-            font-weight: 600; 
-            font-size: 11px; 
+        th {
+            text-align: left;
+            padding: 12px 14px;
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.8px;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        td {
+            padding: 13px 14px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+            vertical-align: middle;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
         }
 
         .status-tag {
             display: inline-block;
-            padding: 3px 9px;
+            padding: 3px 8px;
             border-radius: 6px;
             font-size: 11px;
-            font-weight: 700;
+            font-weight: 600;
             letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .badge-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-pill.installed {
+            background: rgba(46, 125, 50, 0.12);
+            color: var(--accent-green);
+            border: 1px solid rgba(46, 125, 50, 0.25);
+        }
+
+        .badge-pill.not-installed {
+            background: rgba(230, 81, 0, 0.12);
+            color: var(--accent-orange);
+            border: 1px solid rgba(230, 81, 0, 0.25);
         }
 
         /* Progress Bar */
         .progress-container {
-            background: var(--panel-bg);
-            border-radius: 50px;
-            box-shadow: inset 4px 4px 8px var(--shadow-dark), 
-                        inset -4px -4px 8px var(--shadow-light);
-            height: 10px;
             width: 100%;
-            margin-top: 10px;
+            background-color: #e5e1d8;
+            height: 7px;
+            border-radius: 4px;
             overflow: hidden;
+            margin: 10px 0;
         }
 
         .progress-bar {
-            background: linear-gradient(90deg, #181818, #404040);
             height: 100%;
-            width: 0%;
-            border-radius: 50px;
-            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            background-color: #1a1a1a;
+            border-radius: 4px;
+            transition: width 0.4s ease;
         }
 
         /* Buttons */
@@ -203,13 +230,13 @@
             background: var(--button-bg);
             color: var(--button-text);
             border: none;
-            padding: 14px 26px;
-            border-radius: 6px;
+            padding: 12px 22px;
+            border-radius: 8px;
             cursor: pointer;
             font-family: inherit;
             font-size: 12px;
             font-weight: 600;
-            letter-spacing: 1.2px;
+            letter-spacing: 1px;
             text-transform: uppercase;
             transition: all 0.2s ease;
             box-shadow: 0 4px 8px rgba(0,0,0,0.12);
@@ -243,17 +270,39 @@
             color: #fff;
         }
 
+        .btn-play {
+            background: rgba(21, 101, 192, 0.1);
+            color: var(--accent-blue);
+            border: 1px solid rgba(21, 101, 192, 0.25);
+            padding: 6px 12px;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s;
+        }
+
+        .btn-play:hover {
+            background: var(--accent-blue);
+            color: #fff;
+        }
+
         .job-card {
-            background: rgba(255, 255, 255, 0.45);
-            border: 1px solid rgba(0, 0, 0, 0.04);
-            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.55);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            border-radius: 14px;
             padding: 18px;
-            margin-bottom: 18px;
-            transition: transform 0.2s ease;
+            margin-bottom: 16px;
+            transition: transform 0.2s ease, background 0.2s;
         }
 
         .job-card:hover {
-            background: rgba(255, 255, 255, 0.7);
+            background: rgba(255, 255, 255, 0.8);
         }
 
         /* Modal Overlay */
@@ -261,8 +310,8 @@
             display: none;
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(20, 20, 20, 0.45);
-            backdrop-filter: blur(4px);
+            background: rgba(20, 20, 20, 0.5);
+            backdrop-filter: blur(5px);
             z-index: 1000;
             align-items: center;
             justify-content: center;
@@ -270,20 +319,22 @@
 
         .modal-box {
             background: var(--bg-color);
-            width: 90%;
-            max-width: 540px;
-            padding: 35px;
+            width: 92%;
+            max-width: 580px;
+            padding: 32px;
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+            max-height: 90vh;
+            overflow-y: auto;
         }
 
         .form-group {
-            margin-bottom: 18px;
+            margin-bottom: 16px;
         }
 
         .form-group label {
             display: block;
-            font-size: 12px;
+            font-size: 11.5px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.8px;
@@ -293,12 +344,12 @@
 
         .form-control {
             width: 100%;
-            padding: 12px 14px;
+            padding: 11px 13px;
             border-radius: 8px;
             border: 1px solid rgba(0, 0, 0, 0.12);
-            background: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.85);
             font-family: inherit;
-            font-size: 14px;
+            font-size: 13.5px;
             color: var(--text-main);
             outline: none;
             transition: border-color 0.2s;
@@ -312,14 +363,44 @@
         .form-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 15px;
+            gap: 14px;
+        }
+
+        .auto-calc-box {
+            background: rgba(21, 101, 192, 0.06);
+            border: 1px solid rgba(21, 101, 192, 0.2);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-top: 6px;
+            font-size: 12px;
+            color: #0d47a1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: var(--text-main);
+            cursor: pointer;
+            user-select: none;
+            margin-top: 10px;
+        }
+
+        .checkbox-label input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
         }
 
         .modal-actions {
             display: flex;
             justify-content: flex-end;
             gap: 12px;
-            margin-top: 25px;
+            margin-top: 24px;
         }
 
         .btn-secondary {
@@ -331,6 +412,28 @@
         .btn-secondary:hover {
             background: rgba(0,0,0,0.05);
             color: var(--text-main);
+        }
+
+        /* File Upload Box */
+        .file-drop-area {
+            border: 2px dashed rgba(0, 0, 0, 0.15);
+            border-radius: 10px;
+            padding: 14px;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.5);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .file-drop-area:hover {
+            border-color: #111;
+            background: rgba(255, 255, 255, 0.85);
+        }
+
+        /* Video Modal */
+        #video-modal video {
+            width: 100%;
+            border-radius: 12px;
+            background: #000;
         }
     </style>
 </head>
@@ -369,16 +472,18 @@
                     <thead>
                         <tr>
                             <th>Node Endpoint</th>
+                            <th>Platform / OS</th>
+                            <th>Blender Status</th>
                             <th>Status</th>
-                            <th>CPU Usage</th>
-                            <th>RAM Usage</th>
-                            <th>Core Temp</th>
+                            <th>CPU</th>
+                            <th>RAM</th>
+                            <th>Temp</th>
                             <th>Active Task</th>
                         </tr>
                     </thead>
                     <tbody id="worker-table-body">
                         <tr>
-                            <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 40px 0;">
+                            <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 40px 0;">
                                 Awaiting worker agent connections...
                             </td>
                         </tr>
@@ -395,7 +500,7 @@
             </div>
 
             <div id="job-container">
-                <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">No active workloads.</p>
+                <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">No active workloads in queue.</p>
             </div>
         </div>
     </div>
@@ -403,37 +508,50 @@
     <!-- Submit Workload Modal -->
     <div class="modal-overlay" id="submit-modal">
         <div class="modal-box neumorphic-outset">
-            <h2 style="font-size: 24px; margin-bottom: 20px;">Submit Blender Workload</h2>
+            <h2 style="font-size: 22px; margin-bottom: 18px;">Submit Blender Workload</h2>
             
             <div class="form-group">
                 <label for="modal-job-name">Workload Name</label>
-                <input type="text" id="modal-job-name" class="form-control" value="Blender 3D Scene Animation" placeholder="e.g. Physics Simulation">
+                <input type="text" id="modal-job-name" class="form-control" placeholder="Leave blank for auto-sequenced name (e.g. Render Workload #1)">
             </div>
 
             <div class="form-group">
-                <label for="modal-blend-path">Target .blend File</label>
-                <div style="display: flex; gap: 8px;">
-                    <input type="text" id="modal-blend-path" class="form-control" value="test.blend" placeholder="Path to .blend file (e.g. test.blend)">
-                    <button type="button" class="btn btn-secondary" style="padding: 0 15px; font-size: 11px;" onclick="document.getElementById('blend-file-picker').click()">Browse</button>
+                <label>Target .blend File</label>
+                <div class="file-drop-area" onclick="document.getElementById('blend-file-picker').click()">
+                    <div id="file-display-name" style="font-weight: 500; font-size: 13.5px; color: #111;">
+                        📁 Click to choose custom <code>.blend</code> file (or uses default <code>test.blend</code>)
+                    </div>
+                    <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;" id="file-size-hint">
+                        Default included project test scene
+                    </small>
                 </div>
                 <input type="file" id="blend-file-picker" accept=".blend" style="display: none;" onchange="handleFilePicked(event)">
-                <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;">Default: <code>test.blend</code> in project root</small>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
                     <label for="modal-start-frame">Start Frame</label>
-                    <input type="number" id="modal-start-frame" class="form-control" value="1" min="1">
+                    <input type="number" id="modal-start-frame" class="form-control" value="1" min="1" oninput="recalcFramesPerNode()">
                 </div>
                 <div class="form-group">
                     <label for="modal-end-frame">End Frame</label>
-                    <input type="number" id="modal-end-frame" class="form-control" value="50" min="1">
+                    <input type="number" id="modal-end-frame" class="form-control" value="50" min="1" oninput="recalcFramesPerNode()">
                 </div>
             </div>
 
-            <div class="form-row">
+            <div class="form-group">
+                <label class="checkbox-label" style="margin-top: 0; margin-bottom: 6px;">
+                    <input type="checkbox" id="modal-auto-balance" checked onchange="toggleAutoBalance(this.checked)">
+                    <strong>Auto-balance frames across connected nodes</strong>
+                </label>
+                <div class="auto-calc-box" id="auto-calc-notice">
+                    ⚡ Auto-balance: 50 frames &divide; 1 connected node = <strong>50 frames / worker (1 slice)</strong>
+                </div>
+            </div>
+
+            <div class="form-row" id="manual-chunk-row" style="display: none;">
                 <div class="form-group">
-                    <label for="modal-chunk-size">Frames Per Worker</label>
+                    <label for="modal-chunk-size">Manual Frames Per Worker</label>
                     <input type="number" id="modal-chunk-size" class="form-control" value="25" min="1" max="500">
                 </div>
                 <div class="form-group">
@@ -446,55 +564,148 @@
                 </div>
             </div>
 
+            <div class="form-group" style="margin-top: 10px;">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="modal-cleanup-frames" checked>
+                    <span>Clean up raw frames after video assembly (Delete individual <code>.png</code> files once <code>.mp4</code> is ready)</span>
+                </label>
+            </div>
+
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeSubmitModal()">Cancel</button>
-                <button class="btn" onclick="submitWorkloadForm()">🚀 Launch Grid Job</button>
+                <button class="btn" id="btn-submit-workload" onclick="submitWorkloadForm()">🚀 Launch Grid Job</button>
             </div>
         </div>
     </div>
 
+    <!-- Video Preview Modal -->
+    <div class="modal-overlay" id="video-modal">
+        <div class="modal-box neumorphic-outset" style="max-width: 720px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <h3 id="video-modal-title">Compiled Animation Video</h3>
+                <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="closeVideoModal()">✕ Close</button>
+            </div>
+            <video id="video-player" controls autoplay loop>
+                <source id="video-source" src="" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+    </div>
+
     <script>
+        let selectedFileBase64 = null;
+        let selectedFileName = "test.blend";
+        let activeWorkersCount = 1;
+        let jobSequenceNumber = 1;
+
         function openSubmitModal() {
             document.getElementById('submit-modal').style.display = 'flex';
+            document.getElementById('modal-job-name').placeholder = `Render Workload #${jobSequenceNumber} (${selectedFileName})`;
+            recalcFramesPerNode();
         }
 
         function closeSubmitModal() {
             document.getElementById('submit-modal').style.display = 'none';
         }
 
+        function closeVideoModal() {
+            const player = document.getElementById('video-player');
+            player.pause();
+            document.getElementById('video-modal').style.display = 'none';
+        }
+
+        function previewVideo(url, title) {
+            document.getElementById('video-modal-title').innerText = title || "Compiled Animation Video";
+            const source = document.getElementById('video-source');
+            source.src = url;
+            const player = document.getElementById('video-player');
+            player.load();
+            document.getElementById('video-modal').style.display = 'flex';
+        }
+
+        function toggleAutoBalance(checked) {
+            document.getElementById('manual-chunk-row').style.display = checked ? 'none' : 'grid';
+            document.getElementById('auto-calc-notice').style.display = checked ? 'flex' : 'none';
+            if (checked) recalcFramesPerNode();
+        }
+
+        function recalcFramesPerNode() {
+            const startFrame = parseInt(document.getElementById('modal-start-frame').value || '1');
+            const endFrame = parseInt(document.getElementById('modal-end-frame').value || '50');
+            const total = Math.max(1, endFrame - startFrame + 1);
+            const nodes = Math.max(1, activeWorkersCount);
+            const framesPerNode = Math.ceil(total / nodes);
+            const slices = Math.ceil(total / framesPerNode);
+
+            document.getElementById('auto-calc-notice').innerHTML = 
+                `⚡ Auto-balance: ${total} frames &divide; ${nodes} connected node(s) = <strong>${framesPerNode} frames / node (${slices} slice${slices > 1 ? 's' : ''})</strong>`;
+            document.getElementById('modal-chunk-size').value = framesPerNode;
+        }
+
         function handleFilePicked(e) {
             if (e.target.files && e.target.files.length > 0) {
-                document.getElementById('modal-blend-path').value = e.target.files[0].name;
+                const file = e.target.files[0];
+                selectedFileName = file.name;
+                const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+                
+                document.getElementById('file-display-name').innerHTML = `📁 Selected: <strong>${file.name}</strong>`;
+                document.getElementById('file-size-hint').innerText = `${sizeMb} MB &bull; Ready to transmit across cluster`;
+
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    const dataUrl = evt.target.result;
+                    // Extract base64 portion
+                    const base64Index = dataUrl.indexOf(',');
+                    if (base64Index !== -1) {
+                        selectedFileBase64 = dataUrl.substring(base64Index + 1);
+                    }
+                };
+                reader.readAsDataURL(file);
             }
         }
 
         // 1. Submit Workload Form
         async function submitWorkloadForm() {
-            const jobName = document.getElementById('modal-job-name').value.trim() || 'Blender Render Scene';
-            const blendFilePath = document.getElementById('modal-blend-path').value.trim() || 'test.blend';
+            const btn = document.getElementById('btn-submit-workload');
+            btn.disabled = true;
+            btn.innerText = 'Dispatching...';
+
+            const userJobName = document.getElementById('modal-job-name').value.trim();
+            const jobName = userJobName || `Render Workload #${jobSequenceNumber} (${selectedFileName})`;
             const startFrame = parseInt(document.getElementById('modal-start-frame').value || '1');
             const endFrame = parseInt(document.getElementById('modal-end-frame').value || '50');
-            const framesPerTask = parseInt(document.getElementById('modal-chunk-size').value || '25');
+            const autoBalance = document.getElementById('modal-auto-balance').checked;
+            const framesPerTask = autoBalance ? 0 : parseInt(document.getElementById('modal-chunk-size').value || '25');
             const engine = document.getElementById('modal-render-engine').value;
+            const cleanUp = document.getElementById('modal-cleanup-frames').checked;
 
             const totalFrames = Math.max(1, endFrame - startFrame + 1);
+
+            const payload = {
+                jobName: jobName,
+                workloadType: "BLENDER",
+                blendFilePath: selectedFileName,
+                blendFileName: selectedFileName,
+                totalFrames: totalFrames,
+                framesPerTask: framesPerTask,
+                cleanUpFrames: cleanUp,
+                renderEngine: engine
+            };
+
+            if (selectedFileBase64) {
+                payload.blendFileBase64 = selectedFileBase64;
+            }
 
             try {
                 const res = await fetch('/api/jobs/submit', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        jobName: jobName,
-                        workloadType: "BLENDER",
-                        blendFilePath: blendFilePath,
-                        totalFrames: totalFrames,
-                        framesPerTask: framesPerTask,
-                        renderEngine: engine
-                    })
+                    body: JSON.stringify(payload)
                 });
 
                 const result = await res.json();
                 if (result.success) {
+                    jobSequenceNumber++;
                     closeSubmitModal();
                     fetchJobs();
                 } else {
@@ -502,6 +713,9 @@
                 }
             } catch (err) {
                 alert("Error connecting to Master API: " + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '🚀 Launch Grid Job';
             }
         }
 
@@ -557,34 +771,41 @@
                 else if (job.status === 'CANCELLED' || job.status === 'FAILED') statusColor = 'var(--accent-red)';
 
                 const canCancel = (job.status === 'RUNNING' || job.status === 'QUEUED');
+                const isComplete = (job.status === 'COMPLETED');
+                const blendName = job.blendFileName || 'test.blend';
 
                 jobCard.innerHTML = `
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                         <div>
-                            <strong style="font-size: 16px; color: #111;">${job.jobName || job.jobId}</strong>
-                            <div style="font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 2px;">
-                                #${job.jobId} &bull; ${job.workloadType}
+                            <strong style="font-size: 15.5px; color: #111;">${job.jobName || job.jobId}</strong>
+                            <div style="font-size: 11.5px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 3px;">
+                                📁 Scene: <strong>${blendName}</strong> &bull; #${job.jobId}
                             </div>
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            <span class="status-tag" style="background: ${statusColor}15; color: ${statusColor};">
+                            <span class="status-tag" style="background: ${statusColor}18; color: ${statusColor};">
                                 ${job.status}
                             </span>
                             ${canCancel ? `<button class="btn-cancel" onclick="cancelJob('${job.jobId}')">✕ Cancel</button>` : ''}
+                            ${isComplete ? `<button class="btn-play" onclick="previewVideo('${job.videoUrl}', '${escapeHtml(job.jobName)}')">▶ Preview Video</button>` : ''}
                         </div>
                     </div>
 
                     <div class="progress-container">
-                        <div class="progress-bar" style="width: ${percentage}%;"></div>
+                        <div class="progress-bar" style="width: ${percentage}%; background-color: ${statusColor};"></div>
                     </div>
 
                     <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--text-muted);">
-                        <span><strong>${percentage}%</strong> Complete (${job.completedTasks} / ${job.totalTasks} Tasks)</span>
+                        <span><strong>${percentage}%</strong> Complete (${job.completedTasks} / ${job.totalTasks} Slices)</span>
                         <span>Total: ${job.totalFrames} Frames</span>
                     </div>
                 `;
                 container.appendChild(jobCard);
             });
+        }
+
+        function escapeHtml(str) {
+            return (str || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
         }
 
         // 4. WebSocket Real-time Telemetry Stream
@@ -635,9 +856,13 @@
             const tbody = document.getElementById('worker-table-body');
             
             if (!workers || workers.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 35px 0;">Awaiting node connections...</td></tr>';
+                activeWorkersCount = 0;
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 35px 0;">Awaiting node connections...</td></tr>';
                 return;
             }
+
+            activeWorkersCount = workers.filter(w => w.status !== 'OFFLINE').length;
+            recalcFramesPerNode();
 
             tbody.innerHTML = '';
             workers.forEach(worker => {
@@ -650,8 +875,27 @@
                 else if (worker.status === 'OFFLINE') statusColor = 'var(--accent-red)';
                 else if (worker.status === 'EVICTED') statusColor = 'var(--accent-orange)';
 
+                // Blender status rendering
+                let blenderBadge = `<span class="badge-pill not-installed">✖ Not Installed</span>`;
+                if (worker.installProgress >= 0 && worker.installProgress < 100) {
+                    blenderBadge = `
+                        <div>
+                            <span style="font-size: 11px; font-weight: 600; color: var(--accent-orange);">⏳ Installing (${worker.installProgress.toFixed(0)}%)</span>
+                            <div class="progress-container" style="height: 4px; margin: 4px 0 0 0; width: 80px;">
+                                <div class="progress-bar" style="width: ${worker.installProgress}%; background: var(--accent-orange);"></div>
+                            </div>
+                        </div>
+                    `;
+                } else if (worker.blenderInstalled) {
+                    blenderBadge = `<span class="badge-pill installed">✔ Installed (${worker.blenderVersion || 'Active'})</span>`;
+                }
+
+                const osLabel = worker.osName || 'macOS';
+
                 row.innerHTML = `
-                    <td style="font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 13px;">${worker.workerId}</td>
+                    <td style="font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 12.5px;">${worker.workerId}</td>
+                    <td style="font-size: 12.5px; color: var(--text-main); font-weight: 500;">${osLabel}</td>
+                    <td>${blenderBadge}</td>
                     <td>
                         <span class="status-tag" style="background: ${statusColor}18; color: ${statusColor};">
                             ${worker.status}
@@ -660,8 +904,8 @@
                     <td style="font-weight: 600;">${worker.cpuUsage || '0.0'}%</td>
                     <td style="font-weight: 600;">${worker.ramUsage}%</td>
                     <td style="font-weight: 700; color: ${tempColor};">${temp > 0 ? temp + '°C' : 'N/A'}</td>
-                    <td style="color: var(--text-muted); font-size: 12.5px;">
-                        ${worker.currentJobId ? `<strong>${worker.currentJobId}</strong> <span style="font-size: 11px;">(Frames ${worker.assignedFrames || ''})</span>` : 'None'}
+                    <td style="color: var(--text-muted); font-size: 12px;">
+                        ${worker.currentJobId ? `<strong>${worker.currentJobId}</strong> <span style="font-size: 11px;">(Frames ${worker.assignedFrames || ''})</span>` : '<span style="color: #999;">Idle</span>'}
                     </td>
                 `;
                 tbody.appendChild(row);
