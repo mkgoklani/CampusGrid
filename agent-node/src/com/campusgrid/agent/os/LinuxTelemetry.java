@@ -192,11 +192,69 @@ public class LinuxTelemetry {
 
     private static double getCpuLoadRatio() {
         double sysCpu = OS_BEAN.getCpuLoad();
-        if (sysCpu < 0) sysCpu = OS_BEAN.getProcessCpuLoad();
-        if (sysCpu < 0) {
+        if (sysCpu < 0 || Double.isNaN(sysCpu) || sysCpu <= 0.0) {
+            sysCpu = OS_BEAN.getProcessCpuLoad();
+        }
+        if (sysCpu < 0 || Double.isNaN(sysCpu) || sysCpu <= 0.0) {
+            // JVM metrics failed or returned zero - invoke native CLI tools to retrieve real hardware load
+            String os = System.getProperty("os.name").toLowerCase();
+            if (os.contains("mac")) {
+                try {
+                    String topOut = com.campusgrid.agent.blender.BlenderUtils.executeCommand("top", "-l", "1");
+                    if (topOut != null) {
+                        for (String line : topOut.split("\n")) {
+                            if (line.contains("CPU usage:")) {
+                                // Format: "CPU usage: 19.6% user, 16.94% sys, 63.98% idle"
+                                String[] parts = line.split(",");
+                                for (String part : parts) {
+                                    if (part.contains("idle")) {
+                                        String idleStr = part.replaceAll("[^0-9.]", "").trim();
+                                        double idlePct = Double.parseDouble(idleStr);
+                                        return Math.max(0.0, Math.min(1.0, (100.0 - idlePct) / 100.0));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+            } else if (os.contains("linux")) {
+                try {
+                    try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader("/proc/stat"))) {
+                        String line = reader.readLine();
+                        if (line != null && line.startsWith("cpu ")) {
+                            String[] col = line.split("\\s+");
+                            long user = Long.parseLong(col[1]);
+                            long nice = Long.parseLong(col[2]);
+                            long system = Long.parseLong(col[3]);
+                            long idle = Long.parseLong(col[4]);
+                            long total = user + nice + system + idle;
+                            if (total > 0) {
+                                return (double)(total - idle) / total;
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+            } else if (os.contains("win")) {
+                try {
+                    String wmic = com.campusgrid.agent.blender.BlenderUtils.executeCommand("wmic", "cpu", "get", "loadpercentage");
+                    if (wmic != null) {
+                        for (String line : wmic.split("\n")) {
+                            line = line.trim();
+                            if (!line.isEmpty() && Character.isDigit(line.charAt(0))) {
+                                return Double.parseDouble(line) / 100.0;
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+            
+            // Fallback load average calculation
             double loadAvg = OS_BEAN.getSystemLoadAverage();
             int cores = OS_BEAN.getAvailableProcessors();
             sysCpu = (cores > 0 && loadAvg >= 0) ? Math.min(1.0, loadAvg / cores) : 0.0;
+        }
+        if (sysCpu < 0 || Double.isNaN(sysCpu)) {
+            sysCpu = 0.0;
         }
         return Math.max(0.0, Math.min(1.0, sysCpu));
     }

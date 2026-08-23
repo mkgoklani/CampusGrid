@@ -61,6 +61,7 @@ public class DashboardServer {
         httpServer.createContext("/api/jobs", new JobsHandler());
         httpServer.createContext("/api/jobs/submit", new SubmitJobHandler());
         httpServer.createContext("/api/jobs/cancel", new CancelJobHandler());
+        httpServer.createContext("/api/nodes/install-blender", new InstallBlenderHandler());
         httpServer.createContext("/output", new OutputFileHandler());
         httpServer.createContext("/", new StaticWebHandler());
         httpServer.setExecutor(threadPool);
@@ -234,30 +235,36 @@ public class DashboardServer {
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             String jobId = "JOB_" + System.currentTimeMillis();
             String workloadType = extractJsonString(body, "workloadType", "BLENDER");
-            String blendFilePath = extractJsonString(body, "blendFilePath", "test.blend");
-            String blendFileName = extractJsonString(body, "blendFileName", new File(blendFilePath).getName());
+            String blendFilePath = extractJsonString(body, "blendFilePath", "");
+            String blendFileName = extractJsonString(body, "blendFileName", blendFilePath.isEmpty() ? "scene.blend" : new File(blendFilePath).getName());
             int totalFrames = extractJsonInt(body, "totalFrames", 50);
             int framesPerTask = extractJsonInt(body, "framesPerTask", 0);
             boolean cleanUpFrames = body.contains("\"cleanUpFrames\":true") || body.contains("\"deleteFramesAfterStitch\":true");
             String renderEngine = extractJsonString(body, "renderEngine", "CYCLES");
+
+            byte[] blendFileBytes = null;
 
             // 1. Process uploaded blend file base64 data if present
             if (body.contains("\"blendFileBase64\":\"")) {
                 String b64 = extractJsonString(body, "blendFileBase64", "");
                 if (!b64.isEmpty()) {
                     try {
-                        byte[] fileBytes = java.util.Base64.getDecoder().decode(b64);
+                        blendFileBytes = java.util.Base64.getDecoder().decode(b64);
                         File uploadDir = new File("./uploads");
                         if (!uploadDir.exists()) uploadDir.mkdirs();
                         File dest = new File(uploadDir, jobId + "_" + blendFileName);
-                        java.nio.file.Files.write(dest.toPath(), fileBytes);
+                        java.nio.file.Files.write(dest.toPath(), blendFileBytes);
                         blendFilePath = dest.getAbsolutePath();
                         System.out.printf("[DASHBOARD] Saved uploaded blend file (%d bytes) to: %s\n", 
-                            fileBytes.length, dest.getAbsolutePath());
+                            blendFileBytes.length, dest.getAbsolutePath());
                     } catch (Exception e) {
                         System.err.println("[DASHBOARD-ERR] Failed saving uploaded blend file: " + e.getMessage());
                     }
                 }
+            } else if (!blendFilePath.isEmpty() && new File(blendFilePath).exists()) {
+                try {
+                    blendFileBytes = java.nio.file.Files.readAllBytes(new File(blendFilePath).toPath());
+                } catch (Exception ignored) {}
             }
 
             // 2. Auto-balance frames per task across available nodes if requested or not specified
@@ -279,6 +286,9 @@ public class DashboardServer {
             params.put("blendFileName", blendFileName);
             params.put("deleteFramesAfterStitch", cleanUpFrames);
             params.put("renderEngine", renderEngine);
+            if (blendFileBytes != null) {
+                params.put("blendFileBytes", blendFileBytes);
+            }
 
             Job job = new Job(jobId, jobName, workloadType, totalFrames, params);
             jobManager.submitJob(job, framesPerTask);
@@ -336,6 +346,50 @@ public class DashboardServer {
             } else {
                 sendJsonResponse(exchange, 400, "{\"error\":\"Missing jobId parameter\"}");
             }
+        }
+    }
+
+    private class InstallBlenderHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 204, "");
+                return;
+            }
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
+                return;
+            }
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String targetWorkerId = extractJsonString(body, "workerId", "");
+
+            GridMessage installMsg = new GridMessage(MessageType.INSTALL_BLENDER, "MASTER", "INSTALL_CMD");
+            int sentCount = 0;
+
+            for (WorkerState w : workerRegistry.getAllWorkers()) {
+                if (targetWorkerId.isEmpty() || w.getWorkerId().equalsIgnoreCase(targetWorkerId)) {
+                    try {
+                        ObjectOutputStream out = w.getOutStream();
+                        if (out != null) {
+                            synchronized (out) {
+                                out.writeObject(installMsg);
+                                out.flush();
+                                out.reset();
+                            }
+                            sentCount++;
+                            w.setInstallProgress(1.0); // Mark installation initiated
+                        }
+                    } catch (Exception e) {
+                        System.err.printf("[DASHBOARD-ERR] Failed sending install command to worker %s: %s\n",
+                            w.getWorkerId(), e.getMessage());
+                    }
+                }
+            }
+
+            String resp = String.format("{\"success\":true,\"message\":\"Installation triggered on %d worker(s)\",\"workersContacted\":%d}",
+                sentCount, sentCount);
+            sendJsonResponse(exchange, 200, resp);
         }
     }
 

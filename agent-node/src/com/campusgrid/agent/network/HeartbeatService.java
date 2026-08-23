@@ -18,7 +18,7 @@ public class HeartbeatService implements Runnable {
 
     private static final int HEARTBEAT_INTERVAL_MS = 5000;
     private static final int EVICTION_SLEEP_MS = 30000; // 30 seconds in milliseconds
-    private static final int STARTUP_GRACE_PERIOD_MS = 15000; // 15 seconds startup grace period
+    private static final int STARTUP_GRACE_PERIOD_MS = 60000; // 60 seconds (1 minute) startup grace period
 
     private final MasterConnection connection;
     private volatile boolean running = false;

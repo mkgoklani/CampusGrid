@@ -48,7 +48,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
+            margin-bottom: 25px;
             flex-wrap: wrap;
             gap: 20px;
         }
@@ -85,6 +85,19 @@
 
         .stat-card h3 { font-size: 28px; margin-bottom: 3px; color: #111; font-weight: 600; }
         .stat-card p { margin: 0; color: var(--text-muted); font-size: 11px; letter-spacing: 0.8px; text-transform: uppercase; font-weight: 600; }
+
+        /* Installation Banner */
+        .install-banner {
+            display: none;
+            background: rgba(230, 81, 0, 0.08);
+            border: 1px solid rgba(230, 81, 0, 0.25);
+            border-radius: 12px;
+            padding: 14px 20px;
+            margin-bottom: 24px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+        }
 
         .dashboard-grid {
             display: grid;
@@ -270,6 +283,24 @@
             color: #fff;
         }
 
+        .btn-install {
+            background: rgba(230, 81, 0, 0.12);
+            color: var(--accent-orange);
+            border: 1px solid rgba(230, 81, 0, 0.3);
+            padding: 3px 8px;
+            font-size: 10.5px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-left: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn-install:hover {
+            background: var(--accent-orange);
+            color: #fff;
+        }
+
         .btn-play {
             background: rgba(21, 101, 192, 0.1);
             color: var(--accent-blue);
@@ -416,17 +447,17 @@
 
         /* File Upload Box */
         .file-drop-area {
-            border: 2px dashed rgba(0, 0, 0, 0.15);
+            border: 2px dashed rgba(0, 0, 0, 0.18);
             border-radius: 10px;
-            padding: 14px;
+            padding: 16px;
             text-align: center;
-            background: rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.6);
             cursor: pointer;
             transition: all 0.2s;
         }
         .file-drop-area:hover {
             border-color: #111;
-            background: rgba(255, 255, 255, 0.85);
+            background: rgba(255, 255, 255, 0.9);
         }
 
         /* Video Modal */
@@ -458,6 +489,20 @@
                 <p>Rendering</p>
             </div>
         </div>
+    </div>
+
+    <!-- Installation Banner -->
+    <div class="install-banner" id="install-banner">
+        <div style="flex: 1;">
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--accent-orange);">
+                <span>⏳ Installing Blender 3D Suite on Connected Worker...</span>
+                <span id="install-banner-pct">0%</span>
+            </div>
+            <div class="progress-container" style="margin: 6px 0 0 0; height: 6px;">
+                <div class="progress-bar" id="install-banner-bar" style="width: 5%; background-color: var(--accent-orange);"></div>
+            </div>
+        </div>
+        <span id="install-banner-msg" style="font-size: 12px; color: var(--text-muted);">Downloading packages...</span>
     </div>
 
     <div class="dashboard-grid">
@@ -516,13 +561,13 @@
             </div>
 
             <div class="form-group">
-                <label>Target .blend File</label>
-                <div class="file-drop-area" onclick="document.getElementById('blend-file-picker').click()">
-                    <div id="file-display-name" style="font-weight: 500; font-size: 13.5px; color: #111;">
-                        📁 Click to choose custom <code>.blend</code> file (or uses default <code>test.blend</code>)
+                <label>Target .blend File <span style="color: var(--accent-red);">*</span></label>
+                <div class="file-drop-area" id="file-drop-box" onclick="document.getElementById('blend-file-picker').click()">
+                    <div id="file-display-name" style="font-weight: 600; font-size: 14px; color: #111;">
+                        📁 Click here to select your 3D Scene (<code>*.blend</code> file)
                     </div>
-                    <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;" id="file-size-hint">
-                        Default included project test scene
+                    <small style="color: var(--text-muted); font-size: 12px; margin-top: 5px; display: block;" id="file-size-hint">
+                        Choose any .blend file on your computer to transmit across the cluster
                     </small>
                 </div>
                 <input type="file" id="blend-file-picker" accept=".blend" style="display: none;" onchange="handleFilePicked(event)">
@@ -594,13 +639,18 @@
 
     <script>
         let selectedFileBase64 = null;
-        let selectedFileName = "test.blend";
+        let selectedFileName = null;
+        let isFileReading = false;
         let activeWorkersCount = 1;
         let jobSequenceNumber = 1;
 
         function openSubmitModal() {
             document.getElementById('submit-modal').style.display = 'flex';
-            document.getElementById('modal-job-name').placeholder = `Render Workload #${jobSequenceNumber} (${selectedFileName})`;
+            if (selectedFileName) {
+                document.getElementById('modal-job-name').placeholder = `Render Workload #${jobSequenceNumber} (${selectedFileName})`;
+            } else {
+                document.getElementById('modal-job-name').placeholder = `Render Workload #${jobSequenceNumber}`;
+            }
             recalcFramesPerNode();
         }
 
@@ -648,24 +698,63 @@
                 selectedFileName = file.name;
                 const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
                 
-                document.getElementById('file-display-name').innerHTML = `📁 Selected: <strong>${file.name}</strong>`;
-                document.getElementById('file-size-hint').innerText = `${sizeMb} MB &bull; Ready to transmit across cluster`;
+                document.getElementById('file-display-name').innerHTML = `📁 Loading: <strong>${file.name}</strong> (${sizeMb} MB)...`;
+                document.getElementById('file-size-hint').innerText = "Reading file into memory for network transmission...";
 
+                isFileReading = true;
                 const reader = new FileReader();
                 reader.onload = function(evt) {
                     const dataUrl = evt.target.result;
-                    // Extract base64 portion
                     const base64Index = dataUrl.indexOf(',');
                     if (base64Index !== -1) {
                         selectedFileBase64 = dataUrl.substring(base64Index + 1);
                     }
+                    isFileReading = false;
+                    document.getElementById('file-display-name').innerHTML = `📁 Selected: <strong>${file.name}</strong>`;
+                    document.getElementById('file-size-hint').innerHTML = `<span style="color: var(--accent-green); font-weight: 600;">✓ Ready to transmit across cluster (${sizeMb} MB)</span>`;
+                    document.getElementById('modal-job-name').placeholder = `Render Workload #${jobSequenceNumber} (${file.name})`;
+                };
+                reader.onerror = function() {
+                    isFileReading = false;
+                    alert("Failed reading selected .blend file");
                 };
                 reader.readAsDataURL(file);
             }
         }
 
+        // Trigger Blender Installation on worker
+        async function triggerBlenderInstall(workerId) {
+            if (!confirm(`Trigger automatic installation of Blender 3D on node [${workerId}]?`)) return;
+
+            document.getElementById('install-banner').style.display = 'flex';
+            document.getElementById('install-banner-pct').innerText = 'Starting...';
+            document.getElementById('install-banner-msg').innerText = `Initiating package install on ${workerId}...`;
+
+            try {
+                const res = await fetch('/api/nodes/install-blender', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ workerId: workerId })
+                });
+                const data = await res.json();
+                console.log("Install triggered:", data);
+            } catch (err) {
+                alert("Error sending install command: " + err.message);
+            }
+        }
+
         // 1. Submit Workload Form
         async function submitWorkloadForm() {
+            if (isFileReading) {
+                alert("Please wait: .blend file is still being read into memory...");
+                return;
+            }
+
+            if (!selectedFileName || !selectedFileBase64) {
+                alert("Please select a .blend file to render.");
+                return;
+            }
+
             const btn = document.getElementById('btn-submit-workload');
             btn.disabled = true;
             btn.innerText = 'Dispatching...';
@@ -686,15 +775,12 @@
                 workloadType: "BLENDER",
                 blendFilePath: selectedFileName,
                 blendFileName: selectedFileName,
+                blendFileBase64: selectedFileBase64,
                 totalFrames: totalFrames,
                 framesPerTask: framesPerTask,
                 cleanUpFrames: cleanUp,
                 renderEngine: engine
             };
-
-            if (selectedFileBase64) {
-                payload.blendFileBase64 = selectedFileBase64;
-            }
 
             try {
                 const res = await fetch('/api/jobs/submit', {
@@ -864,6 +950,8 @@
             activeWorkersCount = workers.filter(w => w.status !== 'OFFLINE').length;
             recalcFramesPerNode();
 
+            let anyInstalling = false;
+
             tbody.innerHTML = '';
             workers.forEach(worker => {
                 const row = document.createElement('tr');
@@ -876,12 +964,23 @@
                 else if (worker.status === 'EVICTED') statusColor = 'var(--accent-orange)';
 
                 // Blender status rendering
-                let blenderBadge = `<span class="badge-pill not-installed">✖ Not Installed</span>`;
+                let blenderBadge = `
+                    <div style="display: flex; align-items: center;">
+                        <span class="badge-pill not-installed">✖ Not Installed</span>
+                        <button class="btn-install" onclick="triggerBlenderInstall('${worker.workerId}')">⚡ Install</button>
+                    </div>
+                `;
+
                 if (worker.installProgress >= 0 && worker.installProgress < 100) {
+                    anyInstalling = true;
+                    document.getElementById('install-banner').style.display = 'flex';
+                    document.getElementById('install-banner-pct').innerText = `${worker.installProgress.toFixed(0)}%`;
+                    document.getElementById('install-banner-bar').style.width = `${Math.max(5, worker.installProgress)}%`;
+
                     blenderBadge = `
                         <div>
                             <span style="font-size: 11px; font-weight: 600; color: var(--accent-orange);">⏳ Installing (${worker.installProgress.toFixed(0)}%)</span>
-                            <div class="progress-container" style="height: 4px; margin: 4px 0 0 0; width: 80px;">
+                            <div class="progress-container" style="height: 4px; margin: 4px 0 0 0; width: 90px;">
                                 <div class="progress-bar" style="width: ${worker.installProgress}%; background: var(--accent-orange);"></div>
                             </div>
                         </div>
@@ -910,6 +1009,10 @@
                 `;
                 tbody.appendChild(row);
             });
+
+            if (!anyInstalling) {
+                document.getElementById('install-banner').style.display = 'none';
+            }
         }
 
         function updateDashboardStats(clusterStats) {

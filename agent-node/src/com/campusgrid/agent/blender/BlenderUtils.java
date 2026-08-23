@@ -82,10 +82,14 @@ public class BlenderUtils {
             
             // 2. Try common installation paths on macOS & Linux
             String userHome = System.getProperty("user.home");
+            String workDir = System.getProperty("user.dir");
             String[] commonUnixPaths = {
                 "/Applications/Blender.app/Contents/MacOS/Blender",
                 "/Applications/Blender.app/Contents/MacOS/blender",
                 userHome + "/Applications/Blender.app/Contents/MacOS/Blender",
+                workDir + "/blender_bin/Blender.app/Contents/MacOS/Blender",
+                workDir + "/blender_bin/blender",
+                "./blender_bin/blender",
                 "/opt/homebrew/bin/blender",
                 "/usr/local/bin/blender",
                 "/usr/bin/blender",

@@ -80,6 +80,88 @@ public class FrameStitcher {
         }
     }
 
+    /**
+     * Stitches whatever frames are currently available, even if there are sequence gaps,
+     * so that cancelled or partially processed jobs can still be previewed.
+     */
+    public Path stitchAvailableFrames(String jobId, int fps) {
+        System.out.printf("[FRAME-STITCHER] Running partial/cancellation stitching for Job [%s]...\n", jobId);
+        Path jobDir = baseOutputDir.resolve(jobId);
+        if (!Files.exists(jobDir) || !Files.isDirectory(jobDir)) {
+            return null;
+        }
+
+        // 1. Scan and normalize existing names
+        normalizeFrameNames(jobDir);
+
+        // 2. Build continuous temp frame map to avoid gaps
+        List<Path> frames = new ArrayList<>();
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(jobDir)) {
+            Pattern p = Pattern.compile("frame_(\\d+)\\.png");
+            for (Path entry : stream) {
+                if (p.matcher(entry.getFileName().toString()).matches()) {
+                    frames.add(entry);
+                }
+            }
+        } catch (IOException ignored) {}
+
+        if (frames.isEmpty()) {
+            System.out.println("[FRAME-STITCHER] No frames available to stitch for Job: " + jobId);
+            return null;
+        }
+
+        // Sort frames by number
+        frames.sort(Comparator.comparingInt(f -> {
+            String name = f.getFileName().toString();
+            return Integer.parseInt(name.replaceAll("[^0-9]", ""));
+        }));
+
+        // Rename to temp contiguous files
+        List<Path> tempFiles = new ArrayList<>();
+        for (int i = 0; i < frames.size(); i++) {
+            Path src = frames.get(i);
+            Path dest = jobDir.resolve(String.format("temp_frame_%04d.png", i + 1));
+            try {
+                Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
+                tempFiles.add(dest);
+            } catch (IOException ignored) {}
+        }
+
+        // 3. Compile temp frames to video
+        String videoFileName = String.format("%s_animation.mp4", jobId);
+        Path videoPath = jobDir.resolve(videoFileName);
+        
+        boolean compiled = false;
+        if (isFFmpegInstalled() && !tempFiles.isEmpty()) {
+            List<String> command = List.of(
+                "ffmpeg", "-y", "-framerate", String.valueOf(fps),
+                "-i", "temp_frame_%04d.png", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                videoFileName
+            );
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.directory(jobDir.toFile());
+            pb.redirectErrorStream(true);
+            try {
+                Process process = pb.start();
+                process.getInputStream().transferTo(OutputStream.nullOutputStream()); // drain stdout
+                compiled = process.waitFor() == 0;
+            } catch (Exception ignored) {}
+        }
+
+        // Delete temp files
+        for (Path temp : tempFiles) {
+            try {
+                Files.deleteIfExists(temp);
+            } catch (IOException ignored) {}
+        }
+
+        if (compiled) {
+            System.out.println("[FRAME-STITCHER] Partially rendered animation compiled successfully!");
+            return videoPath;
+        }
+        return null;
+    }
+
     private void deleteRawFrames(Path jobDir, String preserveVideoName) {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(jobDir)) {
             for (Path entry : stream) {

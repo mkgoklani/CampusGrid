@@ -18,6 +18,7 @@ public class Agent {
      * @param args command line arguments. The first argument must be the Master node IP address.
      */
     public static void main(String[] args) {
+        System.setProperty("java.awt.headless", "true");
         if (args == null || args.length == 0) {
             System.out.println("Usage:");
             System.out.println("java Agent <MASTER_IP>");
@@ -31,8 +32,26 @@ public class Agent {
 
         String masterIp = args[0];
 
-        // Instantiate connection manager and attempt connection
+        // Instantiate connection manager and attempt connection persistently
         MasterConnection connection = new MasterConnection(masterIp);
-        connection.connect();
+        while (true) {
+            connection.connect();
+            
+            // Block main thread while connection is active
+            while (connection.isConnected()) {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    break;
+                }
+            }
+            
+            System.out.println("[NETWORK] Master connection lost or closed. Re-initiating connection loop...");
+            connection.disconnect(); // Clean up socket/streams before retry
+            
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException ignored) {}
+        }
     }
 }

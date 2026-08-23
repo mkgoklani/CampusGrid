@@ -62,7 +62,8 @@ public class Job implements Serializable {
         int taskSeq = 1;
 
         String blendPath = (parameters != null && parameters.containsKey("blendFilePath")) 
-            ? parameters.get("blendFilePath").toString() : "test.blend";
+            ? parameters.get("blendFilePath").toString() : "scene.blend";
+        Object blendBytes = (parameters != null) ? parameters.get("blendFileBytes") : null;
 
         for (int start = 1; start <= totalFrames; start += chunkSize) {
             int end = Math.min(start + chunkSize - 1, totalFrames);
@@ -70,7 +71,10 @@ public class Job implements Serializable {
             String frameRange = (start == end) ? String.valueOf(start) : (start + "-" + end);
 
             SubTask subTask = new SubTask(taskId, jobId, start, end, frameRange, workloadType);
-            subTask.setTaskData(blendPath);
+            subTask.setTaskData(blendBytes != null ? blendBytes : blendPath);
+            if (blendBytes instanceof byte[] b) {
+                subTask.setTaskPayloadBytes(b);
+            }
             subTasks.put(taskId, subTask);
             pendingSubTasks.add(subTask);
             generated.add(subTask);

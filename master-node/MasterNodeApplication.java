@@ -232,8 +232,15 @@ public class MasterNodeApplication {
             String state = (String) clazz.getMethod("getState").invoke(statusObj);
             String blenderVer = (String) clazz.getMethod("getBlenderVersion").invoke(statusObj);
 
-            boolean isInstalled = (blenderVer != null && !blenderVer.equalsIgnoreCase("Unknown") && !blenderVer.isEmpty());
-            workerRegistry.updateEnvironment(workerId, null, isInstalled, blenderVer, -1.0);
+            // CRITICAL: SoftwareEngine-1.0 fallback is NOT native Blender
+            boolean isRealBlender = (blenderVer != null 
+                && !blenderVer.equalsIgnoreCase("Unknown") 
+                && !blenderVer.toLowerCase().contains("softwareengine")
+                && !blenderVer.isEmpty());
+            
+            if (isRealBlender) {
+                workerRegistry.updateEnvironment(workerId, null, true, blenderVer, -1.0);
+            }
 
             if ("RENDERING".equalsIgnoreCase(state) || "BUSY".equalsIgnoreCase(state)) {
                 workerRegistry.updateStatus(workerId, WorkerStatus.BUSY);
@@ -256,6 +263,7 @@ public class MasterNodeApplication {
                 String os = null;
                 String blenderVer = null;
                 boolean blenderInstalled = false;
+                double installPct = -1.0;
 
                 String[] parts = raw.split("\\|");
                 for (String part : parts) {
@@ -273,12 +281,19 @@ public class MasterNodeApplication {
                         os = part.substring(3).trim();
                     } else if (part.startsWith("BLENDER:")) {
                         blenderVer = part.substring(8).trim();
-                        blenderInstalled = !"Unknown".equalsIgnoreCase(blenderVer) && !blenderVer.isEmpty();
+                        blenderInstalled = !"Unknown".equalsIgnoreCase(blenderVer) 
+                            && !blenderVer.toLowerCase().contains("softwareengine") 
+                            && !blenderVer.isEmpty();
+                    } else if (part.startsWith("INSTALL:")) {
+                        String ip = part.substring(8).replace("%", "").trim();
+                        try {
+                            installPct = Double.parseDouble(ip);
+                        } catch (Exception ignored) {}
                     }
                 }
                 workerRegistry.updateTelemetry(workerId, temp, cpu, ram);
-                if (os != null || blenderVer != null) {
-                    workerRegistry.updateEnvironment(workerId, os, blenderInstalled, blenderVer, -1.0);
+                if (os != null || blenderVer != null || installPct >= 0) {
+                    workerRegistry.updateEnvironment(workerId, os, blenderInstalled, blenderVer, installPct);
                 }
             } catch (Exception ignored) {}
         } else if ("EVICTED".equals(raw)) {
@@ -328,6 +343,7 @@ public class MasterNodeApplication {
     public DashboardServer getDashboardServer() { return dashboardServer; }
 
     public static void main(String[] args) {
+        System.setProperty("java.awt.headless", "true");
         try {
             MasterNodeApplication app = new MasterNodeApplication();
             app.start();

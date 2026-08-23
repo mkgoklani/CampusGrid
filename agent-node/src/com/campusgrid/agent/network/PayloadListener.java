@@ -178,6 +178,24 @@ public class PayloadListener implements Runnable {
             } else if ("CANCEL_TASK".equalsIgnoreCase(typeStr)) {
                 String cancelJobId = (payloadVal != null) ? payloadVal.toString() : null;
                 cancelActiveRender(cancelJobId);
+            } else if ("INSTALL_BLENDER".equalsIgnoreCase(typeStr)) {
+                System.out.println("[TASK] Received INSTALL_BLENDER command from Master. Starting installer...");
+                new Thread(() -> {
+                    com.campusgrid.agent.blender.BlenderInstaller.installBlender((pct, msg) -> {
+                        try {
+                            String ver = com.campusgrid.agent.blender.BlenderInstaller.getInstallationStatus().getVersion();
+                            connection.sendObject(String.format("HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | BLENDER: %s | INSTALL: %.1f | MSG: %s",
+                                com.campusgrid.agent.os.LinuxTelemetry.getCpuTemperatureCelsius(),
+                                com.campusgrid.agent.os.LinuxTelemetry.getCpuLoadPercent(),
+                                com.campusgrid.agent.os.LinuxTelemetry.getRamUsagePercent(),
+                                System.getProperty("os.name"),
+                                ver,
+                                pct,
+                                msg
+                            ));
+                        } catch (Exception ignored) {}
+                    });
+                }, "Blender-Background-Installer").start();
             }
         } catch (Exception e) {
             System.err.println("[TASK] Error handling GridMessage: " + e.getMessage());
@@ -212,6 +230,13 @@ public class PayloadListener implements Runnable {
             String blendPath = "test.blend";
             if (taskData instanceof String s && !s.trim().isEmpty()) {
                 blendPath = s.trim();
+            } else if (taskData instanceof byte[] bytes && bytes.length > 0) {
+                java.io.File cacheDir = new java.io.File("./cache/" + jobId);
+                if (!cacheDir.exists()) cacheDir.mkdirs();
+                java.io.File cachedFile = new java.io.File(cacheDir, "scene.blend");
+                java.nio.file.Files.write(cachedFile.toPath(), bytes);
+                blendPath = cachedFile.getAbsolutePath();
+                System.out.printf("[TASK] Unpacked binary blend file (%d bytes) to: %s\n", bytes.length, blendPath);
             }
 
             System.out.printf("[TASK] Received Task [%s] for Job [%s] (Frames: %d-%d, Blend: %s)\n",

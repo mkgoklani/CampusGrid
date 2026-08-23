@@ -16,5 +16,7 @@ public enum MessageType {
     TASK_PROGRESS,
     CANCEL_TASK,
     EVICTED,
-    TASK_COMPLETE
+    TASK_COMPLETE,
+    INSTALL_BLENDER,
+    INSTALL_PROGRESS
 }

@@ -159,7 +159,6 @@ public class JobManager {
                         System.out.printf("[JOB-MANAGER] ➔ Cascading CANCEL_TASK to Worker [%s] (Task: %s)...\n",
                             worker.getWorkerId(), assignedTask);
 
-                        // Transmit CANCEL_TASK packet over TCP
                         try {
                             java.io.ObjectOutputStream out = worker.getOutStream();
                             if (out != null) {
@@ -185,6 +184,15 @@ public class JobManager {
                         }
                     }
                 }
+
+                // Compile whatever frames were finished prior to cancellation for video preview
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(1500); // Wait for active file writes to flush
+                        FrameStitcher stitcher = new FrameStitcher();
+                        stitcher.stitchAvailableFrames(jobId, 30);
+                    } catch (Exception ignored) {}
+                }, "FrameStitcher-Cancel-" + jobId).start();
             }
         }
     }
