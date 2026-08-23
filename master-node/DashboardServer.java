@@ -114,6 +114,7 @@ public class DashboardServer {
             sb.append("\"ipAddress\":\"").append(escapeJson(w.getIpAddress())).append("\",");
             sb.append("\"status\":\"").append(w.getStatus()).append("\",");
             sb.append("\"cpuTemp\":").append(w.getCpuTemperature()).append(",");
+            sb.append("\"cpuUsage\":").append(String.format(Locale.US, "%.1f", w.getCpuUsagePercent())).append(",");
             sb.append("\"ramUsage\":").append(String.format(Locale.US, "%.2f", w.getRamUsagePercent())).append(",");
             sb.append("\"currentJobId\":").append(w.getCurrentJobId() != null ? "\"" + escapeJson(w.getCurrentJobId()) + "\"" : "null").append(",");
             sb.append("\"currentTaskId\":").append(w.getCurrentTaskId() != null ? "\"" + escapeJson(w.getCurrentTaskId()) + "\"" : "null").append(",");

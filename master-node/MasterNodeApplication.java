@@ -202,12 +202,27 @@ public class MasterNodeApplication {
     private void handleLegacyStringPacket(WorkerState worker, String raw) {
         String workerId = worker.getWorkerId();
         if (raw.startsWith("HEARTBEAT | TEMP: ")) {
-            String tempStr = raw.substring(18).trim();
-            if (tempStr.endsWith("°C")) tempStr = tempStr.substring(0, tempStr.length() - 2);
             try {
-                int temp = Integer.parseInt(tempStr);
-                workerRegistry.updateTelemetry(workerId, temp, 50.0);
-            } catch (NumberFormatException ignored) {}
+                int temp = 36;
+                double cpu = 0.0;
+                double ram = 50.0;
+
+                String[] parts = raw.split("\\|");
+                for (String part : parts) {
+                    part = part.trim();
+                    if (part.startsWith("TEMP:")) {
+                        String t = part.substring(5).replace("°C", "").trim();
+                        temp = Integer.parseInt(t);
+                    } else if (part.startsWith("CPU:")) {
+                        String c = part.substring(4).replace("%", "").trim();
+                        cpu = Double.parseDouble(c);
+                    } else if (part.startsWith("RAM:")) {
+                        String r = part.substring(4).replace("%", "").trim();
+                        ram = Double.parseDouble(r);
+                    }
+                }
+                workerRegistry.updateTelemetry(workerId, temp, cpu, ram);
+            } catch (Exception ignored) {}
         } else if ("EVICTED".equals(raw)) {
             workerRegistry.handleWorkerFailure(workerId, jobManager);
             workerRegistry.updateStatus(workerId, WorkerStatus.EVICTED);

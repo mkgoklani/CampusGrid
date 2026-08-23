@@ -117,19 +117,22 @@ public class HeartbeatService implements Runnable {
                 continue;
             }
 
-            // Call LinuxTelemetry to retrieve temperature dynamically before sending heartbeat
-            String temp = LinuxTelemetry.getCpuTemperature();
+            // Call LinuxTelemetry to retrieve authentic hardware metrics dynamically before sending heartbeat
+            int tempCelsius = LinuxTelemetry.getCpuTemperatureCelsius();
+            double cpuLoad = LinuxTelemetry.getCpuLoadPercent();
+            double ramUsage = LinuxTelemetry.getRamUsagePercent();
 
-            // Send heartbeat message with CPU temperature to Master node as a String object
+            // Send authentic telemetry heartbeat to Master node
             try {
-                connection.sendObject("HEARTBEAT | TEMP: " + temp);
+                connection.sendObject(String.format("HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%%",
+                    tempCelsius, cpuLoad, ramUsage));
             } catch (IOException e) {
                 System.out.println("[HEARTBEAT] Connection lost: " + e.getMessage());
                 stop();
                 break;
             }
 
-            System.out.println("[HEARTBEAT] Sent");
+            System.out.printf("[HEARTBEAT] Sent (Temp: %d°C, CPU: %.1f%%, RAM: %.1f%%)\n", tempCelsius, cpuLoad, ramUsage);
 
             try {
                 Thread.sleep(HEARTBEAT_INTERVAL_MS);

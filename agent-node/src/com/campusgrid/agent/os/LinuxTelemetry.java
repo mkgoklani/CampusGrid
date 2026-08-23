@@ -254,4 +254,15 @@ public class LinuxTelemetry {
         }
         return false;
     }
+
+    public static void main(String[] args) {
+        System.out.println("==========================================");
+        System.out.println("     CAMPUSGRID LIVE HARDWARE TELEMETRY   ");
+        System.out.println("==========================================");
+        System.out.printf("  CPU Temperature:      %d°C\n", getCpuTemperatureCelsius());
+        System.out.printf("  CPU Usage:            %.1f%%\n", getCpuLoadPercent());
+        System.out.printf("  RAM Usage:            %.1f%%\n", getRamUsagePercent());
+        System.out.printf("  CPU Throttling:       %s\n", isCpuThrottled() ? "YES (Throttled)" : "NO (Normal)");
+        System.out.println("==========================================");
+    }
 }

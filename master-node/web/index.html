@@ -212,105 +212,160 @@
     </div>
 
     <script>
-        // Control Panel Submission (Placeholder for Mohit's final API)
-        function submitTestJob() {
-            alert("Ready to trigger the Campus Grid network payload!");
+        // 1. Submit Workload to Master REST API
+        async function submitTestJob() {
+            const jobName = prompt("Enter Workload Name:", "Blender Render Scene");
+            if (!jobName) return;
+            const totalFrames = parseInt(prompt("Enter Total Frames (e.g. 50, 100, 300):", "50") || "50");
+
+            try {
+                const res = await fetch('/api/jobs/submit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        jobName: jobName,
+                        workloadType: "BLENDER",
+                        totalFrames: totalFrames,
+                        framesPerTask: 25
+                    })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    alert(`Workload [${result.jobId}] successfully submitted with ${result.subTasks} sub-tasks!`);
+                    fetchJobs();
+                } else {
+                    alert("Submission failed: " + JSON.stringify(result));
+                }
+            } catch (err) {
+                alert("Error connecting to Master API: " + err.message);
+            }
         }
 
-        // 1. Establish WebSocket Connection to the Master Node
-        const ws = new WebSocket('ws://localhost:8082/ws/telemetry');
+        // 2. Fetch and render Active Jobs from REST API
+        async function fetchJobs() {
+            try {
+                const res = await fetch('/api/jobs');
+                const jobs = await res.json();
+                renderJobs(jobs);
+            } catch (e) {
+                console.error("Error fetching jobs:", e);
+            }
+        }
+
+        function renderJobs(jobs) {
+            const container = document.getElementById('job-container');
+            if (!jobs || jobs.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px; margin-bottom: 30px;">No active workloads.</p>';
+                return;
+            }
+
+            container.innerHTML = '';
+            jobs.forEach(job => {
+                const jobCard = document.createElement('div');
+                jobCard.className = 'job-card';
+                jobCard.id = `job-${job.jobId}`;
+                const percentage = Math.round(parseFloat(job.progress) || 0);
+
+                jobCard.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>${job.workloadType} - ${job.jobName || job.jobId}</strong>
+                        <span style="font-size: 11px; font-weight: bold; color: ${job.status === 'COMPLETED' ? '#2e7d32' : (job.status === 'RUNNING' ? '#1565c0' : '#737373')};">
+                            ${job.status}
+                        </span>
+                    </div>
+                    <div class="progress-container">
+                        <div class="progress-bar" style="width: ${percentage}%;"></div>
+                    </div>
+                    <small style="color: var(--text-muted); display: flex; justify-content: space-between; margin-top: 8px;">
+                        <span>${percentage}% Complete (${job.completedTasks} / ${job.totalTasks} Tasks)</span>
+                        <span>Total: ${job.totalFrames} Frames</span>
+                    </small>
+                `;
+                container.appendChild(jobCard);
+            });
+        }
+
+        // 3. Establish WebSocket Connection to the Master Node Telemetry Stream
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsHost = window.location.hostname || 'localhost';
+        const ws = new WebSocket(`${wsProtocol}//${wsHost}:8082/ws/telemetry`);
 
         ws.onopen = () => {
-            console.log('Connected to Master Node Telemetry Stream');
+            console.log('✓ Connected to Master Node Real-Time Telemetry Stream');
+            fetchJobs();
         };
 
         ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            console.log("[DEBUG] Processed Payload:", data);
-
-            // Route the data based on Mohit's new JSON structure
-            if (data.cluster && data.workers) {
-                updateDashboardStats(data.cluster);
-                updateWorkerTable(data.workers);
-            } else if (data.type === 'PROGRESS') {
-                updateJobProgress(data);
+            try {
+                const data = JSON.parse(event.data);
+                if (data.cluster && data.workers) {
+                    updateDashboardStats(data.cluster);
+                    updateWorkerTable(data.workers);
+                    fetchJobs(); // Keep jobs synchronized
+                }
+            } catch (e) {
+                console.error("Error parsing telemetry frame:", e);
             }
         };
 
         ws.onclose = () => {
-            console.error('Connection lost. Master Node might be offline.');
+            console.warn('WebSocket stream disconnected. Falling back to HTTP polling...');
+            setInterval(fetchClusterFallback, 3000);
         };
 
-        // 2. Update the Worker Telemetry Table
+        async function fetchClusterFallback() {
+            try {
+                const res = await fetch('/api/cluster/status');
+                const data = await res.json();
+                if (data.cluster && data.workers) {
+                    updateDashboardStats(data.cluster);
+                    updateWorkerTable(data.workers);
+                }
+                fetchJobs();
+            } catch (e) {}
+        }
+
+        // 4. Update Worker Telemetry Table with Real Live Metrics
         function updateWorkerTable(workers) {
             const tbody = document.getElementById('worker-table-body');
             
-            // Clear the "awaiting" message if we have workers
-            if (workers.length > 0 && tbody.innerHTML.includes("Awaiting node connections")) {
-                tbody.innerHTML = '';
+            if (workers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 40px 0;">Awaiting node connections...</td></tr>';
+                return;
             }
 
+            tbody.innerHTML = '';
             workers.forEach(worker => {
-                // Create a safe ID string for HTML attributes (replacing colons and dots from IPs)
-                const safeId = worker.workerId.replace(/[:.]/g, '-');
-                let row = document.getElementById(`row-${safeId}`);
-                
-                // If this is a new node, create a row for it
-                if (!row) {
-                    row = document.createElement('tr');
-                    row.id = `row-${safeId}`;
-                    tbody.appendChild(row);
-                }
+                const row = document.createElement('tr');
+                const tempColor = worker.cpuTemp > 75 ? '#d32f2f' : (worker.cpuTemp > 60 ? '#f57c00' : '#2e7d32');
+                const statusColor = worker.status === 'IDLE' ? '#2e7d32' : (worker.status === 'BUSY' ? '#1565c0' : '#d32f2f');
 
-                // Update the row cells dynamically matching Mohit's keys
                 row.innerHTML = `
-                    <td style="font-weight: bold;">${worker.workerId}</td>
-                    <td style="color: ${worker.status === 'IDLE' ? 'var(--text-main)' : '#d9534f'}; font-weight: bold;">
-                        ${worker.status}
+                    <td style="font-weight: bold; font-family: monospace;">${worker.workerId}</td>
+                    <td>
+                        <span style="display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; background: ${statusColor}15; color: ${statusColor};">
+                            ${worker.status}
+                        </span>
                     </td>
-                    <td>N/A</td> <!-- Placeholder until Mohit adds CPU Usage back to the DTO -->
-                    <td>${worker.ramUsage}MB</td>
-                    <td>${worker.cpuTemp}°C</td>
-                    <td>${worker.currentJobId || 'None'}</td>
+                    <td style="font-weight: 500;">${worker.cpuUsage || '0.0'}%</td>
+                    <td style="font-weight: 500;">${worker.ramUsage}%</td>
+                    <td style="font-weight: bold; color: ${tempColor};">${worker.cpuTemp}°C</td>
+                    <td style="color: var(--text-muted); font-size: 13px;">${worker.currentJobId ? worker.currentJobId + ' (' + (worker.assignedFrames || 'Active') + ')' : 'None'}</td>
                 `;
+                tbody.appendChild(row);
             });
         }
 
-        // 3. Update the Top Dashboard Stats
+        // 5. Update the Top Dashboard Stats
         function updateDashboardStats(clusterStats) {
             document.getElementById('stat-total').innerText = clusterStats.total;
             document.getElementById('stat-idle').innerText = clusterStats.available;
             document.getElementById('stat-busy').innerText = clusterStats.busy;
         }
 
-        // 4. Update the Active Job Progress Bars
-        function updateJobProgress(progress) {
-            const container = document.getElementById('job-container');
-            let jobCard = document.getElementById(`job-${progress.jobId}`);
-
-            // If this is the first progress report for this job, create the UI card
-            if (!jobCard) {
-                if (container.querySelector('p')) container.innerHTML = ''; 
-                jobCard = document.createElement('div');
-                jobCard.className = 'job-card';
-                jobCard.id = `job-${progress.jobId}`;
-                container.appendChild(jobCard);
-            }
-
-            // Calculate percentage
-            const percentage = Math.round((progress.completedFrames / progress.totalFrames) * 100);
-
-            // Update the DOM for this specific job
-            jobCard.innerHTML = `
-                <strong>${progress.jobType} - #${progress.jobId}</strong>
-                <div class="progress-container">
-                    <div class="progress-bar" style="width: ${percentage}%;"></div>
-                </div>
-                <small style="color: var(--text-muted); display: block; margin-top: 8px;">
-                    ${percentage}% Complete (Frames ${progress.completedFrames} / ${progress.totalFrames})
-                </small>
-            `;
-        }
+        // Initial Load
+        fetchJobs();
+        fetchClusterFallback();
     </script>
 </body>
 </html>

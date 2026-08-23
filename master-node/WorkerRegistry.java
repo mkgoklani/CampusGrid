@@ -36,22 +36,27 @@ public class WorkerRegistry {
     }
 
     /**
-     * Updates telemetry statistics and refreshes the heartbeat timestamp.
-     * Synchronizes on the WorkerState object to ensure stats are updated atomically.
+     * Updates telemetry statistics including CPU load, temperature, and RAM usage.
      * 
      * @param workerId Unique identifier of the worker node.
      * @param cpuTemp The current CPU temperature in °C.
+     * @param cpuUsage The current CPU usage percentage.
      * @param ramUsage The current RAM usage percentage.
      */
-    public void updateTelemetry(String workerId, int cpuTemp, double ramUsage) {
+    public void updateTelemetry(String workerId, int cpuTemp, double cpuUsage, double ramUsage) {
         WorkerState state = registry.get(workerId);
         if (state != null) {
             synchronized (state) {
                 state.setCpuTemperature(cpuTemp);
+                state.setCpuUsagePercent(cpuUsage);
                 state.setRamUsagePercent(ramUsage);
                 state.setLastHeartbeatTimestamp(System.currentTimeMillis());
             }
         }
+    }
+
+    public void updateTelemetry(String workerId, int cpuTemp, double ramUsage) {
+        updateTelemetry(workerId, cpuTemp, 0.0, ramUsage);
     }
 
     /**

@@ -19,6 +19,7 @@ public class WorkerState {
     // Telemetry and Status fields (Updated concurrently)
     private WorkerStatus status;
     private int cpuTemperature;
+    private double cpuUsagePercent;
     private double ramUsagePercent;
     private String currentJobId;
     private String currentTaskId;
@@ -72,6 +73,14 @@ public class WorkerState {
 
     public synchronized void setCpuTemperature(int cpuTemperature) {
         this.cpuTemperature = cpuTemperature;
+    }
+
+    public synchronized double getCpuUsagePercent() {
+        return cpuUsagePercent;
+    }
+
+    public synchronized void setCpuUsagePercent(double cpuUsagePercent) {
+        this.cpuUsagePercent = cpuUsagePercent;
     }
 
     public synchronized double getRamUsagePercent() {
