@@ -40,4 +40,32 @@ public interface GridTask<T> extends Serializable {
      * @return aggregated final result
      */
     T merge(List<T> results);
+
+    // =========================================================================
+    // PHASE 2: ADVANCED EXECUTION CONTRACT
+    // =========================================================================
+
+    /**
+     * Phase 2 execution supporting localized context (file paths) and real-time 
+     * progress tracking for the dashboard API.
+     * <p>
+     * By default, this falls back to the Phase 1 {@code execute()} method so legacy 
+     * tasks (like Mandelbrot) do not break during transition.
+     *
+     * @param context Provides the Agent's local working directory and job metadata
+     * @param reporter Callback to stream progress to the Master node's dashboard
+     * @return task execution result
+     */
+    default T execute(TaskContext context, ProgressReporter reporter) {
+        if (reporter != null) {
+            reporter.reportProgress(0.0, "Starting legacy Phase 1 task...");
+        }
+        
+        T result = execute();
+        
+        if (reporter != null) {
+            reporter.reportProgress(100.0, "Legacy Phase 1 task complete.");
+        }
+        return result;
+    }
 }
