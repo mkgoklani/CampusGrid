@@ -59,9 +59,6 @@ public class WorkerRegistry {
         updateTelemetry(workerId, cpuTemp, 0.0, ramUsage);
     }
 
-    /**
-     * Updates host OS and Blender runtime environment info.
-     */
     public void updateEnvironment(String workerId, String osName, boolean blenderInstalled, String blenderVersion, double installProgress) {
         WorkerState state = registry.get(workerId);
         if (state != null) {
@@ -69,7 +66,11 @@ public class WorkerRegistry {
                 if (osName != null && !osName.isEmpty()) state.setOsName(osName);
                 state.setBlenderInstalled(blenderInstalled);
                 if (blenderVersion != null) state.setBlenderVersion(blenderVersion);
-                state.setInstallProgress(installProgress);
+                if (blenderInstalled) {
+                    state.setInstallProgress(-1.0);
+                } else if (installProgress >= 0.0) {
+                    state.setInstallProgress(installProgress);
+                }
             }
         }
     }

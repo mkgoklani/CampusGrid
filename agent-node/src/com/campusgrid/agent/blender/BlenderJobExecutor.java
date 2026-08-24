@@ -63,7 +63,22 @@ public class BlenderJobExecutor {
 
         String blenderPath = BlenderUtils.findExecutablePath();
         File blendFile = (blendFilePath != null) ? new File(blendFilePath) : new File("test.blend");
-
+        if (!blendFile.exists()) {
+            File parentFile = new File(".." + File.separator + blendFile.getName());
+            if (parentFile.exists()) {
+                blendFile = parentFile;
+            } else {
+                File testBlend = new File("test.blend");
+                if (testBlend.exists()) {
+                    blendFile = testBlend;
+                } else {
+                    File parentTestBlend = new File(".." + File.separator + "test.blend");
+                    if (parentTestBlend.exists()) {
+                        blendFile = parentTestBlend;
+                    }
+                }
+            }
+        }
         // Calculate total frames
         int totalFrames = Math.max(1, frameEnd - frameStart + 1);
 
@@ -100,8 +115,13 @@ public class BlenderJobExecutor {
         }
 
         if (renderEngine != null && !renderEngine.trim().isEmpty()) {
+            String engine = renderEngine.trim();
+            // Normalize legacy BLENDER_EEVEE to CYCLES for Blender 4.2+ headless compatibility
+            if ("BLENDER_EEVEE".equalsIgnoreCase(engine)) {
+                engine = "CYCLES";
+            }
             command.add("-E");
-            command.add(renderEngine.trim());
+            command.add(engine);
         }
 
         command.add("-s");

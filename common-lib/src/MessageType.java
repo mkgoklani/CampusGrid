@@ -1,0 +1,10 @@
+public enum MessageType {
+    HEARTBEAT,
+    SUBMIT_TASK,
+    TASK_PROGRESS,
+    CANCEL_TASK,
+    EVICTED,
+    TASK_COMPLETE,
+    INSTALL_BLENDER,
+    INSTALL_PROGRESS
+}

@@ -295,6 +295,9 @@ public class MasterNodeApplication {
                 if (os != null || blenderVer != null || installPct >= 0) {
                     workerRegistry.updateEnvironment(workerId, os, blenderInstalled, blenderVer, installPct);
                 }
+                if (worker.getStatus() == WorkerStatus.OFFLINE || worker.getStatus() == null) {
+                    workerRegistry.updateStatus(workerId, WorkerStatus.IDLE);
+                }
             } catch (Exception ignored) {}
         } else if ("EVICTED".equals(raw)) {
             workerRegistry.handleWorkerFailure(workerId, jobManager);

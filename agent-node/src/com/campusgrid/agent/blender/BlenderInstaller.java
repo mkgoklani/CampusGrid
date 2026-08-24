@@ -100,16 +100,22 @@ public class BlenderInstaller {
 
         isInstalling = true;
         currentInstallProgress = 5.0;
-        if (callback != null) callback.onProgress(5.0, "Initiating Blender automated installation pipeline...");
+
+        ProgressCallback safeCallback = (pct, msg) -> {
+            currentInstallProgress = pct;
+            if (callback != null) callback.onProgress(pct, msg);
+        };
+
+        safeCallback.onProgress(5.0, "Initiating Blender automated installation pipeline...");
 
         String os = System.getProperty("os.name").toLowerCase();
         try {
             if (os.contains("mac")) {
-                return installOnMac(callback);
+                return installOnMac(safeCallback);
             } else if (os.contains("win")) {
-                return installOnWindows(callback);
+                return installOnWindows(safeCallback);
             } else {
-                return installOnLinux(callback);
+                return installOnLinux(safeCallback);
             }
         } finally {
             isInstalling = false;
@@ -336,35 +342,45 @@ public class BlenderInstaller {
     }
 
     private static boolean installOnWindows(ProgressCallback callback) {
-        System.out.println("[INSTALLER] Windows detected. Checking winget...");
-        try {
-            String whichWinget = BlenderUtils.executeCommand("where", "winget");
-            if (whichWinget != null && !whichWinget.isEmpty()) {
-                if (callback != null) callback.onProgress(25.0, "Invoking Windows Package Manager (winget)...");
-                BlenderUtils.executeCommand("winget", "install", "--id", "BlenderFoundation.Blender", "-e", "--silent");
-                if (callback != null) callback.onProgress(90.0, "Verifying Blender installation...");
-                Thread.sleep(2000);
-                Status verified = getInstallationStatus();
-                if (verified.isInstalled()) return true;
-            }
-        } catch (Exception ignored) {}
-
-        // Fallback: Direct portable zip download
+        System.out.println("[INSTALLER] Windows detected. Running standalone portable Blender 4.2 pipeline...");
         try {
             File binDir = new File("./blender_bin");
             if (!binDir.exists()) binDir.mkdirs();
-            File zipFile = new File("./downloads/blender-win.zip");
-            if (!zipFile.getParentFile().exists()) zipFile.getParentFile().mkdirs();
+            File tempDir = new File("./downloads");
+            if (!tempDir.exists()) tempDir.mkdirs();
+            File zipFile = new File(tempDir, "blender-windows-x64.zip");
 
             String url = "https://download.blender.org/release/Blender4.2/blender-4.2.0-windows-x64.zip";
-            if (callback != null) callback.onProgress(20.0, "Downloading portable Blender ZIP...");
-            downloadFileWithProgress(url, zipFile, callback, 20.0, 75.0);
+            boolean downloaded = false;
 
-            if (callback != null) callback.onProgress(80.0, "Extracting portable Blender...");
+            if (zipFile.exists() && zipFile.length() > 100000000) {
+                System.out.println("[INSTALLER] Cached ZIP found: " + zipFile.getAbsolutePath() + " (" + (zipFile.length() / (1024 * 1024)) + " MB)");
+                downloaded = true;
+                if (callback != null) callback.onProgress(75.0, "Found cached Blender archive. Ready for extraction...");
+            } else {
+                if (callback != null) callback.onProgress(15.0, "Connecting to Blender CDN...");
+                downloaded = downloadFileWithProgress(url, zipFile, callback, 15.0, 75.0);
+            }
+
+            if (!downloaded || !zipFile.exists() || zipFile.length() < 10000000) {
+                System.err.println("[INSTALLER-ERR] Failed downloading portable Blender ZIP from " + url);
+                return false;
+            }
+
+            if (callback != null) callback.onProgress(80.0, "Extracting portable Blender suite into ./blender_bin...");
+            System.out.println("[INSTALLER] Extracting " + zipFile.getAbsolutePath() + " to " + binDir.getAbsolutePath());
             extractZip(zipFile, binDir);
 
+            if (callback != null) callback.onProgress(95.0, "Verifying extracted Blender binary...");
+            Thread.sleep(1000);
             Status verified = getInstallationStatus();
-            return verified.isInstalled();
+            if (verified.isInstalled()) {
+                if (callback != null) callback.onProgress(100.0, "Blender " + verified.getVersion() + " installed successfully!");
+                System.out.println("[INSTALLER] ✔ Blender portable installed successfully: " + verified.getExecutablePath());
+                return true;
+            } else {
+                System.err.println("[INSTALLER-ERR] Extraction completed but Blender executable was not located.");
+            }
         } catch (Exception e) {
             System.err.println("[INSTALLER-ERR] Windows standalone installation error: " + e.getMessage());
         }

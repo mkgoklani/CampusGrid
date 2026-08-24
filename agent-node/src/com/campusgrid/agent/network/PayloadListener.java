@@ -184,7 +184,8 @@ public class PayloadListener implements Runnable {
                     com.campusgrid.agent.blender.BlenderInstaller.installBlender((pct, msg) -> {
                         try {
                             String ver = com.campusgrid.agent.blender.BlenderInstaller.getInstallationStatus().getVersion();
-                            connection.sendObject(String.format("HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | BLENDER: %s | INSTALL: %.1f | MSG: %s",
+                            connection.sendObject(String.format(java.util.Locale.US,
+                                "HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | BLENDER: %s | INSTALL: %.1f | MSG: %s",
                                 com.campusgrid.agent.os.LinuxTelemetry.getCpuTemperatureCelsius(),
                                 com.campusgrid.agent.os.LinuxTelemetry.getCpuLoadPercent(),
                                 com.campusgrid.agent.os.LinuxTelemetry.getRamUsagePercent(),
