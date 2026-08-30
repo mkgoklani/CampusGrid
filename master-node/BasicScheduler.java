@@ -143,13 +143,20 @@ public class BasicScheduler implements Runnable {
         workerRegistry.assignTaskToWorker(workerId, jobId, taskId, frameRange);
         task.setAssignedWorkerId(workerId);
 
-        // 2. Build protocol envelope
         Job job = jobManager.getJob(jobId);
-        String renderEngine = "CYCLES";
-        if (job != null && job.getParameters() != null) {
-            Object engine = job.getParameters().get("renderEngine");
-            if (engine != null) {
-                renderEngine = engine.toString();
+        com.campusgrid.core.RenderSettings settings = null;
+        if (job != null) {
+            settings = job.getRenderSettings();
+            if (settings != null) {
+                settings = new com.campusgrid.core.RenderSettings(
+                    settings.getRenderEngine(),
+                    settings.getResolutionX(),
+                    settings.getResolutionY(),
+                    settings.getOutputFormat(),
+                    settings.getSamples(),
+                    task.getStartFrame(),
+                    task.getEndFrame()
+                );
             }
         }
 
@@ -159,7 +166,7 @@ public class BasicScheduler implements Runnable {
             task.getWorkloadType(),
             task.getTaskData() != null ? task.getTaskData() : task.getTaskPayloadBytes(),
             frameRange,
-            renderEngine
+            settings
         );
 
         GridMessage message = new GridMessage(

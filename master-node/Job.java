@@ -149,6 +149,13 @@ public class Job implements Serializable {
     public JobStatus getStatus() { return status; }
     public void setStatus(JobStatus status) { this.status = status; }
 
+    public com.campusgrid.core.RenderSettings getRenderSettings() {
+        if (parameters != null && parameters.containsKey("renderSettings")) {
+            return (com.campusgrid.core.RenderSettings) parameters.get("renderSettings");
+        }
+        return null;
+    }
+
     public Collection<SubTask> getSubTasks() {
         return Collections.unmodifiableCollection(subTasks.values());
     }
