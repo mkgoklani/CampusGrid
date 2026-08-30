@@ -1,5 +1,13 @@
+package com.campusgrid.core;
+
 import java.io.Serializable;
 
+/**
+ * CAMPUS GRID - TASK ASSIGNMENT PAYLOAD DTO
+ * 
+ * Transmitted inside a GridMessage(MessageType.SUBMIT_TASK) from Master to Worker
+ * to dispatch a discrete computational slice or rendering chunk.
+ */
 public class TaskAssignmentPayload implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -9,13 +17,15 @@ public class TaskAssignmentPayload implements Serializable {
     private final String workloadType;
     private final Object taskData;
     private final String assignedFrameRange;
+    private final String renderEngine;
 
-    public TaskAssignmentPayload(String jobId, String taskId, String workloadType, Object taskData, String assignedFrameRange) {
+    public TaskAssignmentPayload(String jobId, String taskId, String workloadType, Object taskData, String assignedFrameRange, String renderEngine) {
         this.jobId = jobId;
         this.taskId = taskId;
         this.workloadType = workloadType;
         this.taskData = taskData;
         this.assignedFrameRange = assignedFrameRange;
+        this.renderEngine = renderEngine;
     }
 
     public String getJobId() {
@@ -36,6 +46,10 @@ public class TaskAssignmentPayload implements Serializable {
 
     public String getAssignedFrameRange() {
         return assignedFrameRange;
+    }
+
+    public String getRenderEngine() {
+        return renderEngine;
     }
 
     @Override

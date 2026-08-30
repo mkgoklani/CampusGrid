@@ -2,6 +2,8 @@ import java.io.*;
 import java.net.*;
 import java.nio.file.Paths;
 import java.util.concurrent.*;
+import com.campusgrid.core.*;
+
 
 /**
  * CAMPUS GRID - PHASE 2 MASTER NODE APPLICATION BOOTSTRAP
@@ -206,10 +208,21 @@ public class MasterNodeApplication {
             Class<?> clazz = resultObj.getClass();
             String jobId = (String) clazz.getMethod("getJobId").invoke(resultObj);
             String status = (String) clazz.getMethod("getStatus").invoke(resultObj);
-            boolean success = "SUCCESS".equalsIgnoreCase(status);
+            boolean success = "SUCCESS".equalsIgnoreCase(status) || "CANCELLED".equalsIgnoreCase(status);
+
+            // Dynamically query zip frames via reflection
+            byte[] zippedData = null;
+            try {
+                zippedData = (byte[]) clazz.getMethod("getZippedFramesData").invoke(resultObj);
+            } catch (Exception ignored) {}
+
+            // Unzip the zippedData to `./output/<jobId>/`
+            if (zippedData != null && zippedData.length > 0) {
+                unzipFrames(jobId, zippedData);
+            }
 
             String taskId = worker.getCurrentTaskId() != null ? worker.getCurrentTaskId() : (jobId + "_T001");
-            System.out.printf("[RECEIVER] RenderResult for Job [%s] Task [%s] from [%s]: %s\n",
+            System.out.printf("[RECEIVER] RenderResult for Job [%s] Task [%s] from [%s]: %s (Extracted frame payload)\n",
                 jobId, taskId, workerId, status);
 
             TaskResultPayload resultPayload = new TaskResultPayload(
@@ -218,6 +231,38 @@ public class MasterNodeApplication {
             resultCollector.handleTaskResult(workerId, resultPayload);
         } catch (Exception e) {
             System.err.println("[RECEIVER-ERR] Error unpacking RenderResult: " + e.getMessage());
+        }
+    }
+
+    private void unzipFrames(String jobId, byte[] zippedData) {
+        if (zippedData == null || zippedData.length == 0) return;
+        java.io.File outputDir = new java.io.File("./output/" + jobId);
+        if (!outputDir.exists()) {
+            outputDir.mkdirs();
+        }
+        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(zippedData))) {
+            java.util.zip.ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    continue;
+                }
+                java.io.File destFile = new java.io.File(outputDir, entry.getName());
+                // Zip slip protection
+                if (!destFile.getCanonicalPath().startsWith(outputDir.getCanonicalPath())) {
+                    throw new SecurityException("Zip slip detected: " + entry.getName());
+                }
+                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(destFile)) {
+                    byte[] buffer = new byte[4096];
+                    int len;
+                    while ((len = zis.read(buffer)) > 0) {
+                        fos.write(buffer, 0, len);
+                    }
+                }
+                zis.closeEntry();
+            }
+            System.out.printf("[RECEIVER] ✓ Unzipped received frames to: %s\n", outputDir.getAbsolutePath());
+        } catch (Exception e) {
+            System.err.println("[RECEIVER-ERR] Failed unzipping frames: " + e.getMessage());
         }
     }
 
@@ -239,7 +284,29 @@ public class MasterNodeApplication {
                 && !blenderVer.isEmpty());
             
             if (isRealBlender) {
-                workerRegistry.updateEnvironment(workerId, null, true, blenderVer, -1.0);
+                workerRegistry.updateEnvironment(workerId, null, true, blenderVer, -1.0, null);
+            }
+
+            worker.setCurrentRenderFrame(currentFrame);
+            worker.setTotalRenderFrames(totalFrames);
+            worker.setCurrentRenderProgress(pct);
+
+            // Update the SubTask progress so the Job overall progress is frame-accurate
+            String taskId = worker.getCurrentTaskId();
+            if (jobId != null) {
+                Job job = jobManager.getJob(jobId);
+                if (job != null) {
+                    for (Job.SubTask st : job.getSubTasks()) {
+                        boolean matches = (taskId != null && taskId.equals(st.getTaskId()))
+                            || (taskId == null 
+                                && st.getStatus() == Job.SubTaskStatus.DISPATCHED
+                                && worker.getWorkerId().equals(st.getAssignedWorkerId()));
+                        if (matches) {
+                            st.setProgressPercentage(pct);
+                            break;
+                        }
+                    }
+                }
             }
 
             if ("RENDERING".equalsIgnoreCase(state) || "BUSY".equalsIgnoreCase(state)) {
@@ -264,6 +331,8 @@ public class MasterNodeApplication {
                 String blenderVer = null;
                 boolean blenderInstalled = false;
                 double installPct = -1.0;
+                double renderPct = -1.0;
+                String installMsg = null;
 
                 String[] parts = raw.split("\\|");
                 for (String part : parts) {
@@ -289,14 +358,36 @@ public class MasterNodeApplication {
                         try {
                             installPct = Double.parseDouble(ip);
                         } catch (Exception ignored) {}
+                    } else if (part.startsWith("PROGRESS:")) {
+                        String pr = part.substring(9).replace("%", "").trim();
+                        try {
+                            renderPct = Double.parseDouble(pr);
+                        } catch (Exception ignored) {}
+                    } else if (part.startsWith("MSG:")) {
+                        installMsg = part.substring(4).trim();
                     }
                 }
                 workerRegistry.updateTelemetry(workerId, temp, cpu, ram);
-                if (os != null || blenderVer != null || installPct >= 0) {
-                    workerRegistry.updateEnvironment(workerId, os, blenderInstalled, blenderVer, installPct);
+                if (os != null || blenderVer != null || installPct >= 0 || installMsg != null) {
+                    workerRegistry.updateEnvironment(workerId, os, blenderInstalled, blenderVer, installPct, installMsg);
                 }
-                if (worker.getStatus() == WorkerStatus.OFFLINE || worker.getStatus() == null) {
-                    workerRegistry.updateStatus(workerId, WorkerStatus.IDLE);
+
+                String currentJobId = worker.getCurrentJobId();
+                String currentTaskId = worker.getCurrentTaskId();
+                if (renderPct >= 0 && currentJobId != null) {
+                    Job job = jobManager.getJob(currentJobId);
+                    if (job != null) {
+                        for (Job.SubTask st : job.getSubTasks()) {
+                            boolean match = (currentTaskId != null && currentTaskId.equals(st.getTaskId()))
+                                || (currentTaskId == null
+                                    && st.getStatus() == Job.SubTaskStatus.DISPATCHED
+                                    && worker.getWorkerId().equals(st.getAssignedWorkerId()));
+                            if (match) {
+                                st.setProgressPercentage(renderPct);
+                                break;
+                            }
+                        }
+                    }
                 }
             } catch (Exception ignored) {}
         } else if ("EVICTED".equals(raw)) {

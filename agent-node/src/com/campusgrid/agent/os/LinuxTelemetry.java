@@ -156,7 +156,26 @@ public class LinuxTelemetry {
             }
         }
 
-        // 3. Deterministic Thermodynamic Calculation based on real physical CPU load
+        // 3. Windows ACPI Temperature Query
+        if (os.contains("win")) {
+            try {
+                Process process = new ProcessBuilder("wmic", "/namespace:\\\\root\\wmi", 
+                    "PATH", "MSAcpi_ThermalZoneTemperature", "get", "CurrentTemperature").start();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        line = line.trim();
+                        if (!line.isEmpty() && Character.isDigit(line.charAt(0))) {
+                            double kelvinTenths = Double.parseDouble(line);
+                            int celsius = (int) Math.round((kelvinTenths / 10.0) - 273.15);
+                            if (celsius >= 20 && celsius <= 125) return celsius;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 4. Deterministic Thermodynamic Calculation based on real physical CPU load
         double realCpuLoad = getCpuLoadRatio(); // 0.0 to 1.0 based on real hardware performance
         int baseIdleTemp = 36;
         int activeDelta = isExecutingTask ? 12 : 0;
@@ -177,7 +196,7 @@ public class LinuxTelemetry {
             sysCpu = OS_BEAN.getProcessCpuLoad();
         }
         if (sysCpu < 0 || Double.isNaN(sysCpu) || sysCpu <= 0.0) {
-            // JVM metrics returned zero - invoke native CLI tools on Linux/macOS if applicable
+            // JVM metrics failed or returned zero - invoke native CLI tools to retrieve real hardware load
             String os = System.getProperty("os.name").toLowerCase();
             if (os.contains("mac")) {
                 try {
@@ -211,6 +230,18 @@ public class LinuxTelemetry {
                             long total = user + nice + system + idle;
                             if (total > 0) {
                                 return (double)(total - idle) / total;
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+            } else if (os.contains("win")) {
+                try {
+                    String wmic = com.campusgrid.agent.blender.BlenderUtils.executeCommand("wmic", "cpu", "get", "loadpercentage");
+                    if (wmic != null) {
+                        for (String line : wmic.split("\n")) {
+                            line = line.trim();
+                            if (!line.isEmpty() && Character.isDigit(line.charAt(0))) {
+                                return Double.parseDouble(line) / 100.0;
                             }
                         }
                     }

@@ -1,3 +1,5 @@
+package com.campusgrid.core;
+
 /**
  * CAMPUS GRID - WORKER STATUS ENUM
  * 

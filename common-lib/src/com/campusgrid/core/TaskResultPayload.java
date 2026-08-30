@@ -1,5 +1,13 @@
+package com.campusgrid.core;
+
 import java.io.Serializable;
 
+/**
+ * CAMPUS GRID - TASK RESULT PAYLOAD DTO
+ * 
+ * Transmitted inside a GridMessage(MessageType.TASK_COMPLETE) from Worker to Master
+ * returning the final computational output bytes, image/blend frame data, and execution status.
+ */
 public class TaskResultPayload implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -10,14 +18,23 @@ public class TaskResultPayload implements Serializable {
     private final byte[] outputData;
     private final String errorMessage;
 
+    /**
+     * Constructs a successful task result payload with binary output data.
+     */
     public TaskResultPayload(String jobId, String taskId, byte[] outputData) {
         this(jobId, taskId, true, outputData, null);
     }
 
+    /**
+     * Constructs a failed task result payload with an error description.
+     */
     public TaskResultPayload(String jobId, String taskId, String errorMessage) {
         this(jobId, taskId, false, null, errorMessage);
     }
 
+    /**
+     * Full constructor for TaskResultPayload.
+     */
     public TaskResultPayload(String jobId, String taskId, boolean success, byte[] outputData, String errorMessage) {
         this.jobId = jobId;
         this.taskId = taskId;

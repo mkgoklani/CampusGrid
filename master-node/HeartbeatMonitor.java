@@ -1,3 +1,5 @@
+import com.campusgrid.core.*;
+
 /**
  * CAMPUS GRID - HEARTBEAT MONITOR SERVICE
  * 

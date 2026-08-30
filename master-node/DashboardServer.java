@@ -8,6 +8,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.*;
+import com.campusgrid.core.*;
+
 
 /**
  * CAMPUS GRID - EMBEDDED DASHBOARD REST & WEBSOCKET SERVER
@@ -62,6 +64,9 @@ public class DashboardServer {
         httpServer.createContext("/api/jobs/submit", new SubmitJobHandler());
         httpServer.createContext("/api/jobs/cancel", new CancelJobHandler());
         httpServer.createContext("/api/nodes/install-blender", new InstallBlenderHandler());
+        httpServer.createContext("/api/nodes/toggle-assignment", new ToggleAssignmentHandler());
+        httpServer.createContext("/download/agent.jar", new AgentJarDownloadHandler());
+        httpServer.createContext("/download/blender", new BlenderDownloadHandler());
         httpServer.createContext("/output", new OutputFileHandler());
         httpServer.createContext("/", new StaticWebHandler());
         httpServer.setExecutor(threadPool);
@@ -120,13 +125,18 @@ public class DashboardServer {
             sb.append("\"osName\":\"").append(escapeJson(w.getOsName())).append("\",");
             sb.append("\"blenderInstalled\":").append(w.isBlenderInstalled()).append(",");
             sb.append("\"blenderVersion\":\"").append(escapeJson(w.getBlenderVersion())).append("\",");
+            sb.append("\"taskAssignmentEnabled\":").append(w.isTaskAssignmentEnabled()).append(",");
             sb.append("\"installProgress\":").append(String.format(Locale.US, "%.1f", w.getInstallProgress())).append(",");
+            sb.append("\"installMsg\":").append(w.getInstallMsg() != null ? "\"" + escapeJson(w.getInstallMsg()) + "\"" : "null").append(",");
             sb.append("\"cpuTemp\":").append(w.getCpuTemperature()).append(",");
             sb.append("\"cpuUsage\":").append(String.format(Locale.US, "%.1f", w.getCpuUsagePercent())).append(",");
             sb.append("\"ramUsage\":").append(String.format(Locale.US, "%.2f", w.getRamUsagePercent())).append(",");
             sb.append("\"currentJobId\":").append(w.getCurrentJobId() != null ? "\"" + escapeJson(w.getCurrentJobId()) + "\"" : "null").append(",");
             sb.append("\"currentTaskId\":").append(w.getCurrentTaskId() != null ? "\"" + escapeJson(w.getCurrentTaskId()) + "\"" : "null").append(",");
             sb.append("\"assignedFrames\":").append(w.getAssignedFrameRange() != null ? "\"" + escapeJson(w.getAssignedFrameRange()) + "\"" : "null").append(",");
+            sb.append("\"currentRenderFrame\":").append(w.getCurrentRenderFrame()).append(",");
+            sb.append("\"totalRenderFrames\":").append(w.getTotalRenderFrames()).append(",");
+            sb.append("\"currentRenderProgress\":").append(String.format(Locale.US, "%.1f", w.getCurrentRenderProgress())).append(",");
             sb.append("\"lastHeartbeat\":").append(w.getLastHeartbeatTimestamp());
             sb.append("}");
         }
@@ -147,6 +157,14 @@ public class DashboardServer {
             boolean cleanUp = (job.getParameters() != null && job.getParameters().containsKey("deleteFramesAfterStitch"))
                 && Boolean.parseBoolean(job.getParameters().get("deleteFramesAfterStitch").toString());
 
+            String videoUrl = job.getCompiledVideoUrl();
+            if (videoUrl == null || videoUrl.isEmpty()) {
+                File defaultVideo = new File("./output/" + job.getJobId() + "/" + job.getJobId() + "_animation.mp4");
+                if (defaultVideo.exists()) {
+                    videoUrl = "/output/" + job.getJobId() + "/" + job.getJobId() + "_animation.mp4";
+                }
+            }
+
             sb.append("{");
             sb.append("\"jobId\":\"").append(escapeJson(job.getJobId())).append("\",");
             sb.append("\"jobName\":\"").append(escapeJson(job.getJobName())).append("\",");
@@ -154,7 +172,7 @@ public class DashboardServer {
             sb.append("\"blendFileName\":\"").append(escapeJson(blendName)).append("\",");
             sb.append("\"blendFilePath\":\"").append(escapeJson(blendPath)).append("\",");
             sb.append("\"cleanUpFrames\":").append(cleanUp).append(",");
-            sb.append("\"videoUrl\":\"/output/").append(escapeJson(job.getJobId())).append("/").append(escapeJson(job.getJobId())).append("_animation.mp4\",");
+            sb.append("\"videoUrl\":").append(videoUrl != null ? "\"" + escapeJson(videoUrl) + "\"" : "null").append(",");
             sb.append("\"totalFrames\":").append(job.getTotalFrames()).append(",");
             sb.append("\"status\":\"").append(job.getStatus()).append("\",");
             sb.append("\"progress\":").append(String.format(Locale.US, "%.1f", job.getProgressPercentage())).append(",");
@@ -188,6 +206,10 @@ public class DashboardServer {
     // HTTP HANDLERS & CORS
     // ========================================================================
 
+    private boolean isLocalRequest(HttpExchange exchange) {
+        return exchange.getRemoteAddress().getAddress().isLoopbackAddress();
+    }
+
     private static void sendJsonResponse(HttpExchange exchange, int statusCode, String json) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
         exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
@@ -209,6 +231,10 @@ public class DashboardServer {
     private class ClusterStatusHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (!isLocalRequest(exchange)) {
+                sendJsonResponse(exchange, 403, "{\"error\":\"Forbidden\"}");
+                return;
+            }
             sendJsonResponse(exchange, 200, generateTelemetrySnapshotJson());
         }
     }
@@ -216,6 +242,10 @@ public class DashboardServer {
     private class JobsHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (!isLocalRequest(exchange)) {
+                sendJsonResponse(exchange, 403, "{\"error\":\"Forbidden\"}");
+                return;
+            }
             sendJsonResponse(exchange, 200, generateJobsJson());
         }
     }
@@ -223,6 +253,10 @@ public class DashboardServer {
     private class SubmitJobHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (!isLocalRequest(exchange)) {
+                sendJsonResponse(exchange, 403, "{\"error\":\"Forbidden\"}");
+                return;
+            }
             if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
                 sendJsonResponse(exchange, 204, "");
                 return;
@@ -322,6 +356,10 @@ public class DashboardServer {
     private class CancelJobHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (!isLocalRequest(exchange)) {
+                sendJsonResponse(exchange, 403, "{\"error\":\"Forbidden\"}");
+                return;
+            }
             if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
                 sendJsonResponse(exchange, 204, "");
                 return;
@@ -364,12 +402,25 @@ public class DashboardServer {
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             String targetWorkerId = extractJsonString(body, "workerId", "");
 
-            GridMessage installMsg = new GridMessage(MessageType.INSTALL_BLENDER, "MASTER", "INSTALL_CMD");
             int sentCount = 0;
 
             for (WorkerState w : workerRegistry.getAllWorkers()) {
                 if (targetWorkerId.isEmpty() || w.getWorkerId().equalsIgnoreCase(targetWorkerId)) {
                     try {
+                        String osName = (w.getOsName() != null) ? w.getOsName().toLowerCase() : "";
+                        String osType = "linux";
+                        if (osName.contains("win")) {
+                            osType = "windows";
+                        } else if (osName.contains("mac")) {
+                            osType = "macos";
+                        }
+
+                        // Determine Master IP relative to the connected worker
+                        String masterIp = w.getSocket().getLocalAddress().getHostAddress();
+                        String downloadUrl = "http://" + masterIp + ":" + httpPort + "/download/blender?os=" + osType;
+
+                        GridMessage installMsg = new GridMessage(MessageType.INSTALL_BLENDER, "MASTER", downloadUrl);
+
                         ObjectOutputStream out = w.getOutStream();
                         if (out != null) {
                             synchronized (out) {
@@ -393,9 +444,36 @@ public class DashboardServer {
         }
     }
 
+    private class AgentJarDownloadHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 204, "");
+                return;
+            }
+            File jarFile = new File("agent.jar");
+            if (jarFile.exists() && jarFile.isFile()) {
+                exchange.getResponseHeaders().set("Content-Type", "application/java-archive");
+                exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"agent.jar\"");
+                exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+                exchange.sendResponseHeaders(200, jarFile.length());
+                try (OutputStream os = exchange.getResponseBody(); InputStream is = new FileInputStream(jarFile)) {
+                    is.transferTo(os);
+                }
+            } else {
+                sendJsonResponse(exchange, 404, "{\"error\":\"Agent JAR file not found on Master Node. Make sure agent.jar exists in the root directory.\"}");
+            }
+        }
+    }
+
     private class StaticWebHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (!isLocalRequest(exchange)) {
+                sendJsonResponse(exchange, 403, "{\"error\":\"Forbidden: Dashboard access is restricted to localhost for security.\"}");
+                return;
+            }
+
             File htmlFile = new File("master-node/web/index.html");
             if (!htmlFile.exists()) {
                 htmlFile = new File("web/index.html");
@@ -585,6 +663,125 @@ public class DashboardServer {
                 for (Socket s : activeClients) s.close();
             } catch (Exception ignored) {}
             activeClients.clear();
+        }
+    }
+
+    private class ToggleAssignmentHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!isLocalRequest(exchange)) {
+                sendJsonResponse(exchange, 403, "{\"error\":\"Forbidden\"}");
+                return;
+            }
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 204, "");
+                return;
+            }
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
+                return;
+            }
+            
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String workerId = extractJsonString(body, "workerId", "").trim();
+            String enabledStr = extractJsonString(body, "enabled", "true").trim();
+            boolean enabled = Boolean.parseBoolean(enabledStr);
+            
+            WorkerState w = null;
+            for (WorkerState ws : workerRegistry.getAllWorkers()) {
+                if (ws.getWorkerId().equalsIgnoreCase(workerId)) {
+                    w = ws;
+                    break;
+                }
+            }
+            
+            if (w != null) {
+                w.setTaskAssignmentEnabled(enabled);
+                System.out.printf("[DASHBOARD] Worker [%s] task assignment toggled to: %b\n", workerId, enabled);
+                sendJsonResponse(exchange, 200, "{\"success\":true}");
+            } else {
+                sendJsonResponse(exchange, 404, "{\"error\":\"Worker not found\"}");
+            }
+        }
+    }
+
+    private class BlenderDownloadHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 204, "");
+                return;
+            }
+            
+            String query = exchange.getRequestURI().getQuery();
+            Map<String, String> params = parseQueryParams(query);
+            String os = params.getOrDefault("os", "").toLowerCase();
+            
+            File archiveFile = null;
+            String contentType = "application/octet-stream";
+            String filename = "blender-archive";
+            
+            if ("linux".equals(os)) {
+                archiveFile = findArchiveFile("blender_archives/linux");
+                contentType = "application/x-xz";
+            } else if ("windows".equals(os)) {
+                archiveFile = findArchiveFile("blender_archives/windows");
+                contentType = "application/zip";
+            } else if ("macos".equals(os)) {
+                String arch = params.getOrDefault("arch", "").toLowerCase();
+                if (arch.contains("arm") || arch.contains("aarch64")) {
+                    archiveFile = new File("blender_archives/macos/blender-4.2.0-macos-arm64.dmg");
+                } else if (arch.contains("x64") || arch.contains("amd64") || arch.contains("intel")) {
+                    archiveFile = new File("blender_archives/macos/blender-4.2.0-macos-x64.dmg");
+                }
+                if (archiveFile == null || !archiveFile.exists()) {
+                    archiveFile = findArchiveFile("blender_archives/macos");
+                }
+                contentType = "application/octet-stream";
+            }
+            
+            if (archiveFile != null && archiveFile.exists() && archiveFile.isFile()) {
+                filename = archiveFile.getName();
+                exchange.getResponseHeaders().set("Content-Type", contentType);
+                exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+                exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+                exchange.sendResponseHeaders(200, archiveFile.length());
+                try (OutputStream osStream = exchange.getResponseBody(); InputStream is = new FileInputStream(archiveFile)) {
+                    is.transferTo(osStream);
+                }
+            } else {
+                sendJsonResponse(exchange, 404, "{\"error\":\"Blender archive file not found for OS: " + os + "\"}");
+            }
+        }
+        
+        private File findArchiveFile(String dirPath) {
+            File dir = new File(dirPath);
+            if (dir.exists() && dir.isDirectory()) {
+                File[] files = dir.listFiles();
+                if (files != null) {
+                    for (File f : files) {
+                        if (f.isFile() && !f.getName().startsWith(".")) {
+                            return f;
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        private Map<String, String> parseQueryParams(String query) {
+            Map<String, String> result = new HashMap<>();
+            if (query != null && !query.isEmpty()) {
+                for (String param : query.split("&")) {
+                    String[] pair = param.split("=", 2);
+                    if (pair.length > 0) {
+                        String key = pair[0];
+                        String value = pair.length > 1 ? pair[1] : "";
+                        result.put(key, value);
+                    }
+                }
+            }
+            return result;
         }
     }
 }

@@ -97,10 +97,15 @@ public class FrameStitcher {
         // 2. Build continuous temp frame map to avoid gaps
         List<Path> frames = new ArrayList<>();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(jobDir)) {
-            Pattern p = Pattern.compile("frame_(\\d+)\\.png");
+            Pattern p = Pattern.compile("(?:frame_)?(\\d+)\\.png|tmp.*\\.png");
             for (Path entry : stream) {
-                if (p.matcher(entry.getFileName().toString()).matches()) {
-                    frames.add(entry);
+                String filename = entry.getFileName().toString();
+                if (!filename.endsWith(".mp4") && p.matcher(filename).matches()) {
+                    try {
+                        if (Files.size(entry) > 0) {
+                            frames.add(entry);
+                        }
+                    } catch (IOException ignored) {}
                 }
             }
         } catch (IOException ignored) {}

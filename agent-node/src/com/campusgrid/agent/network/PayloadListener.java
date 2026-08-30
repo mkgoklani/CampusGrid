@@ -3,7 +3,7 @@ package com.campusgrid.agent.network;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import com.campusgrid.core.GridTask;
+import com.campusgrid.core.*;
 
 /**
  * Listens for compute tasks (payloads) sent by the Master node over the socket connection.
@@ -136,10 +136,10 @@ public class PayloadListener implements Runnable {
                         String blenderVer = com.campusgrid.agent.blender.BlenderInstaller.getInstallationStatus().getVersion();
                         readyReporter.reportStatus("N/A", 0, 0, 0.0, -1.0, "READY", blenderVer, true);
                     } catch (Exception e) {}
-                } else if (isGridMessage(obj)) {
-                    handleGridMessagePacket(obj);
-                } else if (isTaskAssignment(obj)) {
-                    handleTaskAssignmentPacket(obj);
+                } else if (obj instanceof GridMessage message) {
+                    handleGridMessagePacket(message);
+                } else if (obj instanceof TaskAssignmentPayload taskAssignment) {
+                    handleTaskAssignmentPacket(taskAssignment);
                 } else if (obj instanceof com.campusgrid.agent.blender.BlenderRenderTask) {
                     com.campusgrid.agent.blender.BlenderRenderTask task = (com.campusgrid.agent.blender.BlenderRenderTask) obj;
                     System.out.println("[TASK] Direct Blender render task received: " + task.getJobId());
@@ -157,35 +157,32 @@ public class PayloadListener implements Runnable {
                     cancelActiveRender(targetJobId);
                 }
             } catch (IOException | ClassNotFoundException e) {
-                System.out.println("[TASK] Connection lost.");
-                stop();
+                System.out.println("[TASK] Connection lost: " + e.getMessage());
+                connection.disconnect();
                 break;
             }
         }
     }
 
 
-    private void handleGridMessagePacket(Object msgObj) {
+    private void handleGridMessagePacket(GridMessage msgObj) {
         try {
-            java.lang.reflect.Method getTypeMethod = msgObj.getClass().getMethod("getType");
-            java.lang.reflect.Method getPayloadMethod = msgObj.getClass().getMethod("getPayload");
-            Object typeVal = getTypeMethod.invoke(msgObj);
-            Object payloadVal = getPayloadMethod.invoke(msgObj);
+            MessageType typeVal = msgObj.getType();
+            Object payloadVal = msgObj.getPayload();
 
-            String typeStr = (typeVal != null) ? typeVal.toString() : "";
-            if ("SUBMIT_TASK".equalsIgnoreCase(typeStr) && payloadVal != null) {
-                handleTaskAssignmentPacket(payloadVal);
-            } else if ("CANCEL_TASK".equalsIgnoreCase(typeStr)) {
+            if (typeVal == MessageType.SUBMIT_TASK && payloadVal instanceof TaskAssignmentPayload assignment) {
+                handleTaskAssignmentPacket(assignment);
+            } else if (typeVal == MessageType.CANCEL_TASK) {
                 String cancelJobId = (payloadVal != null) ? payloadVal.toString() : null;
                 cancelActiveRender(cancelJobId);
-            } else if ("INSTALL_BLENDER".equalsIgnoreCase(typeStr)) {
-                System.out.println("[TASK] Received INSTALL_BLENDER command from Master. Starting installer...");
+            } else if (typeVal == MessageType.INSTALL_BLENDER) {
+                String downloadUrl = (payloadVal != null) ? payloadVal.toString() : "";
+                System.out.println("[TASK] Received INSTALL_BLENDER command from Master. Starting installer from: " + downloadUrl);
                 new Thread(() -> {
-                    com.campusgrid.agent.blender.BlenderInstaller.installBlender((pct, msg) -> {
+                    com.campusgrid.agent.blender.BlenderInstaller.installBlender(downloadUrl, (pct, msg) -> {
                         try {
                             String ver = com.campusgrid.agent.blender.BlenderInstaller.getInstallationStatus().getVersion();
-                            connection.sendObject(String.format(java.util.Locale.US,
-                                "HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | BLENDER: %s | INSTALL: %.1f | MSG: %s",
+                            connection.sendObject(String.format("HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | BLENDER: %s | INSTALL: %.1f | MSG: %s",
                                 com.campusgrid.agent.os.LinuxTelemetry.getCpuTemperatureCelsius(),
                                 com.campusgrid.agent.os.LinuxTelemetry.getCpuLoadPercent(),
                                 com.campusgrid.agent.os.LinuxTelemetry.getRamUsagePercent(),
@@ -203,21 +200,12 @@ public class PayloadListener implements Runnable {
         }
     }
 
-    private boolean isGridMessage(Object obj) {
-        return obj != null && obj.getClass().getName().contains("GridMessage");
-    }
-
-    private boolean isTaskAssignment(Object obj) {
-        return obj != null && obj.getClass().getName().contains("TaskAssignment");
-    }
-
-    private void handleTaskAssignmentPacket(Object taskAssignmentObj) {
+    private void handleTaskAssignmentPacket(TaskAssignmentPayload taskAssignmentObj) {
         try {
-            Class<?> clazz = taskAssignmentObj.getClass();
-            String jobId = (String) clazz.getMethod("getJobId").invoke(taskAssignmentObj);
-            String taskId = (String) clazz.getMethod("getTaskId").invoke(taskAssignmentObj);
-            String range = (String) clazz.getMethod("getAssignedFrameRange").invoke(taskAssignmentObj);
-            Object taskData = clazz.getMethod("getTaskData").invoke(taskAssignmentObj);
+            String jobId = taskAssignmentObj.getJobId();
+            String taskId = taskAssignmentObj.getTaskId();
+            String range = taskAssignmentObj.getAssignedFrameRange();
+            Object taskData = taskAssignmentObj.getTaskData();
 
             int start = 1, end = 1;
             if (range != null && range.contains("-")) {
@@ -232,7 +220,8 @@ public class PayloadListener implements Runnable {
             if (taskData instanceof String s && !s.trim().isEmpty()) {
                 blendPath = s.trim();
             } else if (taskData instanceof byte[] bytes && bytes.length > 0) {
-                java.io.File cacheDir = new java.io.File("./cache/" + jobId);
+                // Use absolute path so snap-sandboxed Blender on Linux can find it
+                java.io.File cacheDir = new java.io.File("./cache/" + jobId).getCanonicalFile();
                 if (!cacheDir.exists()) cacheDir.mkdirs();
                 java.io.File cachedFile = new java.io.File(cacheDir, "scene.blend");
                 java.nio.file.Files.write(cachedFile.toPath(), bytes);
@@ -243,8 +232,16 @@ public class PayloadListener implements Runnable {
             System.out.printf("[TASK] Received Task [%s] for Job [%s] (Frames: %d-%d, Blend: %s)\n",
                 taskId, jobId, start, end, blendPath);
 
+            // Use absolute output path — required for snap-sandboxed Blender on Linux
+            String absOutputDir = new java.io.File("./output/" + jobId).getCanonicalPath();
+            
+            String engine = taskAssignmentObj.getRenderEngine();
+            if (engine == null || engine.trim().isEmpty()) {
+                engine = "CYCLES";
+            }
+            
             com.campusgrid.agent.blender.BlenderRenderTask renderTask = new com.campusgrid.agent.blender.BlenderRenderTask(
-                jobId, blendPath, start, end, "./output/" + jobId, "CYCLES"
+                jobId, blendPath, start, end, absOutputDir, engine
             );
             handleAsyncRender(renderTask, taskId);
         } catch (Exception e) {
@@ -312,6 +309,7 @@ public class PayloadListener implements Runnable {
                 e.printStackTrace();
             } finally {
                 com.campusgrid.agent.os.LinuxTelemetry.isExecutingTask = false;
+                renderedFiles = collectRenderedFiles(task.getJobId());
                 
                 synchronized (PayloadListener.this) {
                     if (Thread.currentThread() == currentRenderThread) {
@@ -328,12 +326,14 @@ public class PayloadListener implements Runnable {
             reporter.reportStatus(task.getJobId(), current, total, pct, -1.0, stateReport, blenderVer, true);
 
             long duration = System.currentTimeMillis() - startTime;
+            byte[] zippedBytes = zipFiles(renderedFiles);
             com.campusgrid.agent.blender.RenderResult result = new com.campusgrid.agent.blender.RenderResult(
                 task.getJobId(),
                 reporter.getWorkerId(),
                 renderedFiles,
                 duration,
-                status
+                status,
+                zippedBytes
             );
 
             // Read frame bytes if available
@@ -429,5 +429,55 @@ public class PayloadListener implements Runnable {
             }
         }
         return null;
+    }
+
+    private java.util.List<String> collectRenderedFiles(String jobId) {
+        java.util.List<String> files = new java.util.ArrayList<>();
+        java.io.File dir;
+        try {
+            dir = new java.io.File("./output/" + jobId).getCanonicalFile();
+        } catch (java.io.IOException e) {
+            dir = new java.io.File("./output/" + jobId).getAbsoluteFile();
+        }
+        if (dir.exists() && dir.isDirectory()) {
+            java.io.File[] list = dir.listFiles();
+            if (list != null) {
+                for (java.io.File f : list) {
+                    if (f.isFile() && f.getName().toLowerCase().endsWith(".png")) {
+                        files.add(f.getAbsolutePath());
+                    }
+                }
+            }
+        }
+        return files;
+    }
+
+    private byte[] zipFiles(java.util.List<String> filePaths) {
+        if (filePaths == null || filePaths.isEmpty()) {
+            return new byte[0];
+        }
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(baos)) {
+            for (String filePath : filePaths) {
+                java.io.File file = new java.io.File(filePath);
+                if (file.exists() && file.isFile()) {
+                    try (java.io.FileInputStream fis = new java.io.FileInputStream(file)) {
+                        java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry(file.getName());
+                        zos.putNextEntry(entry);
+                        byte[] buffer = new byte[4096];
+                        int length;
+                        while ((length = fis.read(buffer)) >= 0) {
+                            zos.write(buffer, 0, length);
+                        }
+                        zos.closeEntry();
+                    } catch (java.io.IOException e) {
+                        System.err.println("[TASK-ERR] Failed to zip file " + filePath + ": " + e.getMessage());
+                    }
+                }
+            }
+        } catch (java.io.IOException e) {
+            System.err.println("[TASK-ERR] Failed creating zip output stream: " + e.getMessage());
+        }
+        return baos.toByteArray();
     }
 }

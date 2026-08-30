@@ -1,5 +1,13 @@
+package com.campusgrid.core;
+
 import java.io.Serializable;
 
+/**
+ * CAMPUS GRID - HEARTBEAT PAYLOAD DTO
+ * 
+ * Transmitted inside a GridMessage(MessageType.HEARTBEAT) by worker agents
+ * to report live hardware temperature, memory consumption, and operating state.
+ */
 public class HeartbeatPayload implements Serializable {
 
     private static final long serialVersionUID = 1L;

@@ -123,29 +123,21 @@ public class HeartbeatService implements Runnable {
             double ramUsage = LinuxTelemetry.getRamUsagePercent();
             String osName = System.getProperty("os.name");
             String blenderVer = com.campusgrid.agent.blender.BlenderInstaller.getInstallationStatus().getVersion();
-            boolean isInstalling = com.campusgrid.agent.blender.BlenderInstaller.isInstalling;
-            double installPct = com.campusgrid.agent.blender.BlenderInstaller.currentInstallProgress;
+            double installProgress = com.campusgrid.agent.blender.BlenderInstaller.currentInstallProgress;
+            String progressSuffix = installProgress >= 0 ? String.format(" | PROGRESS: %.1f%%", installProgress) : "";
 
             // Send authentic telemetry heartbeat to Master node
             try {
-                if (isInstalling && installPct >= 0.0) {
-                    connection.sendObject(String.format(java.util.Locale.US,
-                        "HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | BLENDER: %s | INSTALL: %.1f",
-                        tempCelsius, cpuLoad, ramUsage, osName, blenderVer, installPct));
-                } else {
-                    connection.sendObject(String.format(java.util.Locale.US,
-                        "HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | BLENDER: %s",
-                        tempCelsius, cpuLoad, ramUsage, osName, blenderVer));
-                }
+                connection.sendObject(String.format("HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | BLENDER: %s%s",
+                    tempCelsius, cpuLoad, ramUsage, osName, blenderVer, progressSuffix));
             } catch (IOException e) {
                 System.out.println("[HEARTBEAT] Connection lost: " + e.getMessage());
-                stop();
+                connection.disconnect();
                 break;
             }
 
-            System.out.printf(java.util.Locale.US, "[HEARTBEAT] Sent (Temp: %d°C, CPU: %.1f%%, RAM: %.1f%%, OS: %s, Blender: %s%s)\n",
-                tempCelsius, cpuLoad, ramUsage, osName, blenderVer, 
-                (isInstalling ? String.format(" [INSTALLING: %.1f%%]", installPct) : ""));
+            System.out.printf("[HEARTBEAT] Sent (Temp: %d°C, CPU: %.1f%%, RAM: %.1f%%, OS: %s, Blender: %s)\n",
+                tempCelsius, cpuLoad, ramUsage, osName, blenderVer);
 
             try {
                 Thread.sleep(HEARTBEAT_INTERVAL_MS);

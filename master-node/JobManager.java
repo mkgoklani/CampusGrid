@@ -1,6 +1,10 @@
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import com.campusgrid.core.*;
+
 
 /**
  * CAMPUS GRID - ASYNCHRONOUS JOB MANAGER
@@ -107,7 +111,10 @@ public class JobManager {
                         cleanUp = Boolean.parseBoolean(job.getParameters().get("deleteFramesAfterStitch").toString());
                     }
                     FrameStitcher stitcher = new FrameStitcher();
-                    stitcher.processJobOutput(jobId, job.getTotalFrames(), 30, cleanUp);
+                    Path videoPath = stitcher.processJobOutput(jobId, job.getTotalFrames(), 30, cleanUp);
+                    if (videoPath != null) {
+                        job.setCompiledVideoUrl("/output/" + jobId + "/" + videoPath.getFileName());
+                    }
                 }, "FrameStitcher-" + jobId).start();
             }
         } else {
@@ -185,13 +192,39 @@ public class JobManager {
                     }
                 }
 
-                // Compile whatever frames were finished prior to cancellation for video preview
+                // Wait for the Agent to transmit & unzip rendered frames before stitching.
+                // We poll every 2s for up to 30s — frames arrive asynchronously via RenderResult zip.
                 new Thread(() -> {
                     try {
-                        Thread.sleep(1500); // Wait for active file writes to flush
+                        Path jobOutputDir = Paths.get("./output", jobId);
+                        int maxWaitSeconds = 30;
+                        int polled = 0;
+                        while (polled < maxWaitSeconds) {
+                            Thread.sleep(2000);
+                            polled += 2;
+                            if (java.nio.file.Files.exists(jobOutputDir)) {
+                                long pngCount = 0;
+                                try (var ds = java.nio.file.Files.newDirectoryStream(jobOutputDir, "*.png")) {
+                                    for (var ignored : ds) pngCount++;
+                                } catch (Exception ignored2) {}
+                                if (pngCount > 0) {
+                                    System.out.printf("[JOB-MANAGER] Detected %d frame(s) available for [%s] after %ds wait. Stitching...%n",
+                                        pngCount, jobId, polled);
+                                    break;
+                                }
+                            }
+                        }
                         FrameStitcher stitcher = new FrameStitcher();
-                        stitcher.stitchAvailableFrames(jobId, 30);
-                    } catch (Exception ignored) {}
+                        Path videoPath = stitcher.stitchAvailableFrames(jobId, 30);
+                        if (videoPath != null) {
+                            job.setVideoUrl("/output/" + jobId + "/" + videoPath.getFileName().toString());
+                            System.out.println("[JOB-MANAGER] Partial video stored: " + job.getVideoUrl());
+                        } else {
+                            System.out.println("[JOB-MANAGER] No frames found to stitch for: " + jobId);
+                        }
+                    } catch (Exception e) {
+                        System.err.println("[JOB-MANAGER] Stitch failed: " + e.getMessage());
+                    }
                 }, "FrameStitcher-Cancel-" + jobId).start();
             }
         }

@@ -2,6 +2,8 @@ import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.util.Comparator;
 import java.util.List;
+import com.campusgrid.core.*;
+
 
 /**
  * CAMPUS GRID - NON-BLOCKING BASIC SCHEDULER
@@ -149,7 +151,8 @@ public class BasicScheduler implements Runnable {
             taskId,
             task.getWorkloadType(),
             task.getTaskData() != null ? task.getTaskData() : task.getTaskPayloadBytes(),
-            frameRange
+            frameRange,
+            task.getRenderEngine()
         );
 
         GridMessage message = new GridMessage(

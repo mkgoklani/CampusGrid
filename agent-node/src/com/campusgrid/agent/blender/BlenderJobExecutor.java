@@ -22,8 +22,9 @@ import javax.imageio.ImageIO;
  */
 public class BlenderJobExecutor {
 
-    private static final Pattern FRAME_PATTERN = Pattern.compile("Fra:(\\d+)");
+    private static final Pattern FRAME_PATTERN = Pattern.compile("Fra:\\s*(\\d+)");
     private static final Pattern SAVED_PATTERN = Pattern.compile("Saved:\\s+['\"]?([^'\"]+)['\"]?");
+    private static final Pattern SAMPLE_PATTERN = Pattern.compile("Sample\\s+(\\d+)/(\\d+)");
     
     // Tracks active Blender processes keyed by jobId to allow remote cancellation
     private static final ConcurrentHashMap<String, Process> activeProcesses = new ConcurrentHashMap<>();
@@ -35,13 +36,32 @@ public class BlenderJobExecutor {
      * @return true if a process was found and cancelled, false otherwise.
      */
     public static boolean cancelJob(String jobId) {
-        if (jobId == null) {
-            return false;
-        }
+        if (jobId == null) return false;
         Process process = activeProcesses.get(jobId);
         if (process != null) {
             System.out.println("[EXECUTOR] Cancelling Blender process for job: " + jobId);
-            process.destroyForcibly();
+            
+            // Send SIGINT first (graceful) — Blender flushes and saves a partial frame on SIGINT
+            // instead of SIGKILL which discards the buffer entirely
+            try {
+                String os = System.getProperty("os.name").toLowerCase();
+                if (!os.contains("win")) {
+                    // Unix: send SIGINT so Blender flushes its current tile buffer
+                    Runtime.getRuntime().exec(new String[]{
+                        "kill", "-INT", 
+                        String.valueOf(process.toHandle().pid())
+                    });
+                    // Give Blender 3 seconds to write the partial frame
+                    Thread.sleep(3000);
+                }
+            } catch (Exception e) {
+                System.err.println("[EXECUTOR] SIGINT failed, falling back to force kill");
+            }
+            
+            // Now force kill if still running
+            if (process.isAlive()) {
+                process.destroyForcibly();
+            }
             return true;
         }
         return false;
@@ -63,22 +83,7 @@ public class BlenderJobExecutor {
 
         String blenderPath = BlenderUtils.findExecutablePath();
         File blendFile = (blendFilePath != null) ? new File(blendFilePath) : new File("test.blend");
-        if (!blendFile.exists()) {
-            File parentFile = new File(".." + File.separator + blendFile.getName());
-            if (parentFile.exists()) {
-                blendFile = parentFile;
-            } else {
-                File testBlend = new File("test.blend");
-                if (testBlend.exists()) {
-                    blendFile = testBlend;
-                } else {
-                    File parentTestBlend = new File(".." + File.separator + "test.blend");
-                    if (parentTestBlend.exists()) {
-                        blendFile = parentTestBlend;
-                    }
-                }
-            }
-        }
+
         // Calculate total frames
         int totalFrames = Math.max(1, frameEnd - frameStart + 1);
 
@@ -115,13 +120,8 @@ public class BlenderJobExecutor {
         }
 
         if (renderEngine != null && !renderEngine.trim().isEmpty()) {
-            String engine = renderEngine.trim();
-            // Normalize legacy BLENDER_EEVEE to CYCLES for Blender 4.2+ headless compatibility
-            if ("BLENDER_EEVEE".equalsIgnoreCase(engine)) {
-                engine = "CYCLES";
-            }
             command.add("-E");
-            command.add(engine);
+            command.add(renderEngine.trim());
         }
 
         command.add("-s");
@@ -172,6 +172,24 @@ public class BlenderJobExecutor {
                     }
                 }
 
+                // ── INTRA-FRAME PROGRESS (Cycles "Sample X/Y") ──
+                // Blender reports samples continuously during Cycles rendering.
+                // Use these to provide live progress *within* the current frame.
+                Matcher sampleMatcher = SAMPLE_PATTERN.matcher(line);
+                if (sampleMatcher.find() && reporter != null) {
+                    try {
+                        int samplesNow = Integer.parseInt(sampleMatcher.group(1));
+                        int samplesTotal = Integer.parseInt(sampleMatcher.group(2));
+                        if (samplesTotal > 0) {
+                            double frameProgress = (double) samplesNow / samplesTotal;
+                            int framesPosition = Math.max(completedFrames, lastSeenFrame - frameStart);
+                            double percentage = ((framesPosition + frameProgress) / totalFrames) * 100.0;
+                            percentage = Math.min(99.9, percentage);
+                            reporter.reportStatus(jobId, lastSeenFrame, totalFrames, percentage, -1.0, "RENDERING", blenderVer, false);
+                        }
+                    } catch (NumberFormatException ignored) {}
+                }
+
                 // Detect completed frame saves
                 Matcher savedMatcher = SAVED_PATTERN.matcher(line);
                 if (savedMatcher.find()) {
@@ -187,7 +205,7 @@ public class BlenderJobExecutor {
 
                     double percentage = ((double) completedFrames / totalFrames) * 100.0;
                     if (reporter != null) {
-                        reporter.reportStatus(jobId, lastSeenFrame, totalFrames, percentage, renderFps, "RENDERING", blenderVer, false);
+                        reporter.reportStatus(jobId, lastSeenFrame, totalFrames, percentage, renderFps, "RENDERING", blenderVer, true);
                     }
                 }
             }

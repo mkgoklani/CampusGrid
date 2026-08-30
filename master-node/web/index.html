@@ -473,7 +473,7 @@
     <div class="header">
         <div class="header-title">
             <h1>CampusGrid Master Center</h1>
-            <p>Distributed Edge Rendering &amp; Compute Telemetry</p>
+            <p>Distributed Edge Rendering &amp; Compute Telemetry • <a href="/download/agent.jar" download style="color: var(--accent-blue); font-weight: 600; text-decoration: none;">📥 Download Node Agent (.jar)</a></p>
         </div>
         <div class="stats-bar">
             <div class="stat-card neumorphic-outset">
@@ -519,6 +519,7 @@
                             <th>Node Endpoint</th>
                             <th>Platform / OS</th>
                             <th>Blender Status</th>
+                            <th>Queue Tasks</th>
                             <th>Status</th>
                             <th>CPU</th>
                             <th>RAM</th>
@@ -599,14 +600,34 @@
                     <label for="modal-chunk-size">Manual Frames Per Worker</label>
                     <input type="number" id="modal-chunk-size" class="form-control" value="25" min="1" max="500">
                 </div>
-                <div class="form-group">
-                    <label for="modal-render-engine">Render Engine</label>
-                    <select id="modal-render-engine" class="form-control">
-                        <option value="CYCLES">Cycles (Raytracing)</option>
-                        <option value="BLENDER_EEVEE">Eevee (Realtime)</option>
-                        <option value="WORKBENCH">Workbench (Fast)</option>
-                    </select>
+            </div>
+
+            <div class="form-group">
+                <label for="modal-render-engine">Render Engine</label>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 6px;">
+                    <label style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; border: 2px solid transparent; cursor: pointer; background: rgba(0,0,0,0.04); transition: all 0.2s;" id="engine-label-CYCLES" onclick="selectEngine('CYCLES')">
+                        <input type="radio" name="render-engine-radio" value="CYCLES" id="radio-CYCLES" checked style="accent-color: var(--accent-blue);">
+                        <div>
+                            <div style="font-weight: 700; font-size: 13px;">Cycles</div>
+                            <div style="font-size: 11px; color: var(--text-muted);">Raytracing</div>
+                        </div>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; border: 2px solid transparent; cursor: pointer; background: rgba(0,0,0,0.04); transition: all 0.2s;" id="engine-label-BLENDER_EEVEE" onclick="selectEngine('BLENDER_EEVEE')">
+                        <input type="radio" name="render-engine-radio" value="BLENDER_EEVEE" id="radio-BLENDER_EEVEE" style="accent-color: var(--accent-blue);">
+                        <div>
+                            <div style="font-weight: 700; font-size: 13px;">Eevee</div>
+                            <div style="font-size: 11px; color: var(--text-muted);">Real-time</div>
+                        </div>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; border: 2px solid transparent; cursor: pointer; background: rgba(0,0,0,0.04); transition: all 0.2s;" id="engine-label-WORKBENCH" onclick="selectEngine('WORKBENCH')">
+                        <input type="radio" name="render-engine-radio" value="WORKBENCH" id="radio-WORKBENCH" style="accent-color: var(--accent-blue);">
+                        <div>
+                            <div style="font-weight: 700; font-size: 13px;">Workbench</div>
+                            <div style="font-size: 11px; color: var(--text-muted);">Fast preview</div>
+                        </div>
+                    </label>
                 </div>
+                <input type="hidden" id="modal-render-engine" value="CYCLES">
             </div>
 
             <div class="form-group" style="margin-top: 10px;">
@@ -678,6 +699,23 @@
             document.getElementById('auto-calc-notice').style.display = checked ? 'flex' : 'none';
             if (checked) recalcFramesPerNode();
         }
+
+        function selectEngine(value) {
+            document.getElementById('modal-render-engine').value = value;
+            ['CYCLES', 'BLENDER_EEVEE', 'WORKBENCH'].forEach(e => {
+                const lbl = document.getElementById('engine-label-' + e);
+                if (lbl) {
+                    lbl.style.border = e === value
+                        ? '2px solid var(--accent-blue)'
+                        : '2px solid transparent';
+                    lbl.style.background = e === value
+                        ? 'rgba(100,150,255,0.1)'
+                        : 'rgba(0,0,0,0.04)';
+                }
+            });
+        }
+        // Initialize the highlight on load
+        document.addEventListener('DOMContentLoaded', () => selectEngine('CYCLES'));
 
         function recalcFramesPerNode() {
             const startFrame = parseInt(document.getElementById('modal-start-frame').value || '1');
@@ -857,7 +895,7 @@
                 else if (job.status === 'CANCELLED' || job.status === 'FAILED') statusColor = 'var(--accent-red)';
 
                 const canCancel = (job.status === 'RUNNING' || job.status === 'QUEUED');
-                const isComplete = (job.status === 'COMPLETED');
+                const hasVideo = job.videoUrl && job.videoUrl.length > 0 && job.videoUrl !== 'null';
                 const blendName = job.blendFileName || 'test.blend';
 
                 jobCard.innerHTML = `
@@ -873,7 +911,7 @@
                                 ${job.status}
                             </span>
                             ${canCancel ? `<button class="btn-cancel" onclick="cancelJob('${job.jobId}')">✕ Cancel</button>` : ''}
-                            ${isComplete ? `<button class="btn-play" onclick="previewVideo('${job.videoUrl}', '${escapeHtml(job.jobName)}')">▶ Preview Video</button>` : ''}
+                            ${hasVideo ? `<button class="btn-play" onclick="previewVideo('${job.videoUrl}', '${escapeHtml(job.jobName)}')">▶ ${job.status === 'CANCELLED' ? 'Preview Partial' : 'Preview Video'}</button>` : ''}
                         </div>
                     </div>
 
@@ -882,8 +920,8 @@
                     </div>
 
                     <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--text-muted);">
-                        <span><strong>${percentage}%</strong> Complete (${job.completedTasks} / ${job.totalTasks} Slices)</span>
-                        <span>Total: ${job.totalFrames} Frames</span>
+                        <span><strong>${percentage}%</strong> Complete (${Math.round((job.progress / 100) * job.totalFrames)} / ${job.totalFrames} Frames Rendered)</span>
+                        <span>${job.completedTasks} / ${job.totalTasks} Slices</span>
                     </div>
                 `;
                 container.appendChild(jobCard);
@@ -976,11 +1014,14 @@
                     document.getElementById('install-banner').style.display = 'flex';
                     document.getElementById('install-banner-pct').innerText = `${worker.installProgress.toFixed(0)}%`;
                     document.getElementById('install-banner-bar').style.width = `${Math.max(5, worker.installProgress)}%`;
+                    if (worker.installMsg) {
+                        document.getElementById('install-banner-msg').innerText = worker.installMsg;
+                    }
 
                     blenderBadge = `
                         <div>
-                            <span style="font-size: 11px; font-weight: 600; color: var(--accent-orange);">⏳ Installing (${worker.installProgress.toFixed(0)}%)</span>
-                            <div class="progress-container" style="height: 4px; margin: 4px 0 0 0; width: 90px;">
+                            <span style="font-size: 11px; font-weight: 600; color: var(--accent-orange);">⏳ Installing (${worker.installProgress.toFixed(0)}%) - ${worker.installMsg || 'Working...'}</span>
+                            <div class="progress-container" style="height: 4px; margin: 4px 0 0 0; width: 140px;">
                                 <div class="progress-bar" style="width: ${worker.installProgress}%; background: var(--accent-orange);"></div>
                             </div>
                         </div>
@@ -995,6 +1036,12 @@
                     <td style="font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 12.5px;">${worker.workerId}</td>
                     <td style="font-size: 12.5px; color: var(--text-main); font-weight: 500;">${osLabel}</td>
                     <td>${blenderBadge}</td>
+                    <td style="text-align: center;">
+                        <input type="checkbox" 
+                               ${worker.taskAssignmentEnabled ? 'checked' : ''} 
+                               onchange="toggleTaskAssignment('${worker.workerId}', this.checked)"
+                               style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-blue);" />
+                    </td>
                     <td>
                         <span class="status-tag" style="background: ${statusColor}18; color: ${statusColor};">
                             ${worker.status}
@@ -1003,8 +1050,18 @@
                     <td style="font-weight: 600;">${worker.cpuUsage || '0.0'}%</td>
                     <td style="font-weight: 600;">${worker.ramUsage}%</td>
                     <td style="font-weight: 700; color: ${tempColor};">${temp > 0 ? temp + '°C' : 'N/A'}</td>
-                    <td style="color: var(--text-muted); font-size: 12px;">
-                        ${worker.currentJobId ? `<strong>${worker.currentJobId}</strong> <span style="font-size: 11px;">(Frames ${worker.assignedFrames || ''})</span>` : '<span style="color: #999;">Idle</span>'}
+                    <td style="color: var(--text-muted); font-size: 12px; min-width: 150px;">
+                        ${worker.currentJobId ? `
+                            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+                                <strong>${worker.currentJobId}</strong>
+                                <span style="font-size: 10px; font-weight: 600; color: var(--accent-blue);">
+                                    ${worker.currentRenderFrame ? `Frame ${worker.currentRenderFrame}` : `Frames ${worker.assignedFrames || ''}`}
+                                </span>
+                            </div>
+                            <div class="progress-container" style="height: 4px; background: rgba(255,255,255,0.05);">
+                                <div class="progress-bar" style="width: ${worker.currentRenderProgress || 0}%; background-color: var(--accent-blue);"></div>
+                            </div>
+                        ` : '<span style="color: #999;">Idle</span>'}
                     </td>
                 `;
                 tbody.appendChild(row);
@@ -1021,9 +1078,26 @@
             document.getElementById('stat-busy').innerText = clusterStats.busy;
         }
 
-        // Initial fetch
+        async function toggleTaskAssignment(workerId, enabled) {
+            try {
+                const res = await fetch('/api/nodes/toggle-assignment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ workerId: workerId, enabled: enabled.toString() })
+                });
+                const data = await res.json();
+                if (!data.success) {
+                    alert('Failed to toggle task assignment: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Network error toggling task assignment: ' + e.message);
+            }
+        }
+
+        // Initial fetch and continuous job progress polling
         fetchJobs();
         fetchClusterFallback();
+        setInterval(fetchJobs, 2000);
     </script>
 </body>
 </html>

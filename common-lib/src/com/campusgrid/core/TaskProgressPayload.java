@@ -1,3 +1,5 @@
+package com.campusgrid.core;
+
 import java.io.Serializable;
 
 /**

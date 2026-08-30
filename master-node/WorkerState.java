@@ -1,5 +1,7 @@
 import java.io.ObjectOutputStream;
 import java.net.Socket;
+import com.campusgrid.core.*;
+
 
 /**
  * CAMPUS GRID - WORKER STATE
@@ -24,6 +26,9 @@ public class WorkerState {
     private String currentJobId;
     private String currentTaskId;
     private String assignedFrameRange;
+    private double currentRenderProgress;
+    private int currentRenderFrame;
+    private int totalRenderFrames;
     private long lastHeartbeatTimestamp;
 
     // Platform & Blender Environment
@@ -31,6 +36,9 @@ public class WorkerState {
     private boolean blenderInstalled = false;
     private String blenderVersion = "Unknown";
     private double installProgress = -1.0; // -1 if not installing, 0-100% when installing
+    private String installMsg = null;
+    private boolean taskAssignmentEnabled = true;
+
 
     /**
      * Constructs a new WorkerState.
@@ -121,6 +129,30 @@ public class WorkerState {
         this.assignedFrameRange = assignedFrameRange;
     }
 
+    public synchronized double getCurrentRenderProgress() {
+        return currentRenderProgress;
+    }
+
+    public synchronized void setCurrentRenderProgress(double currentRenderProgress) {
+        this.currentRenderProgress = currentRenderProgress;
+    }
+
+    public synchronized int getCurrentRenderFrame() {
+        return currentRenderFrame;
+    }
+
+    public synchronized void setCurrentRenderFrame(int currentRenderFrame) {
+        this.currentRenderFrame = currentRenderFrame;
+    }
+
+    public synchronized int getTotalRenderFrames() {
+        return totalRenderFrames;
+    }
+
+    public synchronized void setTotalRenderFrames(int totalRenderFrames) {
+        this.totalRenderFrames = totalRenderFrames;
+    }
+
     public synchronized long getLastHeartbeatTimestamp() {
         return lastHeartbeatTimestamp;
     }
@@ -159,6 +191,22 @@ public class WorkerState {
 
     public synchronized void setInstallProgress(double installProgress) {
         this.installProgress = installProgress;
+    }
+
+    public synchronized boolean isTaskAssignmentEnabled() {
+        return taskAssignmentEnabled;
+    }
+
+    public synchronized void setTaskAssignmentEnabled(boolean taskAssignmentEnabled) {
+        this.taskAssignmentEnabled = taskAssignmentEnabled;
+    }
+
+    public synchronized String getInstallMsg() {
+        return installMsg;
+    }
+
+    public synchronized void setInstallMsg(String installMsg) {
+        this.installMsg = installMsg;
     }
 
     @Override

@@ -4,6 +4,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import com.campusgrid.core.*;
+
 
 /**
  * CAMPUS GRID - WORKER REGISTRY
@@ -59,18 +61,18 @@ public class WorkerRegistry {
         updateTelemetry(workerId, cpuTemp, 0.0, ramUsage);
     }
 
-    public void updateEnvironment(String workerId, String osName, boolean blenderInstalled, String blenderVersion, double installProgress) {
+    /**
+     * Updates host OS and Blender runtime environment info.
+     */
+    public void updateEnvironment(String workerId, String osName, boolean blenderInstalled, String blenderVersion, double installProgress, String installMsg) {
         WorkerState state = registry.get(workerId);
         if (state != null) {
             synchronized (state) {
                 if (osName != null && !osName.isEmpty()) state.setOsName(osName);
                 state.setBlenderInstalled(blenderInstalled);
                 if (blenderVersion != null) state.setBlenderVersion(blenderVersion);
-                if (blenderInstalled) {
-                    state.setInstallProgress(-1.0);
-                } else if (installProgress >= 0.0) {
-                    state.setInstallProgress(installProgress);
-                }
+                state.setInstallProgress(installProgress);
+                if (installMsg != null) state.setInstallMsg(installMsg);
             }
         }
     }
@@ -130,7 +132,7 @@ public class WorkerRegistry {
     public List<WorkerState> getAvailableWorkers() {
         List<WorkerState> available = new ArrayList<>();
         for (WorkerState state : registry.values()) {
-            if (state.getStatus() == WorkerStatus.IDLE) {
+            if (state.getStatus() == WorkerStatus.IDLE && state.isTaskAssignmentEnabled()) {
                 available.add(state);
             }
         }

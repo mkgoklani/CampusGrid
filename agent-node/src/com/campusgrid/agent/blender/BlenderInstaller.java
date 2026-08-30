@@ -86,6 +86,18 @@ public class BlenderInstaller {
      * Compatible with macOS, Linux, and Windows.
      */
     public static synchronized boolean installBlender(ProgressCallback callback) {
+        return installBlender("", callback);
+    }
+
+    public static synchronized boolean installBlender(String downloadUrl, ProgressCallback callback) {
+        try {
+            System.out.println("[DIAG] OS: " + System.getProperty("os.name"));
+            System.out.println("[DIAG] Arch: " + System.getProperty("os.arch"));
+            System.out.println("[DIAG] Working dir: " + new File(".").getCanonicalPath());
+            System.out.println("[DIAG] user.dir: " + System.getProperty("user.dir"));
+            System.out.println("[DIAG] Custom download URL: " + downloadUrl);
+        } catch (Exception ignored) {}
+
         if (isInstalling) {
             System.out.println("[INSTALLER] Installation already in progress...");
             return false;
@@ -100,22 +112,16 @@ public class BlenderInstaller {
 
         isInstalling = true;
         currentInstallProgress = 5.0;
-
-        ProgressCallback safeCallback = (pct, msg) -> {
-            currentInstallProgress = pct;
-            if (callback != null) callback.onProgress(pct, msg);
-        };
-
-        safeCallback.onProgress(5.0, "Initiating Blender automated installation pipeline...");
+        if (callback != null) callback.onProgress(5.0, "Initiating Blender automated installation pipeline...");
 
         String os = System.getProperty("os.name").toLowerCase();
         try {
             if (os.contains("mac")) {
-                return installOnMac(safeCallback);
+                return installOnMac(downloadUrl, callback);
             } else if (os.contains("win")) {
-                return installOnWindows(safeCallback);
+                return installOnWindows(downloadUrl, callback);
             } else {
-                return installOnLinux(safeCallback);
+                return installOnLinux(downloadUrl, callback);
             }
         } finally {
             isInstalling = false;
@@ -123,7 +129,12 @@ public class BlenderInstaller {
         }
     }
 
-    private static boolean installOnMac(ProgressCallback callback) {
+
+    private static boolean installOnMac(String downloadUrl, ProgressCallback callback) {
+        if (downloadUrl != null && !downloadUrl.isEmpty()) {
+            System.out.println("[INSTALLER] Running direct offline Mac DMG download from: " + downloadUrl);
+            return directDownloadMacDMG(downloadUrl, callback);
+        }
         System.out.println("[INSTALLER] macOS detected. Checking for Homebrew...");
         String brewPath = findBrewPath();
 
@@ -203,6 +214,10 @@ public class BlenderInstaller {
     }
 
     private static boolean directDownloadMacDMG(ProgressCallback callback) {
+        return directDownloadMacDMG("", callback);
+    }
+
+    private static boolean directDownloadMacDMG(String downloadUrl, ProgressCallback callback) {
         try {
             File tempDir = new File("./downloads");
             if (!tempDir.exists()) tempDir.mkdirs();
@@ -210,16 +225,18 @@ public class BlenderInstaller {
 
             boolean isArm = System.getProperty("os.arch").toLowerCase().contains("aarch64") 
                          || System.getProperty("os.arch").toLowerCase().contains("arm");
-            String url = isArm 
-                ? "https://download.blender.org/release/Blender4.2/blender-4.2.0-macos-arm64.dmg"
-                : "https://download.blender.org/release/Blender4.2/blender-4.2.0-macos-x64.dmg";
+            String url = (downloadUrl != null && !downloadUrl.isEmpty())
+                ? (downloadUrl.contains("?") ? downloadUrl + "&arch=" + (isArm ? "arm64" : "x64") : downloadUrl + "?arch=" + (isArm ? "arm64" : "x64"))
+                : (isArm 
+                    ? "https://download.blender.org/release/Blender4.2/blender-4.2.0-macos-arm64.dmg"
+                    : "https://download.blender.org/release/Blender4.2/blender-4.2.0-macos-x64.dmg");
 
             String whichCurl = BlenderUtils.executeCommand("which", "curl");
             boolean downloaded = false;
             if (whichCurl != null && !whichCurl.isEmpty()) {
                 if (callback != null) callback.onProgress(15.0, "Downloading Blender 4.2 official DMG (~300MB)...");
                 System.out.println("[INSTALLER] Downloading Blender DMG via curl: " + url);
-                BlenderUtils.executeCommand(whichCurl.trim(), "-L", "-o", dmgFile.getAbsolutePath(), url);
+                BlenderUtils.executeCommandWithTimeout(300, whichCurl.trim(), "-L", "-o", dmgFile.getAbsolutePath(), url);
                 downloaded = dmgFile.exists() && dmgFile.length() > 50000000; // at least 50MB
             }
 
@@ -235,7 +252,7 @@ public class BlenderInstaller {
 
             if (callback != null) callback.onProgress(80.0, "Mounting Blender DMG image...");
             System.out.println("[INSTALLER] Attaching DMG: " + dmgFile.getAbsolutePath());
-            BlenderUtils.executeCommand("hdiutil", "attach", dmgFile.getAbsolutePath(), "-nobrowse", "-readonly");
+            BlenderUtils.executeCommandWithTimeout(120, "hdiutil", "attach", dmgFile.getAbsolutePath(), "-nobrowse", "-readonly");
 
             // Look for mounted volume under /Volumes
             File volumesDir = new File("/Volumes");
@@ -300,24 +317,11 @@ public class BlenderInstaller {
     }
 
     private static boolean installOnLinux(ProgressCallback callback) {
-        System.out.println("[INSTALLER] Linux detected. Checking apt package manager...");
-        try {
-            String whichApt = BlenderUtils.executeCommand("which", "apt-get");
-            if (whichApt != null && !whichApt.isEmpty()) {
-                if (callback != null) callback.onProgress(15.0, "Updating apt package list...");
-                BlenderUtils.executeCommand("sudo", "apt-get", "update", "-y");
-                if (callback != null) callback.onProgress(40.0, "Installing Blender via apt...");
-                BlenderUtils.executeCommand("sudo", "apt-get", "install", "-y", "blender");
+        return installOnLinux("", callback);
+    }
 
-                Status verified = getInstallationStatus();
-                if (verified.isInstalled()) {
-                    if (callback != null) callback.onProgress(100.0, "Blender " + verified.getVersion() + " installed successfully!");
-                    return true;
-                }
-            }
-        } catch (Exception ignored) {}
-
-        // Fallback: Direct Official Portable tar.xz download
+    private static boolean installOnLinux(String downloadUrl, ProgressCallback callback) {
+        // Direct Official Portable tar.xz download (avoids sudo apt-get password hangs in headless nodes)
         System.out.println("[INSTALLER] Running direct standalone Linux tar.xz download...");
         try {
             File binDir = new File("./blender_bin");
@@ -325,16 +329,35 @@ public class BlenderInstaller {
             File tarFile = new File("./downloads/blender-linux.tar.xz");
             if (!tarFile.getParentFile().exists()) tarFile.getParentFile().mkdirs();
 
-            String url = "https://download.blender.org/release/Blender4.2/blender-4.2.0-linux-x64.tar.xz";
+            String url = (downloadUrl != null && !downloadUrl.isEmpty())
+                ? downloadUrl
+                : "https://download.blender.org/release/Blender4.2/blender-4.2.0-linux-x64.tar.xz";
             if (callback != null) callback.onProgress(20.0, "Downloading standalone Blender archive...");
-            downloadFileWithProgress(url, tarFile, callback, 20.0, 75.0);
+            downloadFileWithProgress(url, tarFile, callback, 20.0, 65.0);
 
-            if (callback != null) callback.onProgress(80.0, "Extracting portable Blender...");
-            BlenderUtils.executeCommand("tar", "-xf", tarFile.getAbsolutePath(), "-C", binDir.getAbsolutePath(), "--strip-components=1");
-            new File(binDir, "blender").setExecutable(true);
+            if (callback != null) callback.onProgress(70.0, "Extracting portable Blender (may take several minutes)...");
+            // Allow up to 5 minutes (300 seconds) for heavy decompression
+            BlenderUtils.executeCommandWithTimeout(300, "tar", "-xf", tarFile.getAbsolutePath(), "-C", binDir.getAbsolutePath(), "--strip-components=1");
+            
+            // After extraction, explicitly check the expected path first
+            File blenderExe = new File(binDir, "blender");
+            if (blenderExe.exists()) {
+                blenderExe.setExecutable(true);
+                System.out.println("[INSTALLER] Binary found at: " + blenderExe.getAbsolutePath());
+            }
 
-            Status verified = getInstallationStatus();
-            return verified.isInstalled();
+            // Give the filesystem a moment, then retry verification up to 3x
+            for (int attempt = 0; attempt < 3; attempt++) {
+                Thread.sleep(1000);
+                Status verified = getInstallationStatus();
+                if (verified.isInstalled()) {
+                    if (callback != null) callback.onProgress(100.0, 
+                        "Blender " + verified.getVersion() + " installed successfully!");
+                    return true;
+                }
+            }
+            System.err.println("[INSTALLER-ERR] Binary exists but version check failed.");
+            return false;
         } catch (Exception e) {
             System.err.println("[INSTALLER-ERR] Linux standalone installation error: " + e.getMessage());
         }
@@ -342,45 +365,61 @@ public class BlenderInstaller {
     }
 
     private static boolean installOnWindows(ProgressCallback callback) {
-        System.out.println("[INSTALLER] Windows detected. Running standalone portable Blender 4.2 pipeline...");
+        return installOnWindows("", callback);
+    }
+
+    private static boolean installOnWindows(String downloadUrl, ProgressCallback callback) {
+        if (downloadUrl == null || downloadUrl.isEmpty()) {
+            System.out.println("[INSTALLER] Windows detected. Checking winget...");
+            try {
+                String whichWinget = BlenderUtils.executeCommand("where", "winget");
+                if (whichWinget != null && !whichWinget.isEmpty()) {
+                    if (callback != null) callback.onProgress(25.0, "Invoking Windows Package Manager (winget)...");
+                    BlenderUtils.executeCommand("winget", "install", "--id", "BlenderFoundation.Blender", "-e", "--silent");
+                    if (callback != null) callback.onProgress(90.0, "Verifying Blender installation...");
+                    Thread.sleep(2000);
+                    Status verified = getInstallationStatus();
+                    if (verified.isInstalled()) return true;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Fallback: Direct portable zip download
         try {
             File binDir = new File("./blender_bin");
             if (!binDir.exists()) binDir.mkdirs();
-            File tempDir = new File("./downloads");
-            if (!tempDir.exists()) tempDir.mkdirs();
-            File zipFile = new File(tempDir, "blender-windows-x64.zip");
+            File zipFile = new File("./downloads/blender-win.zip");
+            if (!zipFile.getParentFile().exists()) zipFile.getParentFile().mkdirs();
 
-            String url = "https://download.blender.org/release/Blender4.2/blender-4.2.0-windows-x64.zip";
-            boolean downloaded = false;
+            String url = (downloadUrl != null && !downloadUrl.isEmpty())
+                ? downloadUrl
+                : "https://download.blender.org/release/Blender4.2/blender-4.2.0-windows-x64.zip";
+            if (callback != null) callback.onProgress(20.0, "Downloading portable Blender ZIP...");
+            downloadFileWithProgress(url, zipFile, callback, 20.0, 75.0);
 
-            if (zipFile.exists() && zipFile.length() > 100000000) {
-                System.out.println("[INSTALLER] Cached ZIP found: " + zipFile.getAbsolutePath() + " (" + (zipFile.length() / (1024 * 1024)) + " MB)");
-                downloaded = true;
-                if (callback != null) callback.onProgress(75.0, "Found cached Blender archive. Ready for extraction...");
-            } else {
-                if (callback != null) callback.onProgress(15.0, "Connecting to Blender CDN...");
-                downloaded = downloadFileWithProgress(url, zipFile, callback, 15.0, 75.0);
-            }
-
-            if (!downloaded || !zipFile.exists() || zipFile.length() < 10000000) {
-                System.err.println("[INSTALLER-ERR] Failed downloading portable Blender ZIP from " + url);
-                return false;
-            }
-
-            if (callback != null) callback.onProgress(80.0, "Extracting portable Blender suite into ./blender_bin...");
-            System.out.println("[INSTALLER] Extracting " + zipFile.getAbsolutePath() + " to " + binDir.getAbsolutePath());
+            if (callback != null) callback.onProgress(80.0, "Extracting portable Blender...");
             extractZip(zipFile, binDir);
 
-            if (callback != null) callback.onProgress(95.0, "Verifying extracted Blender binary...");
-            Thread.sleep(1000);
-            Status verified = getInstallationStatus();
-            if (verified.isInstalled()) {
-                if (callback != null) callback.onProgress(100.0, "Blender " + verified.getVersion() + " installed successfully!");
-                System.out.println("[INSTALLER] ✔ Blender portable installed successfully: " + verified.getExecutablePath());
-                return true;
-            } else {
-                System.err.println("[INSTALLER-ERR] Extraction completed but Blender executable was not located.");
+            // After extraction, explicitly check the expected path first
+            String os = System.getProperty("os.name").toLowerCase();
+            File blenderExe = new File(binDir, os.contains("win") ? "blender.exe" : "blender");
+            if (blenderExe.exists()) {
+                blenderExe.setExecutable(true);
+                System.out.println("[INSTALLER] Binary found at: " + blenderExe.getAbsolutePath());
             }
+
+            // Give the filesystem a moment, then retry verification up to 3x
+            for (int attempt = 0; attempt < 3; attempt++) {
+                Thread.sleep(1000);
+                Status verified = getInstallationStatus();
+                if (verified.isInstalled()) {
+                    if (callback != null) callback.onProgress(100.0, 
+                        "Blender " + verified.getVersion() + " installed successfully!");
+                    return true;
+                }
+            }
+            System.err.println("[INSTALLER-ERR] Binary exists but version check failed.");
+            return false;
         } catch (Exception e) {
             System.err.println("[INSTALLER-ERR] Windows standalone installation error: " + e.getMessage());
         }
@@ -393,70 +432,88 @@ public class BlenderInstaller {
      */
     public static boolean downloadFileWithProgress(String urlStr, File destFile, ProgressCallback callback, double startPct, double endPct) {
         try {
-            URL url = URI.create(urlStr).toURL();
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestProperty("User-Agent", "CampusGrid-BlenderInstaller/1.0");
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(30000);
-            conn.connect();
+            int maxRedirects = 10;
+            String currentUrl = urlStr;
 
-            int code = conn.getResponseCode();
-            if (code >= 300 && code < 400) {
-                String redirect = conn.getHeaderField("Location");
-                if (redirect != null) {
-                    return downloadFileWithProgress(redirect, destFile, callback, startPct, endPct);
+            for (int i = 0; i < maxRedirects; i++) {
+                URL url = URI.create(currentUrl).toURL();
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setInstanceFollowRedirects(false); // handle manually
+                conn.setRequestProperty("User-Agent", "CampusGrid-BlenderInstaller/1.0");
+                conn.setConnectTimeout(30_000);
+                conn.setReadTimeout(120_000); // 2 min per chunk, not total
+                conn.connect();
+
+                int code = conn.getResponseCode();
+                if (code >= 300 && code < 400) {
+                    currentUrl = conn.getHeaderField("Location");
+                    conn.disconnect();
+                    if (currentUrl == null) return false;
+                    continue;
                 }
-            }
+                if (code != 200) {
+                    System.err.println("[INSTALLER-ERR] HTTP " + code + " for " + currentUrl);
+                    return false;
+                }
 
-            long totalBytes = conn.getContentLengthLong();
-            long downloadedBytes = 0;
+                long totalBytes = conn.getContentLengthLong();
+                long downloadedBytes = 0;
 
-            try (InputStream in = new BufferedInputStream(conn.getInputStream());
-                 FileOutputStream out = new FileOutputStream(destFile)) {
-
-                byte[] buffer = new byte[65536];
-                int read;
-                long lastReport = System.currentTimeMillis();
-
-                while ((read = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, read);
-                    downloadedBytes += read;
-
-                    long now = System.currentTimeMillis();
-                    if (now - lastReport > 400 && totalBytes > 0) {
-                        lastReport = now;
-                        double fraction = (double) downloadedBytes / totalBytes;
-                        double currentPct = startPct + fraction * (endPct - startPct);
-                        if (callback != null) {
-                            String msg = String.format("Downloading Blender: %.1f MB / %.1f MB", 
-                                downloadedBytes / (1024.0 * 1024.0), totalBytes / (1024.0 * 1024.0));
-                            callback.onProgress(currentPct, msg);
+                try (InputStream in = new BufferedInputStream(conn.getInputStream(), 131072);
+                     FileOutputStream out = new FileOutputStream(destFile)) {
+                    byte[] buffer = new byte[131072];
+                    int read;
+                    long lastReport = System.currentTimeMillis();
+                    while ((read = in.read(buffer)) != -1) {
+                        out.write(buffer, 0, read);
+                        downloadedBytes += read;
+                        long now = System.currentTimeMillis();
+                        if (now - lastReport > 500 && totalBytes > 0) {
+                            lastReport = now;
+                            double fraction = (double) downloadedBytes / totalBytes;
+                            double pct = startPct + fraction * (endPct - startPct);
+                            if (callback != null) {
+                                callback.onProgress(pct, String.format("Downloading: %.1f / %.1f MB",
+                                    downloadedBytes / 1_048_576.0, totalBytes / 1_048_576.0));
+                            }
                         }
                     }
                 }
+                conn.disconnect();
+                return destFile.exists() && destFile.length() > 10_000_000; // sanity: at least 10MB
             }
-            return destFile.exists() && destFile.length() > 0;
+            return false;
         } catch (Exception e) {
-            System.err.println("[INSTALLER-ERR] Download failed from " + urlStr + ": " + e.getMessage());
+            System.err.println("[INSTALLER-ERR] Download failed: " + e.getMessage());
             return false;
         }
     }
 
     private static void extractZip(File zipFile, File destDir) throws Exception {
-        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(new java.io.FileInputStream(zipFile))) {
+        try (java.util.zip.ZipInputStream zis = 
+                new java.util.zip.ZipInputStream(new java.io.FileInputStream(zipFile))) {
             java.util.zip.ZipEntry entry;
-            byte[] buffer = new byte[32768];
+            byte[] buffer = new byte[65536];
             while ((entry = zis.getNextEntry()) != null) {
-                File newFile = new File(destDir, entry.getName());
+                // Strip the top-level folder (e.g. "blender-4.2.0-windows-x64/")
+                String name = entry.getName();
+                int slash = name.indexOf('/');
+                if (slash >= 0) name = name.substring(slash + 1);
+                if (name.isEmpty()) { zis.closeEntry(); continue; }
+
+                File newFile = new File(destDir, name);
+                // Zip slip protection
+                if (!newFile.getCanonicalPath().startsWith(destDir.getCanonicalPath() + File.separator)) {
+                    throw new SecurityException("Zip slip detected: " + entry.getName());
+                }
+
                 if (entry.isDirectory()) {
                     newFile.mkdirs();
                 } else {
                     newFile.getParentFile().mkdirs();
                     try (FileOutputStream fos = new FileOutputStream(newFile)) {
                         int len;
-                        while ((len = zis.read(buffer)) > 0) {
-                            fos.write(buffer, 0, len);
-                        }
+                        while ((len = zis.read(buffer)) > 0) fos.write(buffer, 0, len);
                     }
                 }
                 zis.closeEntry();

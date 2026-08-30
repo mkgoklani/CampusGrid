@@ -3,6 +3,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import com.campusgrid.core.*;
+
 
 /**
  * CAMPUS GRID - JOB ABSTRACTION
@@ -23,6 +25,7 @@ public class Job implements Serializable {
     private final Map<String, Object> parameters;
 
     private volatile JobStatus status;
+    private volatile String compiledVideoUrl = null;
     private final ConcurrentHashMap<String, SubTask> subTasks = new ConcurrentHashMap<>();
     private final ConcurrentLinkedQueue<SubTask> pendingSubTasks = new ConcurrentLinkedQueue<>();
     private final AtomicInteger completedTaskCount = new AtomicInteger(0);
@@ -65,12 +68,15 @@ public class Job implements Serializable {
             ? parameters.get("blendFilePath").toString() : "scene.blend";
         Object blendBytes = (parameters != null) ? parameters.get("blendFileBytes") : null;
 
+        String renderEngine = (parameters != null && parameters.containsKey("renderEngine"))
+            ? parameters.get("renderEngine").toString() : "CYCLES";
+
         for (int start = 1; start <= totalFrames; start += chunkSize) {
             int end = Math.min(start + chunkSize - 1, totalFrames);
             String taskId = String.format("%s_T%03d", jobId, taskSeq++);
             String frameRange = (start == end) ? String.valueOf(start) : (start + "-" + end);
 
-            SubTask subTask = new SubTask(taskId, jobId, start, end, frameRange, workloadType);
+            SubTask subTask = new SubTask(taskId, jobId, start, end, frameRange, workloadType, renderEngine);
             subTask.setTaskData(blendBytes != null ? blendBytes : blendPath);
             if (blendBytes instanceof byte[] b) {
                 subTask.setTaskPayloadBytes(b);
@@ -137,7 +143,18 @@ public class Job implements Serializable {
      */
     public double getProgressPercentage() {
         if (subTasks.isEmpty()) return 0.0;
-        return ((double) completedTaskCount.get() / subTasks.size()) * 100.0;
+        
+        long completedCount = subTasks.values().stream()
+            .filter(t -> t.getStatus() == SubTaskStatus.COMPLETED)
+            .count();
+        
+        double inProgressSum = subTasks.values().stream()
+            .filter(t -> t.getStatus() == SubTaskStatus.DISPATCHED)
+            .mapToDouble(SubTask::getProgressPercentage)
+            .sum();
+        
+        double raw = ((completedCount * 100.0) + inProgressSum) / subTasks.size();
+        return Math.min(100.0, Math.max(0.0, raw));
     }
 
     public String getJobId() { return jobId; }
@@ -148,6 +165,11 @@ public class Job implements Serializable {
     public Map<String, Object> getParameters() { return parameters; }
     public JobStatus getStatus() { return status; }
     public void setStatus(JobStatus status) { this.status = status; }
+
+    public String getCompiledVideoUrl() { return compiledVideoUrl; }
+    public void setCompiledVideoUrl(String compiledVideoUrl) { this.compiledVideoUrl = compiledVideoUrl; }
+    public String getVideoUrl() { return compiledVideoUrl; }
+    public void setVideoUrl(String videoUrl) { this.compiledVideoUrl = videoUrl; }
 
     public Collection<SubTask> getSubTasks() {
         return Collections.unmodifiableCollection(subTasks.values());
@@ -187,22 +209,26 @@ public class Job implements Serializable {
         private final int endFrame;
         private final String frameRange;
         private final String workloadType;
+        private final String renderEngine;
 
         private volatile SubTaskStatus status;
         private volatile String assignedWorkerId;
         private volatile int retryCount;
         private volatile byte[] taskPayloadBytes;
         private volatile Object taskData;
+        private volatile double progressPercentage; // Track individual subtask progress
 
-        public SubTask(String taskId, String jobId, int startFrame, int endFrame, String frameRange, String workloadType) {
+        public SubTask(String taskId, String jobId, int startFrame, int endFrame, String frameRange, String workloadType, String renderEngine) {
             this.taskId = taskId;
             this.jobId = jobId;
             this.startFrame = startFrame;
             this.endFrame = endFrame;
             this.frameRange = frameRange;
             this.workloadType = workloadType;
+            this.renderEngine = renderEngine;
             this.status = SubTaskStatus.PENDING;
             this.retryCount = 0;
+            this.progressPercentage = 0.0;
         }
 
         public String getTaskId() { return taskId; }
@@ -211,6 +237,7 @@ public class Job implements Serializable {
         public int getEndFrame() { return endFrame; }
         public String getFrameRange() { return frameRange; }
         public String getWorkloadType() { return workloadType; }
+        public String getRenderEngine() { return renderEngine; }
         
         public SubTaskStatus getStatus() { return status; }
         public void setStatus(SubTaskStatus status) { this.status = status; }
@@ -226,6 +253,9 @@ public class Job implements Serializable {
 
         public Object getTaskData() { return taskData; }
         public void setTaskData(Object taskData) { this.taskData = taskData; }
+
+        public double getProgressPercentage() { return progressPercentage; }
+        public void setProgressPercentage(double pct) { this.progressPercentage = pct; }
 
         @Override
         public String toString() {

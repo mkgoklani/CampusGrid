@@ -14,6 +14,7 @@ public class RenderResult implements Serializable {
     private final List<String> renderedFramePaths;
     private final long renderDuration; // in milliseconds
     private final String status; // e.g. "SUCCESS", "FAILED", "CANCELLED"
+    private final byte[] zippedFramesData;
 
     /**
      * Constructs a new RenderResult.
@@ -23,13 +24,15 @@ public class RenderResult implements Serializable {
      * @param renderedFramePaths the list of output frame file paths.
      * @param renderDuration     the execution duration in milliseconds.
      * @param status             the execution status (e.g. "SUCCESS", "FAILED", "CANCELLED").
+     * @param zippedFramesData   the zip compressed bytes of all rendered frame files.
      */
-    public RenderResult(String jobId, String workerId, List<String> renderedFramePaths, long renderDuration, String status) {
+    public RenderResult(String jobId, String workerId, List<String> renderedFramePaths, long renderDuration, String status, byte[] zippedFramesData) {
         this.jobId = jobId;
         this.workerId = workerId;
         this.renderedFramePaths = renderedFramePaths;
         this.renderDuration = renderDuration;
         this.status = status;
+        this.zippedFramesData = zippedFramesData;
     }
 
     /**
@@ -75,6 +78,10 @@ public class RenderResult implements Serializable {
      */
     public String getStatus() {
         return status;
+    }
+
+    public byte[] getZippedFramesData() {
+        return zippedFramesData;
     }
 
     @Override
