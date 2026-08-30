@@ -144,12 +144,22 @@ public class BasicScheduler implements Runnable {
         task.setAssignedWorkerId(workerId);
 
         // 2. Build protocol envelope
+        Job job = jobManager.getJob(jobId);
+        String renderEngine = "CYCLES";
+        if (job != null && job.getParameters() != null) {
+            Object engine = job.getParameters().get("renderEngine");
+            if (engine != null) {
+                renderEngine = engine.toString();
+            }
+        }
+
         TaskAssignmentPayload payload = new TaskAssignmentPayload(
             jobId,
             taskId,
             task.getWorkloadType(),
             task.getTaskData() != null ? task.getTaskData() : task.getTaskPayloadBytes(),
-            frameRange
+            frameRange,
+            renderEngine
         );
 
         GridMessage message = new GridMessage(

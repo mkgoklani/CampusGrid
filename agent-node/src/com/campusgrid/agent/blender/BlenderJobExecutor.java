@@ -99,26 +99,29 @@ public class BlenderJobExecutor {
         command.add(blendFile.getAbsolutePath());
 
         if (outputDir != null && !outputDir.trim().isEmpty()) {
-            String outPath = outputDir.trim();
-            // Blender requires directory outputs to end with a slash, otherwise it treats the last part as a filename prefix
+            File dir = new File(outputDir).getAbsoluteFile();
+            if (!dir.exists()) {
+                dir.mkdirs();
+            }
+            String outPath = dir.getAbsolutePath();
             if (!outPath.endsWith("/") && !outPath.endsWith("\\")) {
                 outPath += File.separator;
             }
             command.add("-o");
             command.add(outPath);
-            
-            // Ensure the directory exists
-            File dir = new File(outputDir);
-            if (!dir.exists()) {
-                dir.mkdirs();
-            }
         }
 
         if (renderEngine != null && !renderEngine.trim().isEmpty()) {
-            String engine = renderEngine.trim();
-            // Normalize legacy BLENDER_EEVEE to CYCLES for Blender 4.2+ headless compatibility
-            if ("BLENDER_EEVEE".equalsIgnoreCase(engine)) {
-                engine = "CYCLES";
+            String engine = renderEngine.trim().toUpperCase();
+            if ("WORKBENCH".equals(engine)) {
+                engine = "BLENDER_WORKBENCH";
+            } else if ("EEVEE".equals(engine) || "BLENDER_EEVEE".equals(engine)) {
+                String blenderVer = BlenderInstaller.getInstallationStatus().getVersion();
+                if (isBlender42OrNewer(blenderVer)) {
+                    engine = "BLENDER_EEVEE_NEXT";
+                } else {
+                    engine = "BLENDER_EEVEE";
+                }
             }
             command.add("-E");
             command.add(engine);
@@ -269,5 +272,23 @@ public class BlenderJobExecutor {
         }
 
         return rendered;
+    }
+
+    private static boolean isBlender42OrNewer(String version) {
+        if (version == null) return false;
+        try {
+            String[] parts = version.split("\\.");
+            if (parts.length > 0) {
+                int major = Integer.parseInt(parts[0].trim());
+                if (major > 4) return true;
+                if (major == 4 && parts.length > 1) {
+                    int minor = Integer.parseInt(parts[1].trim());
+                    return minor >= 2;
+                }
+            }
+        } catch (Exception e) {
+            // fallback
+        }
+        return false;
     }
 }

@@ -240,11 +240,22 @@ public class PayloadListener implements Runnable {
                 System.out.printf("[TASK] Unpacked binary blend file (%d bytes) to: %s\n", bytes.length, blendPath);
             }
 
-            System.out.printf("[TASK] Received Task [%s] for Job [%s] (Frames: %d-%d, Blend: %s)\n",
-                taskId, jobId, start, end, blendPath);
+            String renderEngine = "CYCLES";
+            try {
+                java.lang.reflect.Method getEngineMethod = clazz.getMethod("getRenderEngine");
+                String engine = (String) getEngineMethod.invoke(taskAssignmentObj);
+                if (engine != null && !engine.trim().isEmpty()) {
+                    renderEngine = engine.trim();
+                }
+            } catch (NoSuchMethodException e) {
+                // Fallback for older master-nodes sending payloads without getRenderEngine()
+            }
+
+            System.out.printf("[TASK] Received Task [%s] for Job [%s] (Frames: %d-%d, Blend: %s, Engine: %s)\n",
+                taskId, jobId, start, end, blendPath, renderEngine);
 
             com.campusgrid.agent.blender.BlenderRenderTask renderTask = new com.campusgrid.agent.blender.BlenderRenderTask(
-                jobId, blendPath, start, end, "./output/" + jobId, "CYCLES"
+                jobId, blendPath, start, end, "./output/" + jobId, renderEngine
             );
             handleAsyncRender(renderTask, taskId);
         } catch (Exception e) {

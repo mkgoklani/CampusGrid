@@ -9,13 +9,19 @@ public class TaskAssignmentPayload implements Serializable {
     private final String workloadType;
     private final Object taskData;
     private final String assignedFrameRange;
+    private final String renderEngine;
 
     public TaskAssignmentPayload(String jobId, String taskId, String workloadType, Object taskData, String assignedFrameRange) {
+        this(jobId, taskId, workloadType, taskData, assignedFrameRange, "CYCLES");
+    }
+
+    public TaskAssignmentPayload(String jobId, String taskId, String workloadType, Object taskData, String assignedFrameRange, String renderEngine) {
         this.jobId = jobId;
         this.taskId = taskId;
         this.workloadType = workloadType;
         this.taskData = taskData;
         this.assignedFrameRange = assignedFrameRange;
+        this.renderEngine = renderEngine;
     }
 
     public String getJobId() {
@@ -38,9 +44,13 @@ public class TaskAssignmentPayload implements Serializable {
         return assignedFrameRange;
     }
 
+    public String getRenderEngine() {
+        return renderEngine;
+    }
+
     @Override
     public String toString() {
-        return String.format("TaskAssignmentPayload[Job=%s, Task=%s, Type=%s, Frames=%s]",
-            jobId, taskId, workloadType, assignedFrameRange);
+        return String.format("TaskAssignmentPayload[Job=%s, Task=%s, Type=%s, Frames=%s, Engine=%s]",
+            jobId, taskId, workloadType, assignedFrameRange, renderEngine);
     }
 }
