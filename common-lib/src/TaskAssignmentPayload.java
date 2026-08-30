@@ -1,4 +1,5 @@
 import java.io.Serializable;
+import com.campusgrid.core.RenderSettings;
 
 public class TaskAssignmentPayload implements Serializable {
 
@@ -9,19 +10,19 @@ public class TaskAssignmentPayload implements Serializable {
     private final String workloadType;
     private final Object taskData;
     private final String assignedFrameRange;
-    private final String renderEngine;
+    private final RenderSettings settings;
 
     public TaskAssignmentPayload(String jobId, String taskId, String workloadType, Object taskData, String assignedFrameRange) {
-        this(jobId, taskId, workloadType, taskData, assignedFrameRange, "CYCLES");
+        this(jobId, taskId, workloadType, taskData, assignedFrameRange, null);
     }
 
-    public TaskAssignmentPayload(String jobId, String taskId, String workloadType, Object taskData, String assignedFrameRange, String renderEngine) {
+    public TaskAssignmentPayload(String jobId, String taskId, String workloadType, Object taskData, String assignedFrameRange, RenderSettings settings) {
         this.jobId = jobId;
         this.taskId = taskId;
         this.workloadType = workloadType;
         this.taskData = taskData;
         this.assignedFrameRange = assignedFrameRange;
-        this.renderEngine = renderEngine;
+        this.settings = settings;
     }
 
     public String getJobId() {
@@ -44,13 +45,17 @@ public class TaskAssignmentPayload implements Serializable {
         return assignedFrameRange;
     }
 
+    public RenderSettings getSettings() {
+        return settings;
+    }
+
     public String getRenderEngine() {
-        return renderEngine;
+        return settings != null && settings.getRenderEngine() != null ? settings.getRenderEngine().name() : "CYCLES";
     }
 
     @Override
     public String toString() {
-        return String.format("TaskAssignmentPayload[Job=%s, Task=%s, Type=%s, Frames=%s, Engine=%s]",
-            jobId, taskId, workloadType, assignedFrameRange, renderEngine);
+        return String.format("TaskAssignmentPayload[Job=%s, Task=%s, Type=%s, Frames=%s, Settings=%s]",
+            jobId, taskId, workloadType, assignedFrameRange, settings);
     }
 }

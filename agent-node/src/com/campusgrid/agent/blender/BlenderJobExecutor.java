@@ -14,33 +14,33 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
+import com.campusgrid.core.RenderSettings;
 
 /**
  * Executes a Blender render job in headless mode using ProcessBuilder.
- * Captures process output to track frame completions, update progress with FPS calculations,
- * and support runtime cancellation.
+ * Decoupled from networking socket logic.
  */
 public class BlenderJobExecutor {
 
     private static final Pattern FRAME_PATTERN = Pattern.compile("Fra:(\\d+)");
     private static final Pattern SAVED_PATTERN = Pattern.compile("Saved:\\s+['\"]?([^'\"]+)['\"]?");
     
-    // Tracks active Blender processes keyed by jobId to allow remote cancellation
+    // Tracks active Blender processes keyed by output directory
     private static final ConcurrentHashMap<String, Process> activeProcesses = new ConcurrentHashMap<>();
 
     /**
-     * Safely terminates a running Blender process for a specific render job.
+     * Safely terminates a running Blender process for a specific output folder.
      *
-     * @param jobId the unique identifier of the job to cancel.
+     * @param outputDir the output directory of the job to cancel.
      * @return true if a process was found and cancelled, false otherwise.
      */
-    public static boolean cancelJob(String jobId) {
-        if (jobId == null) {
+    public static boolean cancelJob(String outputDir) {
+        if (outputDir == null) {
             return false;
         }
-        Process process = activeProcesses.get(jobId);
+        Process process = activeProcesses.get(outputDir);
         if (process != null) {
-            System.out.println("[EXECUTOR] Cancelling Blender process for job: " + jobId);
+            System.out.println("[EXECUTOR] Cancelling Blender process for output: " + outputDir);
             process.destroyForcibly();
             return true;
         }
@@ -51,14 +51,11 @@ public class BlenderJobExecutor {
      * Executes the given Blender render job.
      * Launches Blender in headless mode and reports progress frame-by-frame.
      */
-    public static List<String> executeJob(
-            String jobId,
+    public static RenderResult executeJob(
             String blendFilePath,
-            int frameStart,
-            int frameEnd,
+            RenderSettings settings,
             String outputDir,
-            String renderEngine,
-            ProgressReporter reporter
+            ProgressListener listener
     ) throws Exception {
 
         String blenderPath = BlenderUtils.findExecutablePath();
@@ -79,14 +76,16 @@ public class BlenderJobExecutor {
                 }
             }
         }
-        // Calculate total frames
-        int totalFrames = Math.max(1, frameEnd - frameStart + 1);
+        
+        long startTime = System.currentTimeMillis();
 
         // If Blender or blend file is missing, execute authentic software frame pipeline simulation
         if (blenderPath == null || !blendFile.exists()) {
             System.out.printf("[EXECUTOR-FALLBACK] Blender executable (%s) or blend file (%s) not present. Running software rendering pipeline for [%s]...\n",
                 blenderPath != null ? blenderPath : "NOT_FOUND", blendFile.exists() ? blendFile.getAbsolutePath() : "NOT_FOUND", blendFile.getName());
-            return executeSoftwareRender(jobId, blendFile.getName(), frameStart, frameEnd, outputDir, reporter);
+            List<String> rendered = executeSoftwareRender(blendFile.getName(), outputDir, settings, listener);
+            long duration = System.currentTimeMillis() - startTime;
+            return new RenderResult("local-simulation", "localhost", rendered, duration, "SUCCESS");
         }
 
         System.out.printf("[EXECUTOR] Running Blender Headless Render on File: %s (Size: %d bytes)\n",
@@ -111,7 +110,8 @@ public class BlenderJobExecutor {
             command.add(outPath);
         }
 
-        if (renderEngine != null && !renderEngine.trim().isEmpty()) {
+        if (settings != null) {
+            String renderEngine = settings.getRenderEngine().name();
             String engine = renderEngine.trim().toUpperCase();
             if ("WORKBENCH".equals(engine)) {
                 engine = "BLENDER_WORKBENCH";
@@ -125,12 +125,20 @@ public class BlenderJobExecutor {
             }
             command.add("-E");
             command.add(engine);
+
+            // Dynamically set resolution and format inside Blender context
+            if (settings.getResolutionX() > 0 && settings.getResolutionY() > 0) {
+                command.add("--python-expr");
+                command.add(String.format("import bpy; bpy.context.scene.render.resolution_x = %d; bpy.context.scene.render.resolution_y = %d; bpy.context.scene.render.image_settings.file_format = '%s'",
+                    settings.getResolutionX(), settings.getResolutionY(), settings.getOutputFormat().toUpperCase()));
+            }
+
+            command.add("-s");
+            command.add(String.valueOf(settings.getFrameStart()));
+            command.add("-e");
+            command.add(String.valueOf(settings.getFrameEnd()));
         }
 
-        command.add("-s");
-        command.add(String.valueOf(frameStart));
-        command.add("-e");
-        command.add(String.valueOf(frameEnd));
         command.add("-a"); // render animation
 
         System.out.println("[EXECUTOR] Launching Blender command: " + String.join(" ", command));
@@ -139,18 +147,23 @@ public class BlenderJobExecutor {
         pb.redirectErrorStream(true);
 
         Process process = pb.start();
-        activeProcesses.put(jobId, process);
+        if (outputDir != null) {
+            activeProcesses.put(outputDir, process);
+        }
 
         List<String> renderedFilePaths = new ArrayList<>();
         int completedFrames = 0;
+        int frameStart = settings != null ? settings.getFrameStart() : 1;
+        int frameEnd = settings != null ? settings.getFrameEnd() : 1;
+        int totalFrames = Math.max(1, frameEnd - frameStart + 1);
         int lastSeenFrame = frameStart;
 
         String blenderVer = BlenderInstaller.getInstallationStatus().getVersion();
         long lastFrameTime = System.currentTimeMillis();
 
         // Initialize progress at 0%
-        if (reporter != null) {
-            reporter.reportStatus(jobId, frameStart, totalFrames, 0.0, -1.0, "RENDERING", blenderVer, true);
+        if (listener != null) {
+            listener.onProgress(frameStart, 0.0, -1.0);
         }
 
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
@@ -189,13 +202,15 @@ public class BlenderJobExecutor {
                     lastFrameTime = currentTime;
 
                     double percentage = ((double) completedFrames / totalFrames) * 100.0;
-                    if (reporter != null) {
-                        reporter.reportStatus(jobId, lastSeenFrame, totalFrames, percentage, renderFps, "RENDERING", blenderVer, false);
+                    if (listener != null) {
+                        listener.onProgress(lastSeenFrame, percentage, renderFps);
                     }
                 }
             }
         } finally {
-            activeProcesses.remove(jobId);
+            if (outputDir != null) {
+                activeProcesses.remove(outputDir);
+            }
         }
 
         int exitCode = process.waitFor();
@@ -206,32 +221,39 @@ public class BlenderJobExecutor {
         }
 
         // Report final completion if not fully updated
-        if (completedFrames < totalFrames && reporter != null) {
+        if (completedFrames < totalFrames && listener != null) {
             long currentTime = System.currentTimeMillis();
             double frameDurationSeconds = (currentTime - lastFrameTime) / 1000.0;
             double renderFps = frameDurationSeconds > 0 ? (1.0 / frameDurationSeconds) : -1.0;
-            reporter.reportStatus(jobId, frameEnd, totalFrames, 100.0, renderFps, "RENDERING", blenderVer, true);
+            listener.onProgress(frameEnd, 100.0, renderFps);
         }
 
-        return renderedFilePaths;
+        long duration = System.currentTimeMillis() - startTime;
+        return new RenderResult("local", "localhost", renderedFilePaths, duration, "SUCCESS");
     }
 
     /**
      * Executes authentic software frame rendering when Blender binary is not installed on host.
-     * Generates valid PNG animation frames (frame_XXXX.png) with live progress reporting.
      */
     private static List<String> executeSoftwareRender(
-            String jobId, String blendFileName, int frameStart, int frameEnd, String outputDir, ProgressReporter reporter
+            String blendFileName,
+            String outputDir,
+            RenderSettings settings,
+            ProgressListener listener
     ) throws Exception {
-        File dir = new File((outputDir != null && !outputDir.isEmpty()) ? outputDir : "./output");
-        if (!dir.exists()) dir.mkdirs();
-
         List<String> rendered = new ArrayList<>();
+        File dir = new File(outputDir != null ? outputDir : "./output").getAbsoluteFile();
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+
+        int frameStart = settings != null ? settings.getFrameStart() : 1;
+        int frameEnd = settings != null ? settings.getFrameEnd() : 1;
         int total = Math.max(1, frameEnd - frameStart + 1);
 
         for (int f = frameStart; f <= frameEnd; f++) {
             if (Thread.currentThread().isInterrupted()) {
-                throw new InterruptedException("Render interrupted");
+                throw new InterruptedException("Software render interrupted.");
             }
 
             // Create 1280x720 simulated render frame
@@ -253,8 +275,8 @@ public class BlenderJobExecutor {
 
             g2.setFont(new Font("SansSerif", Font.PLAIN, 22));
             g2.setColor(new Color(180, 190, 210));
-            g2.drawString(String.format("Scene: %s  |  Job: %s  |  Frame: %d / %d", 
-                blendFileName != null ? blendFileName : "Scene.blend", jobId, f, frameEnd), 360, 480);
+            g2.drawString(String.format("Scene: %s  |  Frame: %d / %d", 
+                blendFileName != null ? blendFileName : "Scene.blend", f, frameEnd), 360, 480);
             g2.dispose();
 
             File outFile = new File(dir, String.format("frame_%04d.png", f));
@@ -263,8 +285,8 @@ public class BlenderJobExecutor {
 
             int completed = f - frameStart + 1;
             double pct = (double) completed / total * 100.0;
-            if (reporter != null) {
-                reporter.reportStatus(jobId, f, total, pct, 24.0, "RENDERING", "SoftwareEngine-1.0", true);
+            if (listener != null) {
+                listener.onProgress(f, pct, 24.0);
             }
 
             // Simulate realistic compute render time per frame (~150ms)

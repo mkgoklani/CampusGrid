@@ -599,12 +599,32 @@
                     <label for="modal-chunk-size">Manual Frames Per Worker</label>
                     <input type="number" id="modal-chunk-size" class="form-control" value="25" min="1" max="500">
                 </div>
+            </div>
+
+            <div class="form-row">
                 <div class="form-group">
                     <label for="modal-render-engine">Render Engine</label>
                     <select id="modal-render-engine" class="form-control">
                         <option value="CYCLES">Cycles (Raytracing)</option>
                         <option value="BLENDER_EEVEE">Eevee (Realtime)</option>
                         <option value="WORKBENCH">Workbench (Fast)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="modal-resolution">Resolution</label>
+                    <select id="modal-resolution" class="form-control">
+                        <option value="1920x1080">1920x1080 (1080p)</option>
+                        <option value="1280x720">1280x720 (720p)</option>
+                        <option value="640x360">640x360 (360p)</option>
+                        <option value="2560x1440">2560x1440 (2K)</option>
+                        <option value="3840x2160">3840x2160 (4K)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="modal-output-format">Format</label>
+                    <select id="modal-output-format" class="form-control">
+                        <option value="PNG">PNG Image</option>
+                        <option value="JPEG">JPEG Image</option>
                     </select>
                 </div>
             </div>
@@ -766,6 +786,8 @@
             const autoBalance = document.getElementById('modal-auto-balance').checked;
             const framesPerTask = autoBalance ? 0 : parseInt(document.getElementById('modal-chunk-size').value || '25');
             const engine = document.getElementById('modal-render-engine').value;
+            const resolution = document.getElementById('modal-resolution').value;
+            const outputFormat = document.getElementById('modal-output-format').value;
             const cleanUp = document.getElementById('modal-cleanup-frames').checked;
 
             const totalFrames = Math.max(1, endFrame - startFrame + 1);
@@ -779,7 +801,9 @@
                 totalFrames: totalFrames,
                 framesPerTask: framesPerTask,
                 cleanUpFrames: cleanUp,
-                renderEngine: engine
+                renderEngine: engine,
+                resolution: resolution,
+                outputFormat: outputFormat
             };
 
             try {

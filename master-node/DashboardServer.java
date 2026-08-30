@@ -241,6 +241,8 @@ public class DashboardServer {
             int framesPerTask = extractJsonInt(body, "framesPerTask", 0);
             boolean cleanUpFrames = body.contains("\"cleanUpFrames\":true") || body.contains("\"deleteFramesAfterStitch\":true");
             String renderEngine = extractJsonString(body, "renderEngine", "CYCLES");
+            String resolution = extractJsonString(body, "resolution", "1920x1080");
+            String outputFormat = extractJsonString(body, "outputFormat", "PNG");
 
             byte[] blendFileBytes = null;
 
@@ -281,11 +283,40 @@ public class DashboardServer {
                 ? String.format("Render Workload #%d (%s)", jobSeq.getAndIncrement(), blendFileName)
                 : customJobName;
 
+            int resolutionX = 1920;
+            int resolutionY = 1080;
+            if (resolution.contains("x")) {
+                String[] resParts = resolution.split("x");
+                try {
+                    resolutionX = Integer.parseInt(resParts[0].trim());
+                    resolutionY = Integer.parseInt(resParts[1].trim());
+                } catch (NumberFormatException ignored) {}
+            }
+            com.campusgrid.core.RenderEngine engineEnum = com.campusgrid.core.RenderEngine.CYCLES;
+            try {
+                String normalizedEngine = renderEngine;
+                if ("BLENDER_EEVEE".equalsIgnoreCase(renderEngine)) {
+                    normalizedEngine = "EEVEE";
+                }
+                engineEnum = com.campusgrid.core.RenderEngine.valueOf(normalizedEngine.toUpperCase());
+            } catch (Exception ignored) {}
+
+            com.campusgrid.core.RenderSettings renderSettings = new com.campusgrid.core.RenderSettings(
+                engineEnum,
+                resolutionX,
+                resolutionY,
+                outputFormat,
+                64, // default samples
+                1,
+                totalFrames
+            );
+
             Map<String, Object> params = new HashMap<>();
             params.put("blendFilePath", blendFilePath);
             params.put("blendFileName", blendFileName);
             params.put("deleteFramesAfterStitch", cleanUpFrames);
             params.put("renderEngine", renderEngine);
+            params.put("renderSettings", renderSettings);
             if (blendFileBytes != null) {
                 params.put("blendFileBytes", blendFileBytes);
             }
