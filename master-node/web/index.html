@@ -645,15 +645,38 @@
 
     <!-- Video Preview Modal -->
     <div class="modal-overlay" id="video-modal">
-        <div class="modal-box neumorphic-outset" style="max-width: 720px;">
+        <div class="modal-box neumorphic-outset" style="max-width: 720px; width: 90%;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-                <h3 id="video-modal-title">Compiled Animation Video</h3>
+                <h3 id="video-modal-title" style="margin: 0; font-size: 20px;">Compiled Animation Video</h3>
                 <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="closeVideoModal()">✕ Close</button>
             </div>
-            <video id="video-player" controls autoplay loop>
-                <source id="video-source" src="" type="video/mp4">
-                Your browser does not support the video tag.
-            </video>
+            
+            <div id="video-modal-metadata" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; padding: 12px; background: rgba(0,0,0,0.03); border-radius: 6px; font-size: 13px;">
+                <div>Engine: <strong id="meta-engine">-</strong></div>
+                <div>Resolution: <strong id="meta-resolution">-</strong></div>
+                <div>Total Frames: <strong id="meta-frames">-</strong></div>
+                <div>Duration: <strong id="meta-duration">-</strong></div>
+            </div>
+
+            <div id="video-player-container">
+                <video id="video-player" controls autoplay loop style="width: 100%; border-radius: 6px; margin-bottom: 15px;">
+                    <source id="video-source" src="" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+            
+            <div id="video-error-container" style="display: none; padding: 20px; background: rgba(220, 53, 69, 0.05); border: 1px dashed var(--accent-red); border-radius: 6px; margin-bottom: 15px; text-align: left;">
+                <div style="font-size: 24px; margin-bottom: 8px; text-align: center;">⚠️</div>
+                <h4 style="color: var(--accent-red); margin: 0 0 8px 0; font-size: 15px; text-align: center;">Preview unavailable</h4>
+                <p style="color: var(--text-muted); margin: 0 0 8px 0; font-size: 13px; text-align: center;">Reason: Video assembly failed</p>
+                <pre id="ffmpeg-error-text" style="background: rgba(0,0,0,0.05); padding: 10px; border-radius: 4px; font-family: monospace; font-size: 11px; white-space: pre-wrap; overflow-x: auto; margin: 0; color: #333; max-height: 150px;"></pre>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; align-items: center;">
+                <a id="btn-download-video" href="#" download class="btn" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; background-color: var(--accent-green);">⬇ Download Video</a>
+                <button id="btn-download-modal-frames" class="btn btn-secondary" style="background-color: var(--accent-blue)18; color: var(--accent-blue);" onclick="downloadFramesFromModal()">⬇ Download Frames</button>
+                <button class="btn btn-secondary" onclick="closeVideoModal()">Close</button>
+            </div>
         </div>
     </div>
 
@@ -684,13 +707,72 @@
             document.getElementById('video-modal').style.display = 'none';
         }
 
-        function previewVideo(url, title) {
-            document.getElementById('video-modal-title').innerText = title || "Compiled Animation Video";
-            const source = document.getElementById('video-source');
-            source.src = url;
+        let currentPreviewJobId = null;
+
+        function previewVideo(jobId, jobName, engine, resolution, totalFrames, durationMs, previewAvailable, videoUrl, ffmpegError) {
+            currentPreviewJobId = jobId;
+            document.getElementById('video-modal-title').innerText = jobName || "Compiled Animation Video";
+            
+            // Set metadata
+            document.getElementById('meta-engine').innerText = engine || "CYCLES";
+            document.getElementById('meta-resolution').innerText = resolution || "1920x1080";
+            document.getElementById('meta-frames').innerText = totalFrames || "0";
+            
+            const durationSec = (durationMs / 1000.0).toFixed(2);
+            document.getElementById('meta-duration').innerText = `${durationSec}s (${durationMs}ms)`;
+            
             const player = document.getElementById('video-player');
-            player.load();
+            const source = document.getElementById('video-source');
+            const playerContainer = document.getElementById('video-player-container');
+            const errorContainer = document.getElementById('video-error-container');
+            const btnDownload = document.getElementById('btn-download-video');
+            const ffmpegText = document.getElementById('ffmpeg-error-text');
+            
+            if (previewAvailable) {
+                source.src = videoUrl;
+                player.load();
+                playerContainer.style.display = 'block';
+                errorContainer.style.display = 'none';
+                btnDownload.style.display = 'inline-flex';
+                btnDownload.href = videoUrl;
+            } else {
+                player.pause();
+                playerContainer.style.display = 'none';
+                errorContainer.style.display = 'block';
+                btnDownload.style.display = 'none';
+                ffmpegText.innerText = ffmpegError || "Video assembly failed. (No frames found or FFmpeg crashed)";
+            }
+            
             document.getElementById('video-modal').style.display = 'flex';
+        }
+
+        function downloadFramesFromModal() {
+            if (currentPreviewJobId) {
+                downloadZip(currentPreviewJobId);
+            }
+        }
+
+        function onPreviewClick(jobId) {
+            if (window.currentJobsList) {
+                const job = window.currentJobsList.find(j => j.jobId === jobId);
+                if (job) {
+                    previewVideo(
+                        job.jobId,
+                        job.jobName,
+                        job.renderEngine,
+                        job.resolution,
+                        job.totalFrames,
+                        job.duration,
+                        job.previewAvailable,
+                        job.videoUrl,
+                        job.ffmpegError
+                    );
+                }
+            }
+        }
+
+        function downloadZip(jobId) {
+            window.location.href = `/api/jobs/download-frames?jobId=${jobId}`;
         }
 
         function toggleAutoBalance(checked) {
@@ -855,6 +937,7 @@
             try {
                 const res = await fetch('/api/jobs');
                 const jobs = await res.json();
+                window.currentJobsList = jobs;
                 renderJobs(jobs);
             } catch (e) {
                 console.error("Error fetching jobs:", e);
@@ -897,7 +980,10 @@
                                 ${job.status}
                             </span>
                             ${canCancel ? `<button class="btn-cancel" onclick="cancelJob('${job.jobId}')">✕ Cancel</button>` : ''}
-                            ${isComplete ? `<button class="btn-play" onclick="previewVideo('${job.videoUrl}', '${escapeHtml(job.jobName)}')">▶ Preview Video</button>` : ''}
+                            ${isComplete ? `
+                                <button class="btn-play" onclick="onPreviewClick('${job.jobId}')">▶ Preview Video</button>
+                                <button class="btn-play" style="background: var(--accent-green)18; color: var(--accent-green);" onclick="downloadZip('${job.jobId}')">⬇ Download Frames</button>
+                            ` : ''}
                         </div>
                     </div>
 

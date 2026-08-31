@@ -61,6 +61,7 @@ public class DashboardServer {
         httpServer.createContext("/api/jobs", new JobsHandler());
         httpServer.createContext("/api/jobs/submit", new SubmitJobHandler());
         httpServer.createContext("/api/jobs/cancel", new CancelJobHandler());
+        httpServer.createContext("/api/jobs/download-frames", new DownloadFramesHandler());
         httpServer.createContext("/api/nodes/install-blender", new InstallBlenderHandler());
         httpServer.createContext("/output", new OutputFileHandler());
         httpServer.createContext("/", new StaticWebHandler());
@@ -153,8 +154,40 @@ public class DashboardServer {
             sb.append("\"workloadType\":\"").append(escapeJson(job.getWorkloadType())).append("\",");
             sb.append("\"blendFileName\":\"").append(escapeJson(blendName)).append("\",");
             sb.append("\"blendFilePath\":\"").append(escapeJson(blendPath)).append("\",");
+            File previewFile = new File("./output/" + job.getJobId() + "/preview.mp4");
+            boolean previewAvailable = previewFile.exists() && previewFile.length() > 0;
+            
+            String renderEngine = "CYCLES";
+            String resolution = "1920x1080";
+            String outputFormat = "PNG";
+            if (job.getRenderSettings() != null) {
+                renderEngine = job.getRenderSettings().getRenderEngine().name();
+                resolution = job.getRenderSettings().getResolutionX() + "x" + job.getRenderSettings().getResolutionY();
+                outputFormat = job.getRenderSettings().getOutputFormat();
+            } else if (job.getParameters() != null) {
+                if (job.getParameters().containsKey("renderEngine")) {
+                    renderEngine = job.getParameters().get("renderEngine").toString();
+                }
+            }
+
+            long duration = (job.getEndTimestamp() > 0 ? job.getEndTimestamp() : System.currentTimeMillis()) - job.getSubmissionTimestamp();
+
+            File errorFile = new File("./output/" + job.getJobId() + "/ffmpeg_error.txt");
+            String ffmpegError = "";
+            if (errorFile.exists() && errorFile.isFile()) {
+                try {
+                    ffmpegError = java.nio.file.Files.readString(errorFile.toPath(), java.nio.charset.StandardCharsets.UTF_8);
+                } catch (Exception ignored) {}
+            }
+
             sb.append("\"cleanUpFrames\":").append(cleanUp).append(",");
-            sb.append("\"videoUrl\":\"/output/").append(escapeJson(job.getJobId())).append("/").append(escapeJson(job.getJobId())).append("_animation.mp4\",");
+            sb.append("\"videoUrl\":\"/output/").append(escapeJson(job.getJobId())).append("/preview.mp4\",");
+            sb.append("\"previewAvailable\":").append(previewAvailable).append(",");
+            sb.append("\"ffmpegError\":\"").append(escapeJson(ffmpegError)).append("\",");
+            sb.append("\"renderEngine\":\"").append(escapeJson(renderEngine)).append("\",");
+            sb.append("\"resolution\":\"").append(escapeJson(resolution)).append("\",");
+            sb.append("\"outputFormat\":\"").append(escapeJson(outputFormat)).append("\",");
+            sb.append("\"duration\":").append(duration).append(",");
             sb.append("\"totalFrames\":").append(job.getTotalFrames()).append(",");
             sb.append("\"status\":\"").append(job.getStatus()).append("\",");
             sb.append("\"progress\":").append(String.format(Locale.US, "%.1f", job.getProgressPercentage())).append(",");
@@ -376,6 +409,68 @@ public class DashboardServer {
                 sendJsonResponse(exchange, 200, "{\"success\":true,\"message\":\"Job cancelled\"}");
             } else {
                 sendJsonResponse(exchange, 400, "{\"error\":\"Missing jobId parameter\"}");
+            }
+        }
+    }
+
+    private class DownloadFramesHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 204, "");
+                return;
+            }
+            if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
+                return;
+            }
+
+            String query = exchange.getRequestURI().getQuery();
+            String jobId = null;
+            if (query != null && query.contains("jobId=")) {
+                String[] parts = query.split("jobId=");
+                if (parts.length > 1) {
+                    jobId = parts[1].split("&")[0];
+                }
+            }
+
+            if (jobId == null || jobId.trim().isEmpty()) {
+                sendJsonResponse(exchange, 400, "{\"error\":\"Missing jobId parameter\"}");
+                return;
+            }
+
+            File jobDir = new File("./output/" + jobId);
+            File framesDir = new File(jobDir, "frames");
+            File targetDir = framesDir.exists() && framesDir.isDirectory() ? framesDir : jobDir;
+
+            if (!targetDir.exists() || !targetDir.isDirectory()) {
+                sendJsonResponse(exchange, 404, "{\"error\":\"Job directory not found\"}");
+                return;
+            }
+
+            File[] files = targetDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".png") && !name.startsWith("temp_frame_"));
+            if (files == null || files.length == 0) {
+                sendJsonResponse(exchange, 404, "{\"error\":\"No frames found to download\"}");
+                return;
+            }
+
+            exchange.getResponseHeaders().set("Content-Type", "application/zip");
+            exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + jobId + "_frames.zip\"");
+            exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+            exchange.sendResponseHeaders(200, 0);
+
+            try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(exchange.getResponseBody())) {
+                byte[] buffer = new byte[4096];
+                for (File file : files) {
+                    try (FileInputStream fis = new FileInputStream(file)) {
+                        zos.putNextEntry(new java.util.zip.ZipEntry(file.getName()));
+                        int len;
+                        while ((len = fis.read(buffer)) > 0) {
+                            zos.write(buffer, 0, len);
+                        }
+                        zos.closeEntry();
+                    }
+                }
             }
         }
     }

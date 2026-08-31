@@ -23,6 +23,7 @@ public class Job implements Serializable {
     private final Map<String, Object> parameters;
 
     private volatile JobStatus status;
+    private volatile long endTimestamp = 0;
     private final ConcurrentHashMap<String, SubTask> subTasks = new ConcurrentHashMap<>();
     private final ConcurrentLinkedQueue<SubTask> pendingSubTasks = new ConcurrentLinkedQueue<>();
     private final AtomicInteger completedTaskCount = new AtomicInteger(0);
@@ -119,10 +120,15 @@ public class Job implements Serializable {
             int completed = completedTaskCount.incrementAndGet();
             if (completed >= subTasks.size() && !subTasks.isEmpty()) {
                 this.status = JobStatus.COMPLETED;
+                this.endTimestamp = System.currentTimeMillis();
                 return true;
             }
         }
         return isAllCompleted();
+    }
+
+    public long getEndTimestamp() {
+        return endTimestamp;
     }
 
     /**
