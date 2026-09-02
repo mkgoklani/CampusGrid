@@ -348,11 +348,10 @@ public class PayloadListener implements Runnable {
             long startTime = System.currentTimeMillis();
             String status = "SUCCESS";
             String stateReport = "COMPLETED";
+            java.util.List<String> rawFiles = null;
             java.util.List<String> renderedFiles = new java.util.ArrayList<>();
-            
-            com.campusgrid.agent.os.LinuxTelemetry.isExecutingTask = true;
             try {
-                renderedFiles = com.campusgrid.agent.blender.BlenderJobExecutor.executeJob(
+                rawFiles = com.campusgrid.agent.blender.BlenderJobExecutor.executeJob(
                     task.getJobId(),
                     task.getBlendFilePath(),
                     task.getFrameStart(),
@@ -373,7 +372,7 @@ public class PayloadListener implements Runnable {
                 e.printStackTrace();
             } finally {
                 com.campusgrid.agent.os.LinuxTelemetry.isExecutingTask = false;
-                renderedFiles = collectRenderedFiles(task.getJobId());
+                renderedFiles = collectRenderedFiles(task.getJobId(), task.getOutputDir(), rawFiles);
                 
                 synchronized (PayloadListener.this) {
                     if (Thread.currentThread() == currentRenderThread) {
@@ -391,6 +390,9 @@ public class PayloadListener implements Runnable {
 
             long duration = System.currentTimeMillis() - startTime;
             byte[] zippedBytes = zipFiles(renderedFiles);
+            System.out.printf("[TASK] Packaged %d bytes of zipped frames (%d images) for Task [%s] in Job [%s]\n",
+                zippedBytes.length, renderedFiles.size(), taskId, task.getJobId());
+
             com.campusgrid.agent.blender.RenderResult result = new com.campusgrid.agent.blender.RenderResult(
                 task.getJobId(),
                 taskId,
@@ -400,17 +402,6 @@ public class PayloadListener implements Runnable {
                 status,
                 zippedBytes
             );
-
-            // Read frame bytes if available
-            byte[] frameBytes = new byte[0];
-            if (!renderedFiles.isEmpty()) {
-                java.io.File firstFrame = new java.io.File(renderedFiles.get(0));
-                if (firstFrame.exists() && firstFrame.length() > 0) {
-                    try {
-                        frameBytes = java.nio.file.Files.readAllBytes(firstFrame.toPath());
-                    } catch (Exception ignored) {}
-                }
-            }
 
             try {
                 // Send RenderResult
@@ -496,30 +487,52 @@ public class PayloadListener implements Runnable {
         return null;
     }
 
-    private java.util.List<String> collectRenderedFiles(String jobId) {
-        java.util.List<String> files = new java.util.ArrayList<>();
-        java.io.File dir;
-        try {
-            dir = new java.io.File("./output/" + jobId).getCanonicalFile();
-        } catch (java.io.IOException e) {
-            dir = new java.io.File("./output/" + jobId).getAbsoluteFile();
+    private java.util.List<String> collectRenderedFiles(String jobId, String outputDir, java.util.List<String> executorFiles) {
+        java.util.LinkedHashSet<String> filesSet = new java.util.LinkedHashSet<>();
+        
+        // 1. Add files returned directly by Blender executor
+        if (executorFiles != null) {
+            for (String p : executorFiles) {
+                if (p != null) {
+                    java.io.File f = new java.io.File(p);
+                    if (f.exists() && f.isFile() && f.length() > 0) {
+                        filesSet.add(f.getAbsolutePath());
+                    }
+                }
+            }
         }
-        if (dir.exists() && dir.isDirectory()) {
-            java.io.File[] list = dir.listFiles();
-            if (list != null) {
-                for (java.io.File f : list) {
-                    if (f.isFile() && f.length() > 0) {
-                        String name = f.getName().toLowerCase();
-                        if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg")
-                                || name.endsWith(".webp") || name.endsWith(".bmp") || name.endsWith(".exr")
-                                || name.endsWith(".tga") || name.endsWith(".tif") || name.endsWith(".tiff")) {
-                            files.add(f.getAbsolutePath());
+
+        // 2. Search task outputDir, ./output/<jobId>, ../output/<jobId>, ./output
+        java.util.List<java.io.File> searchDirs = new java.util.ArrayList<>();
+        if (outputDir != null && !outputDir.trim().isEmpty()) {
+            searchDirs.add(new java.io.File(outputDir.trim()));
+        }
+        searchDirs.add(new java.io.File("./output/" + jobId));
+        searchDirs.add(new java.io.File("../output/" + jobId));
+        searchDirs.add(new java.io.File("./output"));
+
+        for (java.io.File dir : searchDirs) {
+            if (dir.exists() && dir.isDirectory()) {
+                java.io.File[] list = dir.listFiles();
+                if (list != null) {
+                    for (java.io.File f : list) {
+                        if (f.isFile() && f.length() > 0) {
+                            String name = f.getName().toLowerCase();
+                            if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg")
+                                    || name.endsWith(".webp") || name.endsWith(".bmp") || name.endsWith(".exr")
+                                    || name.endsWith(".tga") || name.endsWith(".tif") || name.endsWith(".tiff")) {
+                                filesSet.add(f.getAbsolutePath());
+                            }
                         }
                     }
                 }
             }
         }
-        return files;
+
+        java.util.List<String> resultList = new java.util.ArrayList<>(filesSet);
+        System.out.printf("[TASK] Collected %d rendered frames for Job [%s] to upload to Master.\n",
+            resultList.size(), jobId);
+        return resultList;
     }
 
     private byte[] zipFiles(java.util.List<String> filePaths) {

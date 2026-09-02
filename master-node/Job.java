@@ -100,6 +100,7 @@ public class Job implements Serializable {
         while (!pendingSubTasks.isEmpty()) {
             SubTask task = pendingSubTasks.poll();
             if (task != null && task.getStatus() == SubTaskStatus.PENDING) {
+                task.setStatus(SubTaskStatus.DISPATCHED);
                 return task;
             }
         }

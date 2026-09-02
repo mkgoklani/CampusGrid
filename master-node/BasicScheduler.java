@@ -143,6 +143,7 @@ public class BasicScheduler implements Runnable {
 
         // 1. Atomically mark worker BUSY and bind task details in registry
         workerRegistry.assignTaskToWorker(workerId, jobId, taskId, frameRange);
+        task.setStatus(Job.SubTaskStatus.DISPATCHED);
         task.setAssignedWorkerId(workerId);
         task.setDispatchedTimestamp(System.currentTimeMillis());
 
