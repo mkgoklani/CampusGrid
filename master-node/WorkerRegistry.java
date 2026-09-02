@@ -214,19 +214,18 @@ public class WorkerRegistry {
                 } catch (Exception ignored) {}
             }
 
-            // Automatic Task Re-queuing
+            // Automatic Task Re-queuing (Only for uncompleted tasks)
             if (jobId != null && jobManager != null) {
-                System.out.printf("[FAULT-TOLERANCE] ⚠ Worker [%s] failed. Re-queuing task [%s] for Job [%s]...\n",
-                    workerId, taskId != null ? taskId : "UNKNOWN", jobId);
-                if (taskId != null) {
-                    jobManager.updateJobProgress(jobId, taskId, false);
-                } else {
-                    Job job = jobManager.getJob(jobId);
-                    if (job != null) {
-                        for (Job.SubTask st : job.getSubTasks()) {
-                            if (workerId.equals(st.getAssignedWorkerId()) && st.getStatus() != Job.SubTaskStatus.COMPLETED) {
-                                job.requeueSubTask(st);
+                Job job = jobManager.getJob(jobId);
+                if (job != null && taskId != null) {
+                    for (Job.SubTask st : job.getSubTasks()) {
+                        if (st.getTaskId().equals(taskId)) {
+                            if (st.getStatus() != Job.SubTaskStatus.COMPLETED) {
+                                System.out.printf("[FAULT-TOLERANCE] ⚠ Worker [%s] failed. Re-queuing uncompleted task [%s] for Job [%s]...\n",
+                                    workerId, taskId, jobId);
+                                jobManager.updateJobProgress(jobId, taskId, false);
                             }
+                            break;
                         }
                     }
                 }

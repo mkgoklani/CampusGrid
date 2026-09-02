@@ -270,7 +270,14 @@ public class MasterNodeApplication {
                 unzipFrames(jobId, zippedData);
             }
 
-            String taskId = worker.getCurrentTaskId() != null ? worker.getCurrentTaskId() : (jobId + "_T001");
+            String taskId = null;
+            try {
+                taskId = (String) clazz.getMethod("getTaskId").invoke(resultObj);
+            } catch (Exception ignored) {}
+            if (taskId == null || taskId.isEmpty()) {
+                taskId = worker.getCurrentTaskId() != null ? worker.getCurrentTaskId() : (jobId + "_T001");
+            }
+
             System.out.printf("[RECEIVER] RenderResult for Job [%s] Task [%s] from [%s]: %s (Extracted frame payload)\n",
                 jobId, taskId, workerId, status);
 

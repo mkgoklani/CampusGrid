@@ -10,24 +10,16 @@ public class RenderResult implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private final String jobId;
+    private final String taskId;
     private final String workerId;
     private final List<String> renderedFramePaths;
     private final long renderDuration; // in milliseconds
     private final String status; // e.g. "SUCCESS", "FAILED", "CANCELLED"
     private final byte[] zippedFramesData;
 
-    /**
-     * Constructs a new RenderResult.
-     *
-     * @param jobId              the unique identifier of the render job.
-     * @param workerId           the unique identifier of the worker that executed the render.
-     * @param renderedFramePaths the list of output frame file paths.
-     * @param renderDuration     the execution duration in milliseconds.
-     * @param status             the execution status (e.g. "SUCCESS", "FAILED", "CANCELLED").
-     * @param zippedFramesData   the zip compressed bytes of all rendered frame files.
-     */
-    public RenderResult(String jobId, String workerId, List<String> renderedFramePaths, long renderDuration, String status, byte[] zippedFramesData) {
+    public RenderResult(String jobId, String taskId, String workerId, List<String> renderedFramePaths, long renderDuration, String status, byte[] zippedFramesData) {
         this.jobId = jobId;
+        this.taskId = taskId;
         this.workerId = workerId;
         this.renderedFramePaths = renderedFramePaths;
         this.renderDuration = renderDuration;
@@ -35,13 +27,16 @@ public class RenderResult implements Serializable {
         this.zippedFramesData = zippedFramesData;
     }
 
-    /**
-     * Gets the job ID.
-     *
-     * @return the job ID.
-     */
+    public RenderResult(String jobId, String workerId, List<String> renderedFramePaths, long renderDuration, String status, byte[] zippedFramesData) {
+        this(jobId, null, workerId, renderedFramePaths, renderDuration, status, zippedFramesData);
+    }
+
     public String getJobId() {
         return jobId;
+    }
+
+    public String getTaskId() {
+        return taskId;
     }
 
     /**

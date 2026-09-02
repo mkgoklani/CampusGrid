@@ -393,6 +393,7 @@ public class PayloadListener implements Runnable {
             byte[] zippedBytes = zipFiles(renderedFiles);
             com.campusgrid.agent.blender.RenderResult result = new com.campusgrid.agent.blender.RenderResult(
                 task.getJobId(),
+                taskId,
                 reporter.getWorkerId(),
                 renderedFiles,
                 duration,

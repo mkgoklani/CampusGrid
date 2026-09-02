@@ -92,24 +92,34 @@ public class Job implements Serializable {
 
     /**
      * Retrieves the next pending sub-task to dispatch.
+     * Skips any tasks that are already COMPLETED or DISPATCHED.
      *
      * @return SubTask if available, null otherwise.
      */
-    public SubTask pollPendingSubTask() {
-        return pendingSubTasks.poll();
+    public synchronized SubTask pollPendingSubTask() {
+        while (!pendingSubTasks.isEmpty()) {
+            SubTask task = pendingSubTasks.poll();
+            if (task != null && task.getStatus() == SubTaskStatus.PENDING) {
+                return task;
+            }
+        }
+        return null;
     }
 
     /**
      * Re-enqueues an unfinished or timed-out sub-task for recovery by another worker.
+     * Guarded against already completed tasks and duplicate queueing.
      *
      * @param subTask The sub-task to re-queue.
      */
-    public void requeueSubTask(SubTask subTask) {
-        if (subTask != null) {
+    public synchronized void requeueSubTask(SubTask subTask) {
+        if (subTask != null && subTask.getStatus() != SubTaskStatus.COMPLETED) {
             subTask.setStatus(SubTaskStatus.PENDING);
             subTask.setAssignedWorkerId(null);
             subTask.incrementRetryCount();
-            pendingSubTasks.add(subTask);
+            if (!pendingSubTasks.contains(subTask)) {
+                pendingSubTasks.add(subTask);
+            }
         }
     }
 
@@ -119,18 +129,24 @@ public class Job implements Serializable {
      * @param taskId Unique identifier of the sub-task.
      * @return true if all sub-tasks in this job are now complete, false otherwise.
      */
-    public boolean markSubTaskCompleted(String taskId) {
+    public synchronized boolean markSubTaskCompleted(String taskId) {
         SubTask task = subTasks.get(taskId);
-        if (task != null && task.getStatus() != SubTaskStatus.COMPLETED) {
+        if (task != null) {
+            boolean wasAlreadyCompleted = (task.getStatus() == SubTaskStatus.COMPLETED);
             task.setStatus(SubTaskStatus.COMPLETED);
+            task.setProgressPercentage(100.0);
             if (task.getCompletedTimestamp() <= 0) {
                 task.setCompletedTimestamp(System.currentTimeMillis());
             }
-            int completed = completedTaskCount.incrementAndGet();
-            if (completed >= subTasks.size() && !subTasks.isEmpty()) {
-                this.status = JobStatus.COMPLETED;
-                this.completedTimestamp = System.currentTimeMillis();
-                return true;
+            pendingSubTasks.remove(task);
+
+            if (!wasAlreadyCompleted) {
+                int completed = completedTaskCount.incrementAndGet();
+                if (completed >= subTasks.size() && !subTasks.isEmpty()) {
+                    this.status = JobStatus.COMPLETED;
+                    this.completedTimestamp = System.currentTimeMillis();
+                    return true;
+                }
             }
         }
         if (isAllCompleted() && this.completedTimestamp <= 0) {
