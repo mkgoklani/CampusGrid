@@ -1,8 +1,4 @@
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import com.campusgrid.core.*;
 
@@ -146,10 +142,23 @@ public class WorkerRegistry {
         assignTaskToWorker(workerId, jobId, null, frameRange);
     }
 
-    /**
-     * Returns a collection of all registered workers in the cluster.
-     */
     public Collection<WorkerState> getAllWorkers() {
+        // Automatically prune dead offline duplicate workers if an active worker with the same IP is connected
+        Set<String> activeIps = new HashSet<>();
+        for (WorkerState w : registry.values()) {
+            if (w.getStatus() != WorkerStatus.OFFLINE && w.getIpAddress() != null && !w.getIpAddress().equals("127.0.0.1")) {
+                activeIps.add(w.getIpAddress());
+            }
+        }
+        if (!activeIps.isEmpty()) {
+            registry.entrySet().removeIf(e -> {
+                WorkerState w = e.getValue();
+                return w.getStatus() == WorkerStatus.OFFLINE 
+                    && w.getIpAddress() != null 
+                    && activeIps.contains(w.getIpAddress())
+                    && !w.getIpAddress().equals("127.0.0.1");
+            });
+        }
         return registry.values();
     }
 
