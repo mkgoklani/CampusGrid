@@ -162,6 +162,9 @@ public class WorkerState {
     }
 
     private String gpuName = "CPU";
+    private String cpuModel = "Multi-Core CPU";
+    private String osArch = "x86_64 (64-bit)";
+    private String agentVersion = "v2.0";
 
     public synchronized String getGpuName() {
         return gpuName != null ? gpuName : "CPU";
@@ -171,9 +174,61 @@ public class WorkerState {
         this.gpuName = gpuName;
     }
 
+    public synchronized String getCpuModel() {
+        return cpuModel != null ? cpuModel : "Multi-Core CPU";
+    }
+
+    public synchronized void setCpuModel(String cpuModel) {
+        this.cpuModel = cpuModel;
+    }
+
+    public synchronized String getOsArch() {
+        return osArch != null ? osArch : "x86_64 (64-bit)";
+    }
+
+    public synchronized void setOsArch(String osArch) {
+        this.osArch = osArch;
+    }
+
+    public synchronized String getAgentVersion() {
+        return agentVersion != null ? agentVersion : "v2.0";
+    }
+
+    public synchronized void setAgentVersion(String agentVersion) {
+        this.agentVersion = agentVersion;
+    }
+
+    private String latestFrameUrl = "";
+    private int latestFrameNumber = 0;
+    private double latestFps = 0.0;
+
+    public synchronized String getLatestFrameUrl() {
+        return latestFrameUrl != null ? latestFrameUrl : "";
+    }
+
+    public synchronized void setLatestFrameUrl(String latestFrameUrl) {
+        this.latestFrameUrl = latestFrameUrl;
+    }
+
+    public synchronized int getLatestFrameNumber() {
+        return latestFrameNumber;
+    }
+
+    public synchronized void setLatestFrameNumber(int latestFrameNumber) {
+        this.latestFrameNumber = latestFrameNumber;
+    }
+
+    public synchronized double getLatestFps() {
+        return latestFps;
+    }
+
+    public synchronized void setLatestFps(double latestFps) {
+        this.latestFps = latestFps;
+    }
+
     @Override
     public synchronized String toString() {
-        return String.format("WorkerState[ID=%s, IP=%s, OS=%s, GPU=%s, Blender=%s, Status=%s, Temp=%d°C, RAM=%.1f%%, Job=%s, Task=%s, Frames=%s]",
-            workerId, ipAddress, osName, gpuName, (blenderInstalled ? blenderVersion : "Not Installed"), status, cpuTemperature, ramUsagePercent, currentJobId, currentTaskId, assignedFrameRange);
+        return String.format("WorkerState[ID=%s, IP=%s, OS=%s (%s), CPU=%s, GPU=%s, Blender=%s, Status=%s, Temp=%d°C, RAM=%.1f%%, Job=%s, Task=%s, Frames=%s]",
+            workerId, ipAddress, osName, osArch, cpuModel, gpuName, (blenderInstalled ? blenderVersion : "Not Installed"), status, cpuTemperature, ramUsagePercent, currentJobId, currentTaskId, assignedFrameRange);
     }
 }

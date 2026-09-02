@@ -17,6 +17,18 @@ public class WorkerRegistry {
 
     private final ConcurrentHashMap<String, WorkerState> registry = new ConcurrentHashMap<>();
 
+    public WorkerRegistry() {}
+
+    public WorkerRegistry(long timeoutMs) {}
+
+    /**
+     * Retrieves a WorkerState by its unique worker ID.
+     */
+    public WorkerState getWorker(String workerId) {
+        if (workerId == null) return null;
+        return registry.get(workerId);
+    }
+
     /**
      * Registers a new worker node or updates an existing connection.
      * 

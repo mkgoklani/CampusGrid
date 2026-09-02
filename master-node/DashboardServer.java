@@ -58,11 +58,17 @@ public class DashboardServer {
         // 1. Initialize HTTP REST Server & Web UI
         httpServer = HttpServer.create(new InetSocketAddress(httpPort), 0);
         httpServer.createContext("/api/cluster/status", new ClusterStatusHandler());
+        httpServer.createContext("/api/cluster/capability", new ClusterCapabilityHandler());
+        httpServer.createContext("/api/cluster/sync", new ClusterSyncHandler());
         httpServer.createContext("/api/jobs", new JobsHandler());
         httpServer.createContext("/api/jobs/submit", new SubmitJobHandler());
         httpServer.createContext("/api/jobs/cancel", new CancelJobHandler());
         httpServer.createContext("/api/nodes/install-blender", new InstallBlenderHandler());
         httpServer.createContext("/output", new OutputFileHandler());
+        httpServer.createContext("/download/agent.jar", new DownloadAgentJarHandler());
+        httpServer.createContext("/agent.jar", new DownloadAgentJarHandler());
+        httpServer.createContext("/report", new AcademicReportPageHandler());
+        httpServer.createContext("/api/reports", new AcademicReportPageHandler());
         httpServer.createContext("/", new StaticWebHandler());
         httpServer.setExecutor(threadPool);
         httpServer.start();
@@ -133,7 +139,10 @@ public class DashboardServer {
             sb.append("\"ipAddress\":\"").append(escapeJson(w.getIpAddress())).append("\",");
             sb.append("\"status\":\"").append(w.getStatus()).append("\",");
             sb.append("\"osName\":\"").append(escapeJson(w.getOsName())).append("\",");
+            sb.append("\"osArch\":\"").append(escapeJson(w.getOsArch())).append("\",");
+            sb.append("\"cpuModel\":\"").append(escapeJson(w.getCpuModel())).append("\",");
             sb.append("\"gpuName\":\"").append(escapeJson(w.getGpuName())).append("\",");
+            sb.append("\"agentVersion\":\"").append(escapeJson(w.getAgentVersion())).append("\",");
             sb.append("\"blenderInstalled\":").append(w.isBlenderInstalled()).append(",");
             sb.append("\"blenderVersion\":\"").append(escapeJson(w.getBlenderVersion())).append("\",");
             sb.append("\"installProgress\":").append(String.format(Locale.US, "%.1f", w.getInstallProgress())).append(",");
@@ -143,6 +152,9 @@ public class DashboardServer {
             sb.append("\"currentJobId\":").append(w.getCurrentJobId() != null ? "\"" + escapeJson(w.getCurrentJobId()) + "\"" : "null").append(",");
             sb.append("\"currentTaskId\":").append(w.getCurrentTaskId() != null ? "\"" + escapeJson(w.getCurrentTaskId()) + "\"" : "null").append(",");
             sb.append("\"assignedFrames\":").append(w.getAssignedFrameRange() != null ? "\"" + escapeJson(w.getAssignedFrameRange()) + "\"" : "null").append(",");
+            sb.append("\"latestFrameUrl\":\"").append(escapeJson(w.getLatestFrameUrl())).append("\",");
+            sb.append("\"latestFrameNumber\":").append(w.getLatestFrameNumber()).append(",");
+            sb.append("\"latestFps\":").append(String.format(Locale.US, "%.2f", w.getLatestFps())).append(",");
             sb.append("\"lastHeartbeat\":").append(w.getLastHeartbeatTimestamp());
             sb.append("}");
         }
@@ -291,7 +303,9 @@ public class DashboardServer {
                 sb.append("\"worker\":").append(st.getAssignedWorkerId() != null ? "\"" + escapeJson(st.getAssignedWorkerId()) + "\"" : "null").append(",");
                 sb.append("\"durationMs\":").append(st.getDurationMs()).append(",");
                 sb.append("\"durationFormatted\":\"").append(formatDuration(st.getDurationMs())).append("\",");
-                sb.append("\"retries\":").append(st.getRetryCount());
+                sb.append("\"retries\":").append(st.getRetryCount()).append(",");
+                sb.append("\"isStolen\":").append(st.isStolen()).append(",");
+                sb.append("\"stolenFrom\":").append(st.getStolenFromWorkerId() != null ? "\"" + escapeJson(st.getStolenFromWorkerId()) + "\"" : "null");
                 sb.append("}");
             }
             sb.append("]}");
@@ -404,12 +418,31 @@ public class DashboardServer {
                 } catch (Exception ignored) {}
             }
 
-            // 2. Auto-balance frames per task across available nodes if requested or not specified
-            if (framesPerTask <= 0) {
-                int availableNodes = Math.max(1, workerRegistry.getAvailableWorkers().size());
-                framesPerTask = (int) Math.ceil((double) totalFrames / availableNodes);
-                System.out.printf("[DASHBOARD] Auto-balanced workload: %d frames across %d node(s) -> %d frames/task\n",
-                    totalFrames, availableNodes, framesPerTask);
+            boolean weightedSlicing = !body.contains("\"weightedSlicing\":false");
+            
+            // 2. Query available/active worker nodes (filtered by targetNodes if specified by user)
+            List<WorkerState> available = new ArrayList<>();
+            List<String> targetNodes = extractJsonStringArray(body, "targetNodes");
+            if (targetNodes.isEmpty()) {
+                targetNodes = extractJsonStringArray(body, "selectedWorkerIds");
+            }
+
+            if (!targetNodes.isEmpty()) {
+                for (String wId : targetNodes) {
+                    WorkerState w = workerRegistry.getWorker(wId);
+                    if (w != null && w.getStatus() != WorkerStatus.OFFLINE) {
+                        available.add(w);
+                    }
+                }
+            }
+
+            if (available.isEmpty()) {
+                available.addAll(workerRegistry.getAvailableWorkers());
+                if (available.isEmpty()) {
+                    for (WorkerState w : workerRegistry.getAllWorkers()) {
+                        if (w.getStatus() != WorkerStatus.OFFLINE) available.add(w);
+                    }
+                }
             }
 
             // 3. Unique Sequenced default Job Name if not custom specified
@@ -431,10 +464,28 @@ public class DashboardServer {
             }
 
             Job job = new Job(jobId, jobName, workloadType, totalFrames, params);
-            jobManager.submitJob(job, framesPerTask);
 
-            String response = String.format("{\"success\":true,\"jobId\":\"%s\",\"jobName\":\"%s\",\"subTasks\":%d,\"framesPerTask\":%d}",
-                jobId, escapeJson(jobName), job.getSubTaskCount(), framesPerTask);
+            if (weightedSlicing && framesPerTask <= 0 && available.size() > 1) {
+                // Sort fastest worker first to assign the leading frame slices
+                available.sort((w1, w2) -> Double.compare(ComputeCapabilityEngine.calculateScore(w2), ComputeCapabilityEngine.calculateScore(w1)));
+                List<Integer> specSlices = ComputeCapabilityEngine.partitionFrames(totalFrames, available);
+                job.sliceIntoCustomRanges(specSlices);
+                jobManager.submitJob(job, 0);
+                System.out.printf("[DASHBOARD] ⚡ Spec-Weighted Dynamic Slicing: %d frames partitioned across %d node(s) -> %s\n",
+                    totalFrames, available.size(), specSlices);
+            } else {
+                if (framesPerTask <= 0) {
+                    int availableNodes = Math.max(1, available.size());
+                    framesPerTask = (int) Math.ceil((double) totalFrames / availableNodes);
+                    System.out.printf("[DASHBOARD] Equal-balanced workload: %d frames across %d node(s) -> %d frames/task\n",
+                        totalFrames, availableNodes, framesPerTask);
+                }
+                job.sliceIntoFrameRanges(framesPerTask);
+                jobManager.submitJob(job, framesPerTask);
+            }
+
+            String response = String.format("{\"success\":true,\"jobId\":\"%s\",\"jobName\":\"%s\",\"subTasks\":%d,\"weightedSlicing\":%b,\"framesPerTask\":%d}",
+                jobId, escapeJson(jobName), job.getSubTaskCount(), (weightedSlicing && available.size() > 1), framesPerTask);
             sendJsonResponse(exchange, 201, response);
         }
     }
@@ -543,6 +594,137 @@ public class DashboardServer {
         }
     }
 
+    private class DownloadAgentJarHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            File jarFile = new File("bin/agent.jar");
+            if (!jarFile.exists()) {
+                jarFile = new File("agent.jar");
+            }
+            if (!jarFile.exists()) {
+                // Generate agent.jar on the fly if missing
+                try {
+                    ProcessBuilder pb = new ProcessBuilder("jar", "cvfe", "bin/agent.jar", "com.campusgrid.agent.Agent", "-C", "bin", ".");
+                    Process p = pb.start();
+                    p.waitFor();
+                    jarFile = new File("bin/agent.jar");
+                } catch (Exception ignored) {}
+            }
+
+            if (jarFile.exists() && jarFile.length() > 0) {
+                byte[] bytes = java.nio.file.Files.readAllBytes(jarFile.toPath());
+                exchange.getResponseHeaders().set("Content-Type", "application/java-archive");
+                exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"agent.jar\"");
+                exchange.sendResponseHeaders(200, bytes.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(bytes);
+                }
+            } else {
+                String err = "{\"error\":\"agent.jar not found on Master. Re-run build.bat to package.\"}";
+                byte[] errBytes = err.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(404, errBytes.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(errBytes);
+                }
+            }
+        }
+    }
+
+    private class ClusterSyncHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 204, "");
+                return;
+            }
+            int activeCount = 0;
+            for (WorkerState w : workerRegistry.getAllWorkers()) {
+                if (w.getStatus() != WorkerStatus.OFFLINE) activeCount++;
+            }
+            sendJsonResponse(exchange, 200, "{\"success\":true,\"message\":\"Cluster nodes synced\",\"activeNodes\":" + activeCount + "}");
+        }
+    }
+
+    private class ClusterCapabilityHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 204, "");
+                return;
+            }
+            List<WorkerState> active = new ArrayList<>();
+            for (WorkerState w : workerRegistry.getAllWorkers()) {
+                if (w.getStatus() != WorkerStatus.OFFLINE) active.add(w);
+            }
+            // Sort highest score first
+            active.sort((w1, w2) -> Double.compare(ComputeCapabilityEngine.calculateScore(w2), ComputeCapabilityEngine.calculateScore(w1)));
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("{\"nodes\":[");
+            int count = 0;
+            double totalScore = 0.0;
+            for (WorkerState w : active) {
+                totalScore += ComputeCapabilityEngine.calculateScore(w);
+            }
+            for (WorkerState w : active) {
+                if (count++ > 0) sb.append(",");
+                double score = ComputeCapabilityEngine.calculateScore(w);
+                double pct = totalScore > 0 ? (score / totalScore) * 100.0 : 0.0;
+                sb.append("{");
+                sb.append("\"workerId\":\"").append(escapeJson(w.getWorkerId())).append("\",");
+                sb.append("\"ipAddress\":\"").append(escapeJson(w.getIpAddress())).append("\",");
+                sb.append("\"gpuName\":\"").append(escapeJson(w.getGpuName())).append("\",");
+                sb.append("\"cpuModel\":\"").append(escapeJson(w.getCpuModel())).append("\",");
+                sb.append("\"score\":").append(String.format(Locale.US, "%.1f", score)).append(",");
+                sb.append("\"weightPercent\":").append(String.format(Locale.US, "%.1f", pct));
+                sb.append("}");
+            }
+            sb.append("],\"totalNodes\":").append(active.size()).append("}");
+            sendJsonResponse(exchange, 200, sb.toString());
+        }
+    }
+
+    private class AcademicReportPageHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            String path = exchange.getRequestURI().getPath(); // e.g. /report/JOB_123 or /api/reports/JOB_123
+            String[] parts = path.split("/");
+            String jobId = (parts.length >= 3) ? parts[parts.length - 1] : "";
+
+            Job job = null;
+            if (!jobId.isEmpty()) {
+                job = jobManager.getJob(jobId);
+            }
+            if (job == null) {
+                // Fallback to most recent completed or active job
+                for (Job j : jobManager.getAllJobs().values()) {
+                    if (j.getStatus() == JobStatus.COMPLETED || j.getStatus() == JobStatus.RUNNING) {
+                        job = j;
+                        break;
+                    }
+                }
+            }
+
+            if (job == null && !jobManager.getAllJobs().isEmpty()) {
+                job = jobManager.getAllJobs().values().iterator().next();
+            }
+
+            if (job == null) {
+                sendJsonResponse(exchange, 404, "{\"error\":\"No job found to generate report\"}");
+                return;
+            }
+
+            String html = AcademicReportGenerator.generateHtmlReport(job, workerRegistry);
+            byte[] bytes = html.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(bytes);
+            }
+        }
+    }
+
     private class StaticWebHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -595,6 +777,25 @@ public class DashboardServer {
             } catch (Exception ignored) {}
         }
         return defaultVal;
+    }
+
+    private static List<String> extractJsonStringArray(String json, String key) {
+        List<String> list = new ArrayList<>();
+        String pattern = "\"" + key + "\":[";
+        int idx = json.indexOf(pattern);
+        if (idx != -1) {
+            int start = idx + pattern.length();
+            int end = json.indexOf("]", start);
+            if (end != -1) {
+                String sub = json.substring(start, end);
+                String[] items = sub.split(",");
+                for (String item : items) {
+                    item = item.trim().replace("\"", "");
+                    if (!item.isEmpty()) list.add(item);
+                }
+            }
+        }
+        return list;
     }
 
     // ========================================================================

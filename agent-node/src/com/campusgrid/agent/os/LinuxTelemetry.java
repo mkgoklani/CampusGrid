@@ -284,6 +284,86 @@ public class LinuxTelemetry {
         return false;
     }
 
+    private static String cachedCpuModel = null;
+    private static String cachedOsArch = null;
+
+    /**
+     * Retrieves the authentic CPU Model Name (e.g. "12th Gen Intel Core i5-12450H" or "AMD Ryzen 7 7445HS").
+     */
+    public static String getCpuModelName() {
+        if (cachedCpuModel != null) return cachedCpuModel;
+
+        String os = System.getProperty("os.name").toLowerCase();
+        try {
+            if (os.contains("win")) {
+                // Try PowerShell CIM query
+                Process p = new ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-Command", "(Get-CimInstance Win32_Processor).Name").start();
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                    String line = r.readLine();
+                    if (line != null && !line.trim().isEmpty()) {
+                        cachedCpuModel = line.trim().replaceAll("\\s+", " ");
+                        return cachedCpuModel;
+                    }
+                }
+                // Fallback to environment variable
+                String procId = System.getenv("PROCESSOR_IDENTIFIER");
+                if (procId != null && !procId.isEmpty()) {
+                    cachedCpuModel = procId.trim();
+                    return cachedCpuModel;
+                }
+            } else if (os.contains("mac")) {
+                Process p = new ProcessBuilder("sysctl", "-n", "machdep.cpu.brand_string").start();
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                    String line = r.readLine();
+                    if (line != null && !line.trim().isEmpty()) {
+                        cachedCpuModel = line.trim();
+                        return cachedCpuModel;
+                    }
+                }
+            } else {
+                // Linux / Unix
+                File cpuinfo = new File("/proc/cpuinfo");
+                if (cpuinfo.exists() && cpuinfo.canRead()) {
+                    try (BufferedReader r = new BufferedReader(new FileReader(cpuinfo))) {
+                        String line;
+                        while ((line = r.readLine()) != null) {
+                            if (line.toLowerCase().startsWith("model name")) {
+                                String[] parts = line.split(":", 2);
+                                if (parts.length > 1 && !parts[1].trim().isEmpty()) {
+                                    cachedCpuModel = parts[1].trim().replaceAll("\\s+", " ");
+                                    return cachedCpuModel;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        int cores = Runtime.getRuntime().availableProcessors();
+        cachedCpuModel = "Multi-Core CPU (" + cores + " Cores)";
+        return cachedCpuModel;
+    }
+
+    /**
+     * Retrieves the authentic OS Architecture format (e.g. "x86_64 (64-bit)" or "aarch64 (Apple Silicon)").
+     */
+    public static String getOsArchitecture() {
+        if (cachedOsArch != null) return cachedOsArch;
+        String arch = System.getProperty("os.arch", "x86_64");
+        String dataModel = System.getProperty("sun.arch.data.model", "64");
+        String os = System.getProperty("os.name").toLowerCase();
+
+        if (arch.contains("aarch64") || arch.contains("arm64")) {
+            cachedOsArch = os.contains("mac") ? "Apple Silicon (ARM64)" : "aarch64 (64-bit)";
+        } else if (arch.contains("64")) {
+            cachedOsArch = "x86_64 (" + dataModel + "-bit)";
+        } else {
+            cachedOsArch = arch + " (" + dataModel + "-bit)";
+        }
+        return cachedOsArch;
+    }
+
     public static void main(String[] args) {
         System.out.println("==========================================");
         System.out.println("     CAMPUSGRID LIVE HARDWARE TELEMETRY   ");

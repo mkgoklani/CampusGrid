@@ -242,6 +242,10 @@ public class JobManager {
         return Collections.unmodifiableMap(jobRegistry);
     }
 
+    public synchronized Job getCurrentActiveJob() {
+        return currentActiveJob;
+    }
+
     /**
      * Returns cluster job statistics.
      */

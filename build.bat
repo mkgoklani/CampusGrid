@@ -34,10 +34,14 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-echo [4/4] Compiling Integration Test Suites...
-javac -d bin -cp "master-node/lib/*;bin;common-lib/src" test/*.java 2>nul
+echo [4/5] Compiling Integration Test Suites...
+javac -d bin -cp "master-node/lib/*;bin;common-lib/src;master-node" test/*.java
+
+echo [5/5] Packaging Standalone Runnable agent.jar...
+jar cvfe bin/agent.jar com.campusgrid.agent.Agent -C bin . > nul 2>&1
 
 echo ===================================================
 echo   ✔ BUILD SUCCESSFUL! All classes compiled to /bin
+echo   ✔ Packaged bin/agent.jar ready for distribution
 echo ===================================================
 pause

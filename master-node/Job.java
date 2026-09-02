@@ -92,6 +92,66 @@ public class Job implements Serializable {
     }
 
     /**
+     * Slices the total frames into custom, spec-weighted frame ranges.
+     *
+     * @param sliceSizes List of frame counts for each slice.
+     * @return Generated list of SubTasks.
+     */
+    public List<SubTask> sliceIntoCustomRanges(List<Integer> sliceSizes) {
+        subTasks.clear();
+        pendingSubTasks.clear();
+        List<SubTask> generated = new ArrayList<>();
+        int taskSeq = 1;
+
+        String blendPath = (parameters != null && parameters.containsKey("blendFilePath")) 
+            ? parameters.get("blendFilePath").toString() : "scene.blend";
+        Object blendBytes = (parameters != null) ? parameters.get("blendFileBytes") : null;
+
+        if (blendBytes == null && blendPath != null && new File(blendPath).exists()) {
+            try {
+                blendBytes = java.nio.file.Files.readAllBytes(new File(blendPath).toPath());
+                if (parameters != null) parameters.put("blendFileBytes", blendBytes);
+            } catch (Exception ignored) {}
+        }
+
+        int currentStart = 1;
+        for (int i = 0; i < sliceSizes.size(); i++) {
+            if (currentStart > totalFrames) break;
+            int size = sliceSizes.get(i);
+            int currentEnd = (i == sliceSizes.size() - 1) 
+                ? totalFrames 
+                : Math.min(currentStart + size - 1, totalFrames);
+
+            String taskId = String.format("%s_T%03d", jobId, taskSeq++);
+            String frameRange = (currentStart == currentEnd) ? String.valueOf(currentStart) : (currentStart + "-" + currentEnd);
+
+            SubTask subTask = new SubTask(taskId, jobId, currentStart, currentEnd, frameRange, workloadType);
+            subTask.setTaskData(blendBytes != null ? blendBytes : blendPath);
+            if (blendBytes instanceof byte[] b) {
+                subTask.setTaskPayloadBytes(b);
+            }
+            subTasks.put(taskId, subTask);
+            pendingSubTasks.add(subTask);
+            generated.add(subTask);
+
+            currentStart = currentEnd + 1;
+        }
+
+        // Catch-all if totalFrames wasn't fully exhausted
+        if (currentStart <= totalFrames) {
+            String taskId = String.format("%s_T%03d", jobId, taskSeq++);
+            String frameRange = (currentStart == totalFrames) ? String.valueOf(currentStart) : (currentStart + "-" + totalFrames);
+            SubTask subTask = new SubTask(taskId, jobId, currentStart, totalFrames, frameRange, workloadType);
+            subTask.setTaskData(blendBytes != null ? blendBytes : blendPath);
+            subTasks.put(taskId, subTask);
+            pendingSubTasks.add(subTask);
+            generated.add(subTask);
+        }
+
+        return generated;
+    }
+
+    /**
      * Retrieves the next pending sub-task to dispatch.
      *
      * @return SubTask if available, null otherwise.
@@ -281,10 +341,30 @@ public class Job implements Serializable {
             return System.currentTimeMillis() - dispatchTimestamp;
         }
 
+        private volatile boolean isStolen = false;
+        private volatile String stolenFromWorkerId = null;
+
+        public boolean isStolen() { return isStolen; }
+        public void setStolen(boolean stolen) { this.isStolen = stolen; }
+
+        public String getStolenFromWorkerId() { return stolenFromWorkerId; }
+        public void setStolenFromWorkerId(String workerId) { this.stolenFromWorkerId = workerId; }
+
         @Override
         public String toString() {
-            return String.format("SubTask[ID=%s, Range=%s, Status=%s, Worker=%s, Retries=%d]",
-                taskId, frameRange, status, assignedWorkerId != null ? assignedWorkerId : "NONE", retryCount);
+            return String.format("SubTask[ID=%s, Range=%s, Status=%s, Worker=%s, Retries=%d%s]",
+                taskId, frameRange, status, assignedWorkerId != null ? assignedWorkerId : "NONE", retryCount,
+                isStolen ? " (Stolen from " + stolenFromWorkerId + ")" : "");
+        }
+    }
+
+    /**
+     * Registers a dynamically stolen sub-task created at runtime for load rebalancing.
+     */
+    public synchronized void addStolenSubTask(SubTask subTask) {
+        if (subTask != null) {
+            subTasks.put(subTask.getTaskId(), subTask);
+            pendingSubTasks.add(subTask);
         }
     }
 }

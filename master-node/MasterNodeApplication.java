@@ -272,6 +272,20 @@ public class MasterNodeApplication {
                 } catch (Exception ignored) {}
             }
 
+            double fps = -1.0;
+            try {
+                fps = (double) clazz.getMethod("getRenderFps").invoke(statusObj);
+            } catch (Exception ignored) {}
+
+            if (fps > 0) {
+                worker.setLatestFps(fps);
+            }
+
+            if (currentFrame > 0 && jobId != null && !jobId.equalsIgnoreCase("N/A")) {
+                worker.setLatestFrameNumber(currentFrame);
+                worker.setLatestFrameUrl(String.format("/output/%s/frame_%04d.png", jobId, currentFrame));
+            }
+
             // CRITICAL: SoftwareEngine-1.0 fallback is NOT native Blender
             boolean isRealBlender = (blenderVer != null 
                 && !blenderVer.equalsIgnoreCase("Unknown") 
@@ -307,6 +321,9 @@ public class MasterNodeApplication {
                 String blenderVer = null;
                 boolean blenderInstalled = false;
                 double installPct = -1.0;
+                String cpuModel = null;
+                String osArch = null;
+                String agentVer = null;
 
                 String[] parts = raw.split("\\|");
                 for (String part : parts) {
@@ -329,6 +346,12 @@ public class MasterNodeApplication {
                         blenderInstalled = !"Unknown".equalsIgnoreCase(blenderVer) 
                             && !blenderVer.toLowerCase().contains("softwareengine") 
                             && !blenderVer.isEmpty();
+                    } else if (part.startsWith("CPU_MODEL:")) {
+                        cpuModel = part.substring(10).trim();
+                    } else if (part.startsWith("ARCH:")) {
+                        osArch = part.substring(5).trim();
+                    } else if (part.startsWith("VER:")) {
+                        agentVer = part.substring(4).trim();
                     } else if (part.startsWith("INSTALL:")) {
                         String ip = part.substring(8).replace("%", "").trim();
                         try {
@@ -340,6 +363,9 @@ public class MasterNodeApplication {
                 if (os != null || blenderVer != null || installPct >= 0 || gpu != null) {
                     workerRegistry.updateEnvironment(workerId, os, blenderInstalled, blenderVer, installPct, gpu);
                 }
+                if (cpuModel != null) worker.setCpuModel(cpuModel);
+                if (osArch != null) worker.setOsArch(osArch);
+                if (agentVer != null) worker.setAgentVersion(agentVer);
                 if (worker.getStatus() == WorkerStatus.OFFLINE || worker.getStatus() == null) {
                     workerRegistry.updateStatus(workerId, WorkerStatus.IDLE);
                 }
