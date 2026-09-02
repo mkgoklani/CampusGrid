@@ -12,7 +12,7 @@
  */
 public class HeartbeatMonitor implements Runnable {
 
-    private static final long DEFAULT_TIMEOUT_THRESHOLD_MS = 15000; // 15 seconds
+    private static final long DEFAULT_TIMEOUT_THRESHOLD_MS = 30000; // 30 seconds
     private static final long DEFAULT_CHECK_INTERVAL_MS = 5000;      // 5 seconds
 
     private final WorkerRegistry workerRegistry;
@@ -116,11 +116,12 @@ public class HeartbeatMonitor implements Runnable {
 
             long lastHeartbeat = worker.getLastHeartbeatTimestamp();
             long elapsedSinceLastBeat = now - lastHeartbeat;
+            long allowedTimeout = (status == WorkerStatus.BUSY) ? (timeoutThresholdMs * 4) : timeoutThresholdMs;
 
-            if (elapsedSinceLastBeat > timeoutThresholdMs) {
+            if (elapsedSinceLastBeat > allowedTimeout) {
                 String workerId = worker.getWorkerId();
-                System.out.printf("[HEARTBEAT-MONITOR] ⚠ Dead node detected: Worker [%s] missed heartbeats (Last seen %.1fs ago).\n",
-                    workerId, elapsedSinceLastBeat / 1000.0);
+                System.out.printf("[HEARTBEAT-MONITOR] ⚠ Dead node detected: Worker [%s] missed heartbeats (Last seen %.1fs ago, Status: %s).\n",
+                    workerId, elapsedSinceLastBeat / 1000.0, status);
 
                 // Trigger atomic crash recovery, socket cleanup, and task re-queuing
                 workerRegistry.handleWorkerFailure(workerId, jobManager);

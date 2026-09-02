@@ -260,6 +260,18 @@ public class MasterNodeApplication {
             String state = (String) clazz.getMethod("getState").invoke(statusObj);
             String blenderVer = (String) clazz.getMethod("getBlenderVersion").invoke(statusObj);
 
+            String tempStr = null;
+            try {
+                tempStr = (String) clazz.getMethod("getCpuTemperature").invoke(statusObj);
+            } catch (Exception ignored) {}
+
+            int temp = worker.getCpuTemperature();
+            if (tempStr != null && !tempStr.isEmpty()) {
+                try {
+                    temp = Integer.parseInt(tempStr.replaceAll("[^0-9]", ""));
+                } catch (Exception ignored) {}
+            }
+
             // CRITICAL: SoftwareEngine-1.0 fallback is NOT native Blender
             boolean isRealBlender = (blenderVer != null 
                 && !blenderVer.equalsIgnoreCase("Unknown") 
@@ -269,6 +281,8 @@ public class MasterNodeApplication {
             if (isRealBlender) {
                 workerRegistry.updateEnvironment(workerId, null, true, blenderVer, -1.0);
             }
+
+            workerRegistry.updateTelemetry(workerId, temp, worker.getRamUsagePercent());
 
             if ("RENDERING".equalsIgnoreCase(state) || "BUSY".equalsIgnoreCase(state)) {
                 workerRegistry.updateStatus(workerId, WorkerStatus.BUSY);

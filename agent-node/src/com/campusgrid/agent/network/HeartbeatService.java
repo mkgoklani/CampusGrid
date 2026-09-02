@@ -89,8 +89,8 @@ public class HeartbeatService implements Runnable {
             if (inGracePeriod) {
                 long remainingSec = (STARTUP_GRACE_PERIOD_MS - elapsedTime) / 1000;
                 System.out.println("[HEARTBEAT] Startup grace period active (" + remainingSec + "s remaining)");
-            } else if (IdleDetector.isUserActive()) {
-                System.out.println("[HEARTBEAT] User activity detected.");
+            } else if (!LinuxTelemetry.isExecutingTask && IdleDetector.isUserActive()) {
+                System.out.println("[HEARTBEAT] User activity detected on idle workstation.");
                 
                 // Send EVICTED to the Master
                 try {
@@ -99,13 +99,7 @@ public class HeartbeatService implements Runnable {
                     System.out.println("[HEARTBEAT] Eviction notification failed: " + e.getMessage());
                 }
 
-                // Stop the PayloadListener thread gracefully
-                PayloadListener listener = connection.getPayloadListener();
-                if (listener != null && listener.isRunning()) {
-                    listener.stop();
-                }
-
-                // Enter sleep mode for exactly 5 minutes
+                // Enter sleep mode for 30 seconds
                 try {
                     Thread.sleep(EVICTION_SLEEP_MS);
                 } catch (InterruptedException e) {
