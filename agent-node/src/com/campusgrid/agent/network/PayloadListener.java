@@ -219,6 +219,16 @@ public class PayloadListener implements Runnable {
                                                  .replace("://localhost:", "://" + masterIp + ":");
                     }
                 }
+
+                // Ensure the Agent uses its authentic OS and Architecture in the download request
+                String actualOs = com.campusgrid.agent.blender.BlenderUtils.getOsType();
+                String actualArch = com.campusgrid.agent.blender.BlenderUtils.getSystemArch();
+                if (downloadUrl != null && downloadUrl.contains("os=")) {
+                    downloadUrl = downloadUrl.replaceAll("os=[a-zA-Z0-9]+", "os=" + actualOs);
+                }
+                if (downloadUrl != null && downloadUrl.contains("arch=")) {
+                    downloadUrl = downloadUrl.replaceAll("arch=[a-zA-Z0-9]+", "arch=" + actualArch);
+                }
                 
                 final String finalDownloadUrl = downloadUrl;
                 System.out.println("[TASK] Received INSTALL_BLENDER command from Master. Starting installer from: " + finalDownloadUrl);
@@ -226,11 +236,20 @@ public class PayloadListener implements Runnable {
                     com.campusgrid.agent.blender.BlenderInstaller.installBlender(finalDownloadUrl, (pct, msg) -> {
                         try {
                             String ver = com.campusgrid.agent.blender.BlenderInstaller.getInstallationStatus().getVersion();
-                            connection.sendObject(String.format("HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | BLENDER: %s | INSTALL: %.1f | MSG: %s",
+                            connection.sendObject(String.format(
+                                "HEARTBEAT | AGENT_VERSION: %s | AGENT_BUILD: %d | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | CPU_MODEL: %s | ARCH: %s | GPU: %s | GPUTYPE: %s | GPU_AVAIL: %b | USEGPU: %b | BLENDER: %s | INSTALL: %.1f | MSG: %s",
+                                com.campusgrid.agent.Agent.CURRENT_VERSION,
+                                com.campusgrid.agent.Agent.CURRENT_BUILD,
                                 com.campusgrid.agent.os.LinuxTelemetry.getCpuTemperatureCelsius(),
                                 com.campusgrid.agent.os.LinuxTelemetry.getCpuLoadPercent(),
                                 com.campusgrid.agent.os.LinuxTelemetry.getRamUsagePercent(),
                                 System.getProperty("os.name"),
+                                com.campusgrid.agent.os.HardwareCollector.getCpuModelName(),
+                                com.campusgrid.agent.os.HardwareCollector.getCpuArchitecture(),
+                                com.campusgrid.agent.os.HardwareCollector.getGpuModelName(),
+                                com.campusgrid.agent.os.HardwareCollector.getGpuComputeType(),
+                                com.campusgrid.agent.os.HardwareCollector.isGpuAvailable(),
+                                useGpu,
                                 ver,
                                 pct,
                                 msg

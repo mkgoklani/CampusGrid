@@ -49,12 +49,17 @@ public class BlenderUtils {
      */
     public static String findExecutablePath() {
         if (isWindows()) {
-            // 1. Try 'where' command on Windows
-            String pathFromWhere = executeCommandSilently("where", "blender");
+            // 1. Try 'where' command on Windows for blender.exe and blender
+            String pathFromWhere = executeCommandSilently("where", "blender.exe");
+            if (pathFromWhere == null || pathFromWhere.isEmpty()) {
+                pathFromWhere = executeCommandSilently("where", "blender");
+            }
             if (pathFromWhere != null && !pathFromWhere.isEmpty()) {
-                String firstPath = pathFromWhere.split("\r?\n")[0].trim();
-                if (new File(firstPath).canExecute()) {
-                    return firstPath;
+                for (String p : pathFromWhere.split("\r?\n")) {
+                    File f = new File(p.trim());
+                    if (f.exists() && f.isFile()) {
+                        return f.getAbsolutePath();
+                    }
                 }
             }
             
@@ -65,40 +70,76 @@ public class BlenderUtils {
                 workDir = System.getProperty("user.dir");
             }
             
-            // 2. Try common default installation paths on Windows
+            String userHome = System.getProperty("user.home", "C:\\Users\\Default");
+            String localAppData = System.getenv("LOCALAPPDATA");
+            String programFiles = System.getenv("ProgramFiles");
+            if (programFiles == null) programFiles = "C:\\Program Files";
+            String programFilesX86 = System.getenv("ProgramFiles(x86)");
+            if (programFilesX86 == null) programFilesX86 = "C:\\Program Files (x86)";
+
+            // 2. Direct paths
             String[] commonWinPaths = {
                 workDir + "\\blender_bin\\blender.exe",
-                "C:\\Program Files\\Blender Foundation\\Blender 4.2\\blender.exe",
-                "C:\\Program Files\\Blender Foundation\\Blender 4.1\\blender.exe",
-                "C:\\Program Files\\Blender Foundation\\Blender 4.0\\blender.exe",
-                "C:\\Program Files\\Blender Foundation\\Blender 3.6\\blender.exe",
-                "C:\\Program Files\\Blender Foundation\\Blender 3.5\\blender.exe",
-                "C:\\Program Files\\Blender Foundation\\Blender 3.4\\blender.exe",
-                "C:\\Program Files\\Blender Foundation\\Blender 3.3\\blender.exe",
-                "C:\\Program Files\\Blender Foundation\\Blender 3.2\\blender.exe",
-                "C:\\Program Files\\Blender Foundation\\Blender 3.0\\blender.exe",
-                "C:\\Program Files\\Blender Foundation\\Blender 2.93\\blender.exe",
-                "C:\\Program Files\\Blender Foundation\\Blender 2.83\\blender.exe"
+                workDir + "\\..\\blender_bin\\blender.exe",
+                userHome + "\\blender_bin\\blender.exe",
+                "C:\\blender_bin\\blender.exe",
+                "C:\\Blender\\blender.exe",
+                "D:\\Blender\\blender.exe",
+                "E:\\Blender\\blender.exe",
+                programFiles + "\\Blender Foundation\\Blender 4.3\\blender.exe",
+                programFiles + "\\Blender Foundation\\Blender 4.2\\blender.exe",
+                programFiles + "\\Blender Foundation\\Blender 4.1\\blender.exe",
+                programFiles + "\\Blender Foundation\\Blender 4.0\\blender.exe",
+                programFiles + "\\Blender Foundation\\Blender 3.6\\blender.exe",
+                programFiles + "\\Blender Foundation\\Blender 3.5\\blender.exe",
+                programFiles + "\\Blender Foundation\\Blender 3.4\\blender.exe",
+                programFiles + "\\Blender Foundation\\Blender 3.3\\blender.exe",
+                programFiles + "\\Blender Foundation\\Blender 3.2\\blender.exe",
+                programFiles + "\\Blender Foundation\\Blender 3.1\\blender.exe",
+                programFiles + "\\Blender Foundation\\Blender 3.0\\blender.exe",
+                programFiles + "\\Blender Foundation\\Blender 2.93\\blender.exe",
+                programFiles + "\\Blender Foundation\\Blender 2.83\\blender.exe",
+                programFilesX86 + "\\Blender Foundation\\Blender 4.2\\blender.exe",
+                programFilesX86 + "\\Blender Foundation\\Blender 3.6\\blender.exe",
+                programFiles + "\\Steam\\steamapps\\common\\Blender\\blender.exe",
+                programFilesX86 + "\\Steam\\steamapps\\common\\Blender\\blender.exe",
+                "D:\\Steam\\steamapps\\common\\Blender\\blender.exe",
+                "D:\\SteamLibrary\\steamapps\\common\\Blender\\blender.exe",
+                "E:\\Steam\\steamapps\\common\\Blender\\blender.exe",
+                "E:\\SteamLibrary\\steamapps\\common\\Blender\\blender.exe",
+                localAppData != null ? localAppData + "\\Programs\\Blender Foundation\\blender.exe" : null,
+                localAppData != null ? localAppData + "\\Programs\\Blender\\blender.exe" : null
             };
             for (String p : commonWinPaths) {
+                if (p == null) continue;
                 File f = new File(p);
-                if (f.exists() && f.canExecute()) {
+                if (f.exists() && f.isFile()) {
                     return f.getAbsolutePath();
                 }
             }
             
-            // 3. Scan the parent Blender Foundation directory
-            File blenderFoundationDir = new File("C:\\Program Files\\Blender Foundation");
-            if (blenderFoundationDir.exists() && blenderFoundationDir.isDirectory()) {
-                File[] subdirs = blenderFoundationDir.listFiles();
-                if (subdirs != null) {
-                    for (File subdir : subdirs) {
-                        if (subdir.isDirectory()) {
-                            File exe = new File(subdir, "blender.exe");
-                            if (exe.exists() && exe.canExecute()) {
-                                return exe.getAbsolutePath();
-                            }
-                        }
+            // 3. Recursive directory scans for parent folders on Windows
+            String[] searchDirs = {
+                programFiles + "\\Blender Foundation",
+                programFilesX86 + "\\Blender Foundation",
+                programFiles + "\\Blender",
+                programFilesX86 + "\\Blender",
+                "C:\\Blender",
+                "D:\\Blender",
+                workDir + "\\blender_bin",
+                workDir + "\\..\\blender_bin",
+                userHome + "\\blender_bin",
+                localAppData != null ? localAppData + "\\Programs\\Blender Foundation" : null,
+                localAppData != null ? localAppData + "\\Microsoft\\WinGet\\Packages" : null
+            };
+            for (String sDir : searchDirs) {
+                if (sDir == null) continue;
+                File d = new File(sDir);
+                if (d.exists() && d.isDirectory()) {
+                    File found = findExecutableInDir(d, "blender.exe");
+                    if (found == null) found = findExecutableInDir(d, "blender");
+                    if (found != null && found.isFile()) {
+                        return found.getAbsolutePath();
                     }
                 }
             }
@@ -163,9 +204,9 @@ public class BlenderUtils {
         File[] files = dir.listFiles();
         if (files == null) return null;
         for (File f : files) {
-            if (f.isFile() && f.getName().equalsIgnoreCase(baseName) && f.canExecute()) {
+            if (f.isFile() && f.getName().equalsIgnoreCase(baseName)) {
                 return f;
-            } else if (f.isDirectory() && !f.getName().startsWith(".")) {
+            } else if (f.isDirectory() && !f.getName().startsWith(".") && !f.getName().equalsIgnoreCase("node_modules")) {
                 File sub = findExecutableInDir(f, baseName);
                 if (sub != null) return sub;
             }

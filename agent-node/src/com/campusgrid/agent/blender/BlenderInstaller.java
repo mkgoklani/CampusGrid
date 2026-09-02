@@ -441,7 +441,8 @@ public class BlenderInstaller {
                 if (callback != null) callback.onProgress(80.0, "Extracting portable Blender...");
                 extractZip(zipFile, binDir);
 
-                File blenderExe = new File(binDir, "blender.exe");
+                String foundExe = BlenderUtils.findExecutablePath();
+                File blenderExe = foundExe != null ? new File(foundExe) : new File(binDir, "blender.exe");
                 if (blenderExe.exists()) {
                     blenderExe.setExecutable(true);
                     System.out.println("[INSTALLER] Binary found at: " + blenderExe.getAbsolutePath());
@@ -553,7 +554,7 @@ public class BlenderInstaller {
             java.util.zip.ZipEntry entry;
             byte[] buffer = new byte[65536];
             while ((entry = zis.getNextEntry()) != null) {
-                String name = entry.getName();
+                String name = entry.getName().replace('\\', '/');
                 // If the entry contains a top-level directory folder, strip only the first folder component
                 int slash = name.indexOf('/');
                 if (slash >= 0 && name.contains("/")) {
