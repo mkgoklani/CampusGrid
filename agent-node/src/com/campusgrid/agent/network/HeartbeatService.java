@@ -125,17 +125,18 @@ public class HeartbeatService implements Runnable {
             String blenderVer = com.campusgrid.agent.blender.BlenderInstaller.getInstallationStatus().getVersion();
             boolean isInstalling = com.campusgrid.agent.blender.BlenderInstaller.isInstalling;
             double installPct = com.campusgrid.agent.blender.BlenderInstaller.currentInstallProgress;
+            String gpuInfo = com.campusgrid.agent.os.GpuDetector.getGpuInfo();
 
             // Send authentic telemetry heartbeat to Master node
             try {
                 if (isInstalling && installPct >= 0.0) {
                     connection.sendObject(String.format(java.util.Locale.US,
-                        "HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | BLENDER: %s | INSTALL: %.1f",
-                        tempCelsius, cpuLoad, ramUsage, osName, blenderVer, installPct));
+                        "HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | GPU: %s | BLENDER: %s | INSTALL: %.1f",
+                        tempCelsius, cpuLoad, ramUsage, osName, gpuInfo, blenderVer, installPct));
                 } else {
                     connection.sendObject(String.format(java.util.Locale.US,
-                        "HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | BLENDER: %s",
-                        tempCelsius, cpuLoad, ramUsage, osName, blenderVer));
+                        "HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | GPU: %s | BLENDER: %s",
+                        tempCelsius, cpuLoad, ramUsage, osName, gpuInfo, blenderVer));
                 }
             } catch (IOException e) {
                 System.out.println("[HEARTBEAT] Connection lost: " + e.getMessage());
@@ -143,8 +144,8 @@ public class HeartbeatService implements Runnable {
                 break;
             }
 
-            System.out.printf(java.util.Locale.US, "[HEARTBEAT] Sent (Temp: %d°C, CPU: %.1f%%, RAM: %.1f%%, OS: %s, Blender: %s%s)\n",
-                tempCelsius, cpuLoad, ramUsage, osName, blenderVer, 
+            System.out.printf(java.util.Locale.US, "[HEARTBEAT] Sent (Temp: %d°C, CPU: %.1f%%, RAM: %.1f%%, OS: %s, GPU: %s, Blender: %s%s)\n",
+                tempCelsius, cpuLoad, ramUsage, osName, gpuInfo, blenderVer, 
                 (isInstalling ? String.format(" [INSTALLING: %.1f%%]", installPct) : ""));
 
             try {

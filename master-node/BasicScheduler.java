@@ -2,6 +2,7 @@ import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * CAMPUS GRID - NON-BLOCKING BASIC SCHEDULER
@@ -142,21 +143,29 @@ public class BasicScheduler implements Runnable {
         // 1. Atomically mark worker BUSY and bind task details in registry
         workerRegistry.assignTaskToWorker(workerId, jobId, taskId, frameRange);
         task.setAssignedWorkerId(workerId);
+        task.setStatus(Job.SubTaskStatus.DISPATCHED);
+        task.setDispatchTimestamp(System.currentTimeMillis());
 
-        Job job = jobManager.getJob(jobId);
-        com.campusgrid.core.RenderSettings settings = null;
-        if (job != null) {
-            settings = job.getRenderSettings();
-            if (settings != null) {
-                settings = new com.campusgrid.core.RenderSettings(
-                    settings.getRenderEngine(),
-                    settings.getResolutionX(),
-                    settings.getResolutionY(),
-                    settings.getOutputFormat(),
-                    settings.getSamples(),
-                    task.getStartFrame(),
-                    task.getEndFrame()
-                );
+        // 2. Build protocol envelope with configured render engine and quality settings
+        Job parentJob = jobManager.getAllJobs().get(jobId);
+        String renderEngine = "CYCLES";
+        int renderSamples = 64;
+        boolean useDenoising = true;
+        int resolutionPercentage = 100;
+
+        if (parentJob != null && parentJob.getParameters() != null) {
+            Map<String, Object> params = parentJob.getParameters();
+            if (params.containsKey("renderEngine")) {
+                renderEngine = params.get("renderEngine").toString();
+            }
+            if (params.containsKey("renderSamples")) {
+                try { renderSamples = Integer.parseInt(params.get("renderSamples").toString()); } catch (Exception ignored) {}
+            }
+            if (params.containsKey("useDenoising")) {
+                try { useDenoising = Boolean.parseBoolean(params.get("useDenoising").toString()); } catch (Exception ignored) {}
+            }
+            if (params.containsKey("resolutionPercentage")) {
+                try { resolutionPercentage = Integer.parseInt(params.get("resolutionPercentage").toString()); } catch (Exception ignored) {}
             }
         }
 
@@ -166,7 +175,10 @@ public class BasicScheduler implements Runnable {
             task.getWorkloadType(),
             task.getTaskData() != null ? task.getTaskData() : task.getTaskPayloadBytes(),
             frameRange,
-            settings
+            renderEngine,
+            renderSamples,
+            useDenoising,
+            resolutionPercentage
         );
 
         GridMessage message = new GridMessage(

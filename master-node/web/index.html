@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CampusGrid Master Center</title>
+    <title>CampusGrid Master Center - Distributed 3D Compute</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -11,12 +11,14 @@
         :root {
             --bg-color: #f4f1ea; 
             --panel-bg: #f4f1ea;
-            --text-main: #202020;
-            --text-muted: #6e6e6e;
-            --button-bg: #181818;
+            --card-bg: rgba(255, 255, 255, 0.75);
+            --text-main: #1c1c1c;
+            --text-muted: #666666;
+            --button-bg: #151515;
             --button-text: #f4f1ea;
             --accent-green: #2e7d32;
             --accent-blue: #1565c0;
+            --accent-purple: #6a1b9a;
             --accent-red: #c62828;
             --accent-orange: #e65100;
             
@@ -33,7 +35,7 @@
             color: var(--text-main);
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             margin: 0;
-            padding: 35px 40px;
+            padding: 30px 40px;
             min-height: 100vh;
         }
 
@@ -55,7 +57,7 @@
 
         .header-title h1 {
             font-size: 34px;
-            color: #151515;
+            color: #111;
             line-height: 1.15;
         }
 
@@ -67,7 +69,7 @@
 
         .stats-bar {
             display: flex;
-            gap: 18px;
+            gap: 16px;
         }
 
         .neumorphic-outset {
@@ -78,12 +80,12 @@
         }
 
         .stat-card {
-            padding: 16px 24px;
+            padding: 14px 22px;
             text-align: center;
             min-width: 105px;
         }
 
-        .stat-card h3 { font-size: 28px; margin-bottom: 3px; color: #111; font-weight: 600; }
+        .stat-card h3 { font-size: 26px; margin-bottom: 2px; color: #111; font-weight: 600; }
         .stat-card p { margin: 0; color: var(--text-muted); font-size: 11px; letter-spacing: 0.8px; text-transform: uppercase; font-weight: 600; }
 
         /* Installation Banner */
@@ -101,18 +103,21 @@
 
         .dashboard-grid {
             display: grid;
-            grid-template-columns: 1.85fr 1.15fr;
-            gap: 30px;
+            grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr);
+            gap: 28px;
         }
 
-        @media (max-width: 1100px) {
+        @media (max-width: 1200px) {
             .dashboard-grid {
-                grid-template-columns: 1fr;
+                grid-template-columns: minmax(0, 1fr);
             }
         }
 
         .panel {
-            padding: 28px;
+            padding: 26px;
+            min-width: 0;
+            overflow: hidden;
+            box-sizing: border-box;
         }
 
         .panel-header {
@@ -124,7 +129,7 @@
 
         .panel-header h2 { 
             font-size: 22px; 
-            color: #181818;
+            color: #151515;
         }
 
         .badge-live {
@@ -165,12 +170,12 @@
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 13.5px;
+            font-size: 13px;
         }
 
         th {
             text-align: left;
-            padding: 12px 14px;
+            padding: 10px 12px;
             color: var(--text-muted);
             font-size: 11px;
             font-weight: 600;
@@ -180,7 +185,7 @@
         }
 
         td {
-            padding: 13px 14px;
+            padding: 12px;
             border-bottom: 1px solid rgba(0, 0, 0, 0.04);
             vertical-align: middle;
         }
@@ -243,24 +248,25 @@
             background: var(--button-bg);
             color: var(--button-text);
             border: none;
-            padding: 12px 22px;
+            padding: 10px 20px;
             border-radius: 8px;
             cursor: pointer;
             font-family: inherit;
             font-size: 12px;
             font-weight: 600;
-            letter-spacing: 1px;
+            letter-spacing: 0.8px;
             text-transform: uppercase;
             transition: all 0.2s ease;
             box-shadow: 0 4px 8px rgba(0,0,0,0.12);
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
+            gap: 6px;
+            text-decoration: none;
         }
         
         .btn:hover { 
-            opacity: 0.9;
+            opacity: 0.92;
             transform: translateY(-1px);
             box-shadow: 0 6px 12px rgba(0,0,0,0.16);
         }
@@ -283,6 +289,66 @@
             color: #fff;
         }
 
+        .btn-action-zip {
+            background: rgba(46, 125, 50, 0.12);
+            color: var(--accent-green);
+            border: 1px solid rgba(46, 125, 50, 0.3);
+            padding: 6px 12px;
+            font-size: 11.5px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.2s;
+        }
+        .btn-action-zip:hover {
+            background: var(--accent-green);
+            color: #fff;
+        }
+
+        .btn-action-play {
+            background: rgba(21, 101, 192, 0.12);
+            color: var(--accent-blue);
+            border: 1px solid rgba(21, 101, 192, 0.3);
+            padding: 6px 12px;
+            font-size: 11.5px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.2s;
+        }
+        .btn-action-play:hover {
+            background: var(--accent-blue);
+            color: #fff;
+        }
+
+        .btn-action-gallery {
+            background: rgba(106, 27, 154, 0.12);
+            color: var(--accent-purple);
+            border: 1px solid rgba(106, 27, 154, 0.3);
+            padding: 6px 12px;
+            font-size: 11.5px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.2s;
+        }
+        .btn-action-gallery:hover {
+            background: var(--accent-purple);
+            color: #fff;
+        }
+
         .btn-install {
             background: rgba(230, 81, 0, 0.12);
             color: var(--accent-orange);
@@ -301,39 +367,22 @@
             color: #fff;
         }
 
-        .btn-play {
-            background: rgba(21, 101, 192, 0.1);
-            color: var(--accent-blue);
-            border: 1px solid rgba(21, 101, 192, 0.25);
-            padding: 6px 12px;
-            font-size: 11px;
-            letter-spacing: 0.5px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 600;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            transition: all 0.2s;
-        }
-
-        .btn-play:hover {
-            background: var(--accent-blue);
-            color: #fff;
-        }
-
         .job-card {
-            background: rgba(255, 255, 255, 0.55);
-            border: 1px solid rgba(0, 0, 0, 0.05);
+            background: var(--card-bg);
+            border: 1px solid rgba(0, 0, 0, 0.06);
             border-radius: 14px;
-            padding: 18px;
-            margin-bottom: 16px;
+            padding: 18px 20px;
+            margin-bottom: 18px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
             transition: transform 0.2s ease, background 0.2s;
+            min-width: 0;
+            max-width: 100%;
+            overflow: hidden;
+            box-sizing: border-box;
         }
 
         .job-card:hover {
-            background: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.95);
         }
 
         /* Modal Overlay */
@@ -341,8 +390,8 @@
             display: none;
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(20, 20, 20, 0.5);
-            backdrop-filter: blur(5px);
+            background: rgba(20, 20, 20, 0.55);
+            backdrop-filter: blur(6px);
             z-index: 1000;
             align-items: center;
             justify-content: center;
@@ -351,8 +400,8 @@
         .modal-box {
             background: var(--bg-color);
             width: 92%;
-            max-width: 580px;
-            padding: 32px;
+            max-width: 620px;
+            padding: 28px 32px;
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.25);
             max-height: 90vh;
@@ -375,7 +424,7 @@
 
         .form-control {
             width: 100%;
-            padding: 11px 13px;
+            padding: 10px 12px;
             border-radius: 8px;
             border: 1px solid rgba(0, 0, 0, 0.12);
             background: rgba(255, 255, 255, 0.85);
@@ -397,11 +446,82 @@
             gap: 14px;
         }
 
+        /* Engine Choice Cards */
+        .engine-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .engine-card {
+            border: 2px solid rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 10px;
+            padding: 12px 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .engine-card:hover {
+            border-color: #111;
+            background: rgba(255, 255, 255, 0.95);
+        }
+
+        .engine-card.active {
+            border-color: var(--accent-blue);
+            background: rgba(21, 101, 192, 0.08);
+            box-shadow: 0 0 0 1px var(--accent-blue);
+        }
+
+        .engine-card-icon {
+            font-size: 20px;
+            margin-bottom: 4px;
+        }
+
+        .engine-card-title {
+            font-weight: 700;
+            font-size: 12.5px;
+            color: #111;
+        }
+
+        .engine-card-sub {
+            font-size: 10.5px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .preset-pills {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+            flex-wrap: wrap;
+        }
+
+        .preset-pill {
+            background: rgba(0, 0, 0, 0.05);
+            border: 1px solid rgba(0, 0, 0, 0.12);
+            padding: 4px 9px;
+            border-radius: 6px;
+            font-size: 11.5px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .preset-pill:hover, .preset-pill.active {
+            background: #111;
+            color: #fff;
+            border-color: #111;
+        }
+
         .auto-calc-box {
-            background: rgba(21, 101, 192, 0.06);
-            border: 1px solid rgba(21, 101, 192, 0.2);
+            background: rgba(21, 101, 192, 0.08);
+            border: 1px solid rgba(21, 101, 192, 0.25);
             border-radius: 8px;
-            padding: 10px 14px;
+            padding: 10px 12px;
             margin-top: 6px;
             font-size: 12px;
             color: #0d47a1;
@@ -410,20 +530,34 @@
             gap: 8px;
         }
 
+        .est-speed-box {
+            background: rgba(46, 125, 50, 0.08);
+            border: 1px solid rgba(46, 125, 50, 0.25);
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: var(--accent-green);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+        }
+
         .checkbox-label {
             display: flex;
             align-items: center;
-            gap: 10px;
-            font-size: 13px;
+            gap: 8px;
+            font-size: 12.5px;
             color: var(--text-main);
             cursor: pointer;
             user-select: none;
-            margin-top: 10px;
+            margin-top: 8px;
         }
 
         .checkbox-label input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
+            width: 15px;
+            height: 15px;
             cursor: pointer;
         }
 
@@ -431,7 +565,7 @@
             display: flex;
             justify-content: flex-end;
             gap: 12px;
-            margin-top: 24px;
+            margin-top: 22px;
         }
 
         .btn-secondary {
@@ -447,17 +581,54 @@
 
         /* File Upload Box */
         .file-drop-area {
-            border: 2px dashed rgba(0, 0, 0, 0.18);
+            border: 2px dashed rgba(0, 0, 0, 0.2);
             border-radius: 10px;
-            padding: 16px;
+            padding: 18px 14px;
             text-align: center;
-            background: rgba(255, 255, 255, 0.6);
+            background: rgba(255, 255, 255, 0.7);
             cursor: pointer;
             transition: all 0.2s;
         }
         .file-drop-area:hover {
             border-color: #111;
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.95);
+        }
+
+        /* Gallery Grid */
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 12px;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding: 10px 4px;
+        }
+
+        .gallery-thumb {
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid rgba(0,0,0,0.1);
+            background: #222;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .gallery-thumb:hover {
+            transform: scale(1.04);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .gallery-thumb img {
+            width: 100%;
+            height: 90px;
+            object-fit: cover;
+            display: block;
+        }
+        .gallery-thumb-caption {
+            font-size: 11px;
+            font-family: 'JetBrains Mono', monospace;
+            padding: 4px;
+            color: #ddd;
+            background: #181818;
         }
 
         /* Video Modal */
@@ -466,6 +637,112 @@
             border-radius: 12px;
             background: #000;
         }
+
+        /* Speedup Benchmark Badge */
+        .speedup-benchmark-card {
+            background: rgba(46, 125, 50, 0.08);
+            border: 1px solid rgba(46, 125, 50, 0.25);
+            border-radius: 10px;
+            padding: 10px 14px;
+            margin-top: 12px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Live Mosaic Filmstrip Stream */
+        .mosaic-stream-container {
+            margin-top: 14px;
+            background: rgba(0, 0, 0, 0.025);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 10px;
+            padding: 10px 12px;
+            min-width: 0;
+            max-width: 100%;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        .mosaic-filmstrip {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 6px 2px 10px 2px;
+            scroll-behavior: smooth;
+            min-width: 0;
+            max-width: 100%;
+            width: 100%;
+            box-sizing: border-box;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(0,0,0,0.3) rgba(0,0,0,0.06);
+        }
+        .mosaic-filmstrip::-webkit-scrollbar {
+            height: 7px;
+        }
+        .mosaic-filmstrip::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.06);
+            border-radius: 10px;
+        }
+        .mosaic-filmstrip::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+        }
+        .mosaic-filmstrip::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-blue);
+        }
+
+        .mosaic-thumb {
+            flex: 0 0 76px;
+            height: 52px;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid rgba(0,0,0,0.15);
+            background: #1e1e1e;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .mosaic-thumb:hover {
+            transform: scale(1.12);
+            z-index: 10;
+            box-shadow: 0 6px 14px rgba(0,0,0,0.3);
+            border-color: var(--accent-blue);
+        }
+        .mosaic-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .mosaic-thumb-tag {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0,0,0,0.75);
+            color: #fff;
+            font-size: 9px;
+            font-family: 'JetBrains Mono', monospace;
+            text-align: center;
+            padding: 1px 0;
+        }
+
+        .live-indicator-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            display: inline-block;
+        }
+        .live-indicator-dot.pulsing {
+            background: var(--accent-blue);
+            animation: dot-pulse 1.4s infinite ease-in-out;
+        }
+        @keyframes dot-pulse {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 8px var(--accent-blue); }
+            100% { transform: scale(0.9); opacity: 0.7; }
+        }
     </style>
 </head>
 <body>
@@ -473,7 +750,7 @@
     <div class="header">
         <div class="header-title">
             <h1>CampusGrid Master Center</h1>
-            <p>Distributed Edge Rendering &amp; Compute Telemetry</p>
+            <p>Distributed 3D Blender Edge Rendering &amp; Compute Telemetry</p>
         </div>
         <div class="stats-bar">
             <div class="stat-card neumorphic-outset">
@@ -509,26 +786,24 @@
         <!-- Left Column: Live Telemetry Table -->
         <div class="panel neumorphic-outset">
             <div class="panel-header">
-                <h2>Worker Nodes Telemetry</h2>
+                <h2>Worker Nodes</h2>
                 <div class="badge-live" id="stream-indicator">Live Stream</div>
             </div>
             <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
-                            <th>Node Endpoint</th>
-                            <th>Platform / OS</th>
-                            <th>Blender Status</th>
+                            <th>Endpoint</th>
+                            <th>Platform</th>
+                            <th>Blender 3D</th>
                             <th>Status</th>
                             <th>CPU</th>
-                            <th>RAM</th>
                             <th>Temp</th>
-                            <th>Active Task</th>
                         </tr>
                     </thead>
                     <tbody id="worker-table-body">
                         <tr>
-                            <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 40px 0;">
+                            <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 40px 0;">
                                 Awaiting worker agent connections...
                             </td>
                         </tr>
@@ -540,8 +815,8 @@
         <!-- Right Column: Active Jobs & Controls -->
         <div class="panel neumorphic-outset">
             <div class="panel-header">
-                <h2>Execution Queue</h2>
-                <button class="btn" onclick="openSubmitModal()">+ New Workload</button>
+                <h2>Distributed Workloads</h2>
+                <button class="btn" onclick="openSubmitModal()">+ New Render Job</button>
             </div>
 
             <div id="job-container">
@@ -553,24 +828,61 @@
     <!-- Submit Workload Modal -->
     <div class="modal-overlay" id="submit-modal">
         <div class="modal-box neumorphic-outset">
-            <h2 style="font-size: 22px; margin-bottom: 18px;">Submit Blender Workload</h2>
+            <h2 style="font-size: 22px; margin-bottom: 16px;">Submit Distributed Blender Workload</h2>
             
             <div class="form-group">
-                <label for="modal-job-name">Workload Name</label>
-                <input type="text" id="modal-job-name" class="form-control" placeholder="Leave blank for auto-sequenced name (e.g. Render Workload #1)">
+                <label for="modal-job-name">Workload Label</label>
+                <input type="text" id="modal-job-name" class="form-control" placeholder="e.g. Architectural Animation Render">
             </div>
 
             <div class="form-group">
-                <label>Target .blend File <span style="color: var(--accent-red);">*</span></label>
+                <label>3D Scene File (.blend) <span style="color: var(--accent-red);">*</span></label>
                 <div class="file-drop-area" id="file-drop-box" onclick="document.getElementById('blend-file-picker').click()">
-                    <div id="file-display-name" style="font-weight: 600; font-size: 14px; color: #111;">
-                        📁 Click here to select your 3D Scene (<code>*.blend</code> file)
+                    <div id="file-display-name" style="font-weight: 600; font-size: 14.5px; color: #111;">
+                        📁 Click here to select your <code>*.blend</code> file
                     </div>
-                    <small style="color: var(--text-muted); font-size: 12px; margin-top: 5px; display: block;" id="file-size-hint">
-                        Choose any .blend file on your computer to transmit across the cluster
+                    <small style="color: var(--text-muted); font-size: 12px; margin-top: 4px; display: block;" id="file-size-hint">
+                        Select any Blender scene file to partition and render across edge nodes
                     </small>
                 </div>
                 <input type="file" id="blend-file-picker" accept=".blend" style="display: none;" onchange="handleFilePicked(event)">
+            </div>
+
+            <!-- Render Engine Choice Cards -->
+            <div class="form-group">
+                <label>Render Engine</label>
+                <div class="engine-grid">
+                    <div class="engine-card active" id="engine-card-eevee" onclick="selectEngine('BLENDER_EEVEE_NEXT')">
+                        <div class="engine-card-icon">⚡</div>
+                        <div class="engine-card-title">Eevee Next</div>
+                        <div class="engine-card-sub">Fast Realtime (~1s/frame)</div>
+                    </div>
+                    <div class="engine-card" id="engine-card-workbench" onclick="selectEngine('BLENDER_WORKBENCH')">
+                        <div class="engine-card-icon">🏎️</div>
+                        <div class="engine-card-title">Workbench</div>
+                        <div class="engine-card-sub">Instant Draft (~0.2s/frame)</div>
+                    </div>
+                    <div class="engine-card" id="engine-card-cycles" onclick="selectEngine('CYCLES')">
+                        <div class="engine-card-icon">💎</div>
+                        <div class="engine-card-title">Cycles</div>
+                        <div class="engine-card-sub">Path Tracing (Photo-Realistic)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quality & Sample Controls -->
+            <div class="form-group" id="samples-group">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <label id="samples-label" style="margin-bottom: 0;">Render Quality (Samples)</label>
+                    <span id="samples-hint" style="font-size: 11.5px; color: var(--text-muted);">Recommended: 32 samples</span>
+                </div>
+                <div class="preset-pills" id="sample-presets">
+                    <button type="button" class="preset-pill active" onclick="setSamples(32)">⚡ 32 (Fast)</button>
+                    <button type="button" class="preset-pill" onclick="setSamples(64)">🎯 64 (Balanced)</button>
+                    <button type="button" class="preset-pill" onclick="setSamples(128)">🎬 128 (High)</button>
+                    <button type="button" class="preset-pill" onclick="setSamples(16)">🚀 16 (Draft)</button>
+                </div>
+                <input type="number" id="modal-samples-input" class="form-control" value="32" min="1" max="4096" style="margin-top: 8px;" oninput="updateEstimate()">
             </div>
 
             <div class="form-row">
@@ -584,13 +896,30 @@
                 </div>
             </div>
 
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="modal-res-scale">Resolution Scale</label>
+                    <select id="modal-res-scale" class="form-control" onchange="updateEstimate()">
+                        <option value="100">100% (Native Full Res)</option>
+                        <option value="75">75% (Medium - 1.8x faster)</option>
+                        <option value="50">50% (Draft - 4x faster)</option>
+                    </select>
+                </div>
+                <div class="form-group" style="display: flex; flex-direction: column; justify-content: flex-end;">
+                    <label class="checkbox-label" style="margin-bottom: 8px;">
+                        <input type="checkbox" id="modal-denoise" checked>
+                        <span>Enable AI Denoising</span>
+                    </label>
+                </div>
+            </div>
+
             <div class="form-group">
-                <label class="checkbox-label" style="margin-top: 0; margin-bottom: 6px;">
+                <label class="checkbox-label" style="margin-top: 0; margin-bottom: 4px;">
                     <input type="checkbox" id="modal-auto-balance" checked onchange="toggleAutoBalance(this.checked)">
-                    <strong>Auto-balance frames across connected nodes</strong>
+                    <strong>Auto-balance frame slices across connected worker nodes</strong>
                 </label>
                 <div class="auto-calc-box" id="auto-calc-notice">
-                    ⚡ Auto-balance: 50 frames &divide; 1 connected node = <strong>50 frames / worker (1 slice)</strong>
+                    ⚡ Auto-balance: 50 frames &divide; 1 connected node = <strong>50 frames / node (1 slice)</strong>
                 </div>
             </div>
 
@@ -601,81 +930,48 @@
                 </div>
             </div>
 
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="modal-render-engine">Render Engine</label>
-                    <select id="modal-render-engine" class="form-control">
-                        <option value="CYCLES">Cycles (Raytracing)</option>
-                        <option value="BLENDER_EEVEE">Eevee (Realtime)</option>
-                        <option value="WORKBENCH">Workbench (Fast)</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="modal-resolution">Resolution</label>
-                    <select id="modal-resolution" class="form-control">
-                        <option value="1920x1080">1920x1080 (1080p)</option>
-                        <option value="1280x720">1280x720 (720p)</option>
-                        <option value="640x360">640x360 (360p)</option>
-                        <option value="2560x1440">2560x1440 (2K)</option>
-                        <option value="3840x2160">3840x2160 (4K)</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="modal-output-format">Format</label>
-                    <select id="modal-output-format" class="form-control">
-                        <option value="PNG">PNG Image</option>
-                        <option value="JPEG">JPEG Image</option>
-                    </select>
-                </div>
+            <!-- Dynamic Estimated Cluster Render Time -->
+            <div class="est-speed-box" id="est-speed-box">
+                ⏱️ Estimated Total Render Time on 1 Node: <strong>~45 seconds</strong> (vs ~25 minutes with unoptimized Cycles)
             </div>
 
-            <div class="form-group" style="margin-top: 10px;">
+            <div class="form-group" style="margin-top: 8px;">
                 <label class="checkbox-label">
-                    <input type="checkbox" id="modal-cleanup-frames" checked>
-                    <span>Clean up raw frames after video assembly (Delete individual <code>.png</code> files once <code>.mp4</code> is ready)</span>
+                    <input type="checkbox" id="modal-cleanup-frames">
+                    <span>Delete raw PNG frames after compilation (Keeps ZIP &amp; MP4 only)</span>
                 </label>
             </div>
 
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeSubmitModal()">Cancel</button>
-                <button class="btn" id="btn-submit-workload" onclick="submitWorkloadForm()">🚀 Launch Grid Job</button>
+                <button class="btn" id="btn-submit-workload" onclick="submitWorkloadForm()">🚀 Launch Grid Render</button>
             </div>
         </div>
     </div>
 
     <!-- Video Preview Modal -->
     <div class="modal-overlay" id="video-modal">
-        <div class="modal-box neumorphic-outset" style="max-width: 720px; width: 90%;">
+        <div class="modal-box neumorphic-outset" style="max-width: 720px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-                <h3 id="video-modal-title" style="margin: 0; font-size: 20px;">Compiled Animation Video</h3>
+                <h3 id="video-modal-title">Compiled Animation Video</h3>
                 <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="closeVideoModal()">✕ Close</button>
             </div>
-            
-            <div id="video-modal-metadata" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; padding: 12px; background: rgba(0,0,0,0.03); border-radius: 6px; font-size: 13px;">
-                <div>Engine: <strong id="meta-engine">-</strong></div>
-                <div>Resolution: <strong id="meta-resolution">-</strong></div>
-                <div>Total Frames: <strong id="meta-frames">-</strong></div>
-                <div>Duration: <strong id="meta-duration">-</strong></div>
-            </div>
+            <video id="video-player" controls autoplay loop>
+                <source id="video-source" src="" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+    </div>
 
-            <div id="video-player-container">
-                <video id="video-player" controls autoplay loop style="width: 100%; border-radius: 6px; margin-bottom: 15px;">
-                    <source id="video-source" src="" type="video/mp4">
-                    Your browser does not support the video tag.
-                </video>
+    <!-- Frame Gallery Modal -->
+    <div class="modal-overlay" id="gallery-modal">
+        <div class="modal-box neumorphic-outset" style="max-width: 760px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <h3 id="gallery-modal-title">Rendered Frame Gallery</h3>
+                <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="closeGalleryModal()">✕ Close</button>
             </div>
-            
-            <div id="video-error-container" style="display: none; padding: 20px; background: rgba(220, 53, 69, 0.05); border: 1px dashed var(--accent-red); border-radius: 6px; margin-bottom: 15px; text-align: left;">
-                <div style="font-size: 24px; margin-bottom: 8px; text-align: center;">⚠️</div>
-                <h4 style="color: var(--accent-red); margin: 0 0 8px 0; font-size: 15px; text-align: center;">Preview unavailable</h4>
-                <p style="color: var(--text-muted); margin: 0 0 8px 0; font-size: 13px; text-align: center;">Reason: Video assembly failed</p>
-                <pre id="ffmpeg-error-text" style="background: rgba(0,0,0,0.05); padding: 10px; border-radius: 4px; font-family: monospace; font-size: 11px; white-space: pre-wrap; overflow-x: auto; margin: 0; color: #333; max-height: 150px;"></pre>
-            </div>
-
-            <div style="display: flex; justify-content: flex-end; gap: 10px; align-items: center;">
-                <a id="btn-download-video" href="#" download class="btn" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; background-color: var(--accent-green);">⬇ Download Video</a>
-                <button id="btn-download-modal-frames" class="btn btn-secondary" style="background-color: var(--accent-blue)18; color: var(--accent-blue);" onclick="downloadFramesFromModal()">⬇ Download Frames</button>
-                <button class="btn btn-secondary" onclick="closeVideoModal()">Close</button>
+            <div id="gallery-container" class="gallery-grid">
+                <!-- Frame thumbnails injected here -->
             </div>
         </div>
     </div>
@@ -686,6 +982,79 @@
         let isFileReading = false;
         let activeWorkersCount = 1;
         let jobSequenceNumber = 1;
+        let selectedEngine = 'BLENDER_EEVEE_NEXT';
+
+        function selectEngine(engine) {
+            selectedEngine = engine;
+            document.querySelectorAll('.engine-card').forEach(c => c.classList.remove('active'));
+
+            const samplesGroup = document.getElementById('samples-group');
+            const samplePresets = document.getElementById('sample-presets');
+
+            if (engine === 'BLENDER_EEVEE_NEXT') {
+                document.getElementById('engine-card-eevee').classList.add('active');
+                samplesGroup.style.display = 'block';
+                document.getElementById('samples-label').innerText = 'Eevee Realtime Samples';
+                document.getElementById('samples-hint').innerText = 'Recommended: 32 - 64 samples';
+                samplePresets.innerHTML = `
+                    <button type="button" class="preset-pill active" onclick="setSamples(32)">⚡ 32 (Fast)</button>
+                    <button type="button" class="preset-pill" onclick="setSamples(64)">🎯 64 (Smooth)</button>
+                    <button type="button" class="preset-pill" onclick="setSamples(16)">🚀 16 (Draft)</button>
+                `;
+                document.getElementById('modal-samples-input').value = 32;
+            } else if (engine === 'BLENDER_WORKBENCH') {
+                document.getElementById('engine-card-workbench').classList.add('active');
+                samplesGroup.style.display = 'none';
+            } else if (engine === 'CYCLES') {
+                document.getElementById('engine-card-cycles').classList.add('active');
+                samplesGroup.style.display = 'block';
+                document.getElementById('samples-label').innerText = 'Cycles Raytracing Samples';
+                document.getElementById('samples-hint').innerText = 'Default 64 samples (Fast & Clean with Denoise)';
+                samplePresets.innerHTML = `
+                    <button type="button" class="preset-pill" onclick="setSamples(16)">🚀 16 (Draft)</button>
+                    <button type="button" class="preset-pill active" onclick="setSamples(64)">⚡ 64 (Balanced)</button>
+                    <button type="button" class="preset-pill" onclick="setSamples(128)">🎯 128 (High)</button>
+                    <button type="button" class="preset-pill" onclick="setSamples(256)">🎬 256 (Production)</button>
+                `;
+                document.getElementById('modal-samples-input').value = 64;
+            }
+            updateEstimate();
+        }
+
+        function setSamples(num) {
+            document.getElementById('modal-samples-input').value = num;
+            document.querySelectorAll('#sample-presets .preset-pill').forEach(p => {
+                p.classList.toggle('active', p.innerText.includes(num));
+            });
+            updateEstimate();
+        }
+
+        function updateEstimate() {
+            const startFrame = parseInt(document.getElementById('modal-start-frame').value || '1');
+            const endFrame = parseInt(document.getElementById('modal-end-frame').value || '50');
+            const total = Math.max(1, endFrame - startFrame + 1);
+            const nodes = Math.max(1, activeWorkersCount);
+            const samples = parseInt(document.getElementById('modal-samples-input').value || '32');
+            const resScale = parseInt(document.getElementById('modal-res-scale').value || '100');
+
+            let timePerFrameSec = 1.0;
+            if (selectedEngine === 'BLENDER_WORKBENCH') {
+                timePerFrameSec = 0.25;
+            } else if (selectedEngine === 'BLENDER_EEVEE_NEXT') {
+                timePerFrameSec = 0.8 + (samples / 64) * 0.5;
+            } else if (selectedEngine === 'CYCLES') {
+                timePerFrameSec = 1.2 + (samples / 64) * 2.5;
+            }
+
+            if (resScale === 50) timePerFrameSec *= 0.35;
+            else if (resScale === 75) timePerFrameSec *= 0.65;
+
+            const totalSeconds = Math.round((total / nodes) * timePerFrameSec);
+            let timeStr = totalSeconds < 60 ? `${totalSeconds} seconds` : `${Math.round(totalSeconds / 60)} min ${totalSeconds % 60}s`;
+
+            document.getElementById('est-speed-box').innerHTML = 
+                `⏱️ Estimated Cluster Time on ${nodes} Node(s): <strong>~${timeStr}</strong> (vs ~${Math.round(total * 25 / nodes / 60)} min with unoptimized 4096 Cycles)`;
+        }
 
         function openSubmitModal() {
             document.getElementById('submit-modal').style.display = 'flex';
@@ -695,6 +1064,7 @@
                 document.getElementById('modal-job-name').placeholder = `Render Workload #${jobSequenceNumber}`;
             }
             recalcFramesPerNode();
+            updateEstimate();
         }
 
         function closeSubmitModal() {
@@ -707,72 +1077,38 @@
             document.getElementById('video-modal').style.display = 'none';
         }
 
-        let currentPreviewJobId = null;
+        function closeGalleryModal() {
+            document.getElementById('gallery-modal').style.display = 'none';
+        }
 
-        function previewVideo(jobId, jobName, engine, resolution, totalFrames, durationMs, previewAvailable, videoUrl, ffmpegError) {
-            currentPreviewJobId = jobId;
-            document.getElementById('video-modal-title').innerText = jobName || "Compiled Animation Video";
-            
-            // Set metadata
-            document.getElementById('meta-engine').innerText = engine || "CYCLES";
-            document.getElementById('meta-resolution').innerText = resolution || "1920x1080";
-            document.getElementById('meta-frames').innerText = totalFrames || "0";
-            
-            const durationSec = (durationMs / 1000.0).toFixed(2);
-            document.getElementById('meta-duration').innerText = `${durationSec}s (${durationMs}ms)`;
-            
-            const player = document.getElementById('video-player');
+        function previewVideo(url, title) {
+            document.getElementById('video-modal-title').innerText = title || "Compiled Animation Video";
             const source = document.getElementById('video-source');
-            const playerContainer = document.getElementById('video-player-container');
-            const errorContainer = document.getElementById('video-error-container');
-            const btnDownload = document.getElementById('btn-download-video');
-            const ffmpegText = document.getElementById('ffmpeg-error-text');
-            
-            if (previewAvailable) {
-                source.src = videoUrl;
-                player.load();
-                playerContainer.style.display = 'block';
-                errorContainer.style.display = 'none';
-                btnDownload.style.display = 'inline-flex';
-                btnDownload.href = videoUrl;
-            } else {
-                player.pause();
-                playerContainer.style.display = 'none';
-                errorContainer.style.display = 'block';
-                btnDownload.style.display = 'none';
-                ffmpegText.innerText = ffmpegError || "Video assembly failed. (No frames found or FFmpeg crashed)";
-            }
-            
+            source.src = url;
+            const player = document.getElementById('video-player');
+            player.load();
             document.getElementById('video-modal').style.display = 'flex';
         }
 
-        function downloadFramesFromModal() {
-            if (currentPreviewJobId) {
-                downloadZip(currentPreviewJobId);
-            }
-        }
+        function openFrameGallery(jobId, jobName, totalFrames) {
+            document.getElementById('gallery-modal-title').innerText = `Frames: ${jobName || jobId}`;
+            const container = document.getElementById('gallery-container');
+            container.innerHTML = '';
 
-        function onPreviewClick(jobId) {
-            if (window.currentJobsList) {
-                const job = window.currentJobsList.find(j => j.jobId === jobId);
-                if (job) {
-                    previewVideo(
-                        job.jobId,
-                        job.jobName,
-                        job.renderEngine,
-                        job.resolution,
-                        job.totalFrames,
-                        job.duration,
-                        job.previewAvailable,
-                        job.videoUrl,
-                        job.ffmpegError
-                    );
-                }
+            const maxFrames = Math.min(totalFrames || 50, 200);
+            for (let i = 1; i <= maxFrames; i++) {
+                const pad = String(i).padStart(4, '0');
+                const frameUrl = `/output/${jobId}/frame_${pad}.png`;
+                const thumb = document.createElement('div');
+                thumb.className = 'gallery-thumb';
+                thumb.onclick = () => window.open(frameUrl, '_blank');
+                thumb.innerHTML = `
+                    <img src="${frameUrl}" alt="Frame ${i}" onerror="this.parentElement.style.display='none'">
+                    <div class="gallery-thumb-caption">Fra ${pad}</div>
+                `;
+                container.appendChild(thumb);
             }
-        }
-
-        function downloadZip(jobId) {
-            window.location.href = `/api/jobs/download-frames?jobId=${jobId}`;
+            document.getElementById('gallery-modal').style.display = 'flex';
         }
 
         function toggleAutoBalance(checked) {
@@ -792,6 +1128,7 @@
             document.getElementById('auto-calc-notice').innerHTML = 
                 `⚡ Auto-balance: ${total} frames &divide; ${nodes} connected node(s) = <strong>${framesPerNode} frames / node (${slices} slice${slices > 1 ? 's' : ''})</strong>`;
             document.getElementById('modal-chunk-size').value = framesPerNode;
+            updateEstimate();
         }
 
         function handleFilePicked(e) {
@@ -859,7 +1196,7 @@
 
             const btn = document.getElementById('btn-submit-workload');
             btn.disabled = true;
-            btn.innerText = 'Dispatching...';
+            btn.innerText = 'Dispatching to Grid...';
 
             const userJobName = document.getElementById('modal-job-name').value.trim();
             const jobName = userJobName || `Render Workload #${jobSequenceNumber} (${selectedFileName})`;
@@ -867,9 +1204,9 @@
             const endFrame = parseInt(document.getElementById('modal-end-frame').value || '50');
             const autoBalance = document.getElementById('modal-auto-balance').checked;
             const framesPerTask = autoBalance ? 0 : parseInt(document.getElementById('modal-chunk-size').value || '25');
-            const engine = document.getElementById('modal-render-engine').value;
-            const resolution = document.getElementById('modal-resolution').value;
-            const outputFormat = document.getElementById('modal-output-format').value;
+            const samples = parseInt(document.getElementById('modal-samples-input').value || '32');
+            const denoise = document.getElementById('modal-denoise').checked;
+            const resScale = parseInt(document.getElementById('modal-res-scale').value || '100');
             const cleanUp = document.getElementById('modal-cleanup-frames').checked;
 
             const totalFrames = Math.max(1, endFrame - startFrame + 1);
@@ -883,9 +1220,10 @@
                 totalFrames: totalFrames,
                 framesPerTask: framesPerTask,
                 cleanUpFrames: cleanUp,
-                renderEngine: engine,
-                resolution: resolution,
-                outputFormat: outputFormat
+                renderEngine: selectedEngine,
+                renderSamples: samples,
+                useDenoising: denoise,
+                resolutionPercentage: resScale
             };
 
             try {
@@ -907,7 +1245,7 @@
                 alert("Error connecting to Master API: " + err.message);
             } finally {
                 btn.disabled = false;
-                btn.innerText = '🚀 Launch Grid Job';
+                btn.innerText = '🚀 Launch Grid Render';
             }
         }
 
@@ -937,7 +1275,6 @@
             try {
                 const res = await fetch('/api/jobs');
                 const jobs = await res.json();
-                window.currentJobsList = jobs;
                 renderJobs(jobs);
             } catch (e) {
                 console.error("Error fetching jobs:", e);
@@ -965,25 +1302,137 @@
 
                 const canCancel = (job.status === 'RUNNING' || job.status === 'QUEUED');
                 const isComplete = (job.status === 'COMPLETED');
-                const blendName = job.blendFileName || 'test.blend';
+                const blendName = job.blendFileName || 'scene.blend';
+
+                // Action buttons
+                let actionButtonsHtml = '';
+                if (canCancel) {
+                    actionButtonsHtml += `<button class="btn-cancel" onclick="cancelJob('${job.jobId}')">✕ Cancel</button>`;
+                }
+                if (isComplete || (job.savedFramesCount && job.savedFramesCount > 0)) {
+                    actionButtonsHtml += `<a class="btn-action-zip" href="${job.zipUrl}" download="job_${job.jobId}_frames.zip">📦 Download ZIP</a>`;
+                    actionButtonsHtml += `<button class="btn-action-gallery" onclick="openFrameGallery('${job.jobId}', '${escapeHtml(job.jobName)}', ${job.totalFrames})">🖼 Gallery</button>`;
+                }
+                if (isComplete && job.hasVideo) {
+                    actionButtonsHtml += `<button class="btn-action-play" onclick="previewVideo('${job.videoUrl}', '${escapeHtml(job.jobName)}')">▶ Play Video</button>`;
+                }
+
+                // Engine Badge
+                let engineBadge = '💎 Cycles';
+                if (job.renderEngine) {
+                    if (job.renderEngine.includes('EEVEE')) engineBadge = `⚡ Eevee (${job.renderSamples || 32} smp)`;
+                    else if (job.renderEngine.includes('WORKBENCH')) engineBadge = '🏎️ Workbench';
+                    else engineBadge = `💎 Cycles (${job.renderSamples || 64} smp)`;
+                }
+
+                if (job.resolutionPercentage && job.resolutionPercentage < 100) {
+                    engineBadge += ` &bull; ${job.resolutionPercentage}% Res`;
+                }
+
+                // Subtask slice list with execution duration and fault-tolerance retry indicators
+                let sliceChips = '';
+                if (job.subTasks && job.subTasks.length > 0) {
+                    sliceChips = '<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;">';
+                    job.subTasks.forEach(st => {
+                        let stBg = '#eee';
+                        let stColor = '#555';
+                        if (st.status === 'COMPLETED') {
+                            stBg = 'rgba(46, 125, 50, 0.15)';
+                            stColor = 'var(--accent-green)';
+                        } else if (st.status === 'DISPATCHED' || st.status === 'IN_PROGRESS') {
+                            stBg = 'rgba(21, 101, 192, 0.15)';
+                            stColor = 'var(--accent-blue)';
+                        } else if (st.retries > 0) {
+                            stBg = 'rgba(230, 81, 0, 0.15)';
+                            stColor = 'var(--accent-orange)';
+                        }
+                        
+                        const workerLabel = st.worker ? st.worker : (st.retries > 0 ? '⚡ Re-queued' : 'Pending');
+                        const retryBadge = st.retries > 0 ? ` &bull; <span title="Auto-rescheduled after node failure">⚡ Retry #${st.retries}</span>` : '';
+                        const durationBadge = (st.durationFormatted && st.durationFormatted !== '0s') ? ` &bull; ⏱️ ${st.durationFormatted}` : '';
+                        sliceChips += `<span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; background: ${stBg}; color: ${stColor}; padding: 3px 8px; border-radius: 5px;">Fra ${st.range} (${workerLabel}${durationBadge}${retryBadge})</span>`;
+                    });
+                    sliceChips += '</div>';
+                }
+
+                // Render Duration text
+                let durationText = '';
+                if (job.durationFormatted && job.durationFormatted !== '0s') {
+                    durationText = `⏱️ Render Time: <strong style="color: #111;">${job.durationFormatted}</strong>`;
+                } else if (job.status === 'RUNNING') {
+                    durationText = `<span style="color: var(--accent-blue); font-weight: 600;">⏱️ Rendering in progress...</span>`;
+                }
+
+                // Speedup Benchmark Badge
+                let speedupCardHtml = '';
+                if (job.status === 'COMPLETED' && job.speedup) {
+                    if (job.speedup.nodesCount > 1 && job.speedup.ratio !== '1.0x') {
+                        speedupCardHtml = `
+                            <div class="speedup-benchmark-card">
+                                <div style="font-size: 12.5px; font-weight: 700; color: #2e7d32; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                                    <span>🚀 Grid Acceleration: <strong>${job.speedup.ratio} Faster</strong> than 1 PC</span>
+                                    <span style="font-size: 11px; font-weight: 600; background: rgba(46,125,50,0.12); color: #2e7d32; padding: 2px 8px; border-radius: 12px;">Saved ${job.speedup.timeSavedFormatted} (${job.speedup.percentageSaved}%)</span>
+                                </div>
+                                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                                    Sequential 1-PC Est: <strong>${job.speedup.sequentialFormatted}</strong> ➔ CampusGrid (${job.speedup.nodesCount} Nodes): <strong>${job.durationFormatted}</strong>
+                                </div>
+                            </div>
+                        `;
+                    } else if (job.speedup.nodesCount === 1) {
+                        speedupCardHtml = `
+                            <div class="speedup-benchmark-card" style="background: rgba(21, 101, 192, 0.05); border-color: rgba(21, 101, 192, 0.18);">
+                                <div style="font-size: 11.5px; color: var(--accent-blue); font-weight: 600;">
+                                    ⚡ Single Node Acceleration: Completed ${job.totalFrames} frames in <strong>${job.durationFormatted}</strong>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+
+                // Live Visual Mosaic Filmstrip Stream
+                let mosaicHtml = '';
+                if (job.renderedFrames && job.renderedFrames.length > 0) {
+                    let thumbs = '';
+                    job.renderedFrames.forEach(fUrl => {
+                        const fName = fUrl.substring(fUrl.lastIndexOf('/') + 1).replace('.png', '');
+                        thumbs += `
+                            <div class="mosaic-thumb" onclick="window.open('${fUrl}', '_blank')" title="Click to preview full frame">
+                                <img src="${fUrl}" alt="${fName}" onerror="this.parentElement.style.display='none'">
+                                <div class="mosaic-thumb-tag">${fName.replace('frame_', 'Fra ')}</div>
+                            </div>
+                        `;
+                    });
+                    mosaicHtml = `
+                        <div class="mosaic-stream-container">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <span style="font-size: 11.5px; font-weight: 600; color: var(--text-main); display: flex; align-items: center; gap: 6px;">
+                                    <span class="live-indicator-dot ${job.status === 'RUNNING' ? 'pulsing' : ''}"></span>
+                                    Live Frame Mosaic Stream (${job.savedFramesCount || 0} / ${job.totalFrames} Frames)
+                                </span>
+                                <span style="font-size: 10.5px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">
+                                    ${job.status === 'RUNNING' ? '⚡ Active Grid Stream' : '✓ Finalized Sequence'}
+                                </span>
+                            </div>
+                            <div class="mosaic-filmstrip">
+                                ${thumbs}
+                            </div>
+                        </div>
+                    `;
+                }
 
                 jobCard.innerHTML = `
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                         <div>
-                            <strong style="font-size: 15.5px; color: #111;">${job.jobName || job.jobId}</strong>
+                            <strong style="font-size: 16px; color: #111;">${job.jobName || job.jobId}</strong>
                             <div style="font-size: 11.5px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 3px;">
-                                📁 Scene: <strong>${blendName}</strong> &bull; #${job.jobId}
+                                📁 Scene: <strong>${blendName}</strong> &bull; Engine: <span style="font-weight:600; color:#111;">${engineBadge}</span> &bull; Job ID: #${job.jobId}
                             </div>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
                             <span class="status-tag" style="background: ${statusColor}18; color: ${statusColor};">
                                 ${job.status}
                             </span>
-                            ${canCancel ? `<button class="btn-cancel" onclick="cancelJob('${job.jobId}')">✕ Cancel</button>` : ''}
-                            ${isComplete ? `
-                                <button class="btn-play" onclick="onPreviewClick('${job.jobId}')">▶ Preview Video</button>
-                                <button class="btn-play" style="background: var(--accent-green)18; color: var(--accent-green);" onclick="downloadZip('${job.jobId}')">⬇ Download Frames</button>
-                            ` : ''}
+                            ${actionButtonsHtml}
                         </div>
                     </div>
 
@@ -991,10 +1440,15 @@
                         <div class="progress-bar" style="width: ${percentage}%; background-color: ${statusColor};"></div>
                     </div>
 
-                    <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+                    <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; gap: 8px;">
                         <span><strong>${percentage}%</strong> Complete (${job.completedTasks} / ${job.totalTasks} Slices)</span>
-                        <span>Total: ${job.totalFrames} Frames</span>
+                        <span>${durationText}</span>
+                        <span>Total: <strong>${job.totalFrames} Frames</strong></span>
                     </div>
+
+                    ${speedupCardHtml}
+                    ${sliceChips}
+                    ${mosaicHtml}
                 `;
                 container.appendChild(jobCard);
             });
@@ -1047,13 +1501,13 @@
             } catch (e) {}
         }
 
-        // 5. Update Worker Telemetry Table with Authentic Hardware Values
+        // 5. Update Worker Telemetry Table
         function updateWorkerTable(workers) {
             const tbody = document.getElementById('worker-table-body');
             
             if (!workers || workers.length === 0) {
                 activeWorkersCount = 0;
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 35px 0;">Awaiting node connections...</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 35px 0;">Awaiting node connections...</td></tr>';
                 return;
             }
 
@@ -1076,7 +1530,7 @@
                 // Blender status rendering
                 let blenderBadge = `
                     <div style="display: flex; align-items: center;">
-                        <span class="badge-pill not-installed">✖ Not Installed</span>
+                        <span class="badge-pill not-installed">✖ Missing</span>
                         <button class="btn-install" onclick="triggerBlenderInstall('${worker.workerId}')">⚡ Install</button>
                     </div>
                 `;
@@ -1096,14 +1550,20 @@
                         </div>
                     `;
                 } else if (worker.blenderInstalled) {
-                    blenderBadge = `<span class="badge-pill installed">✔ Installed (${worker.blenderVersion || 'Active'})</span>`;
+                    blenderBadge = `<span class="badge-pill installed">✔ ${worker.blenderVersion || 'Installed'}</span>`;
                 }
 
-                const osLabel = worker.osName || 'macOS';
+                const osLabel = worker.osName || 'System Node';
+                const gpuBadge = (worker.gpuName && worker.gpuName !== 'CPU' && worker.gpuName !== 'null')
+                    ? `<div style="font-size: 11px; color: #1565c0; font-weight: 600; margin-top: 2px; font-family: 'JetBrains Mono', monospace;">🎮 ${escapeHtml(worker.gpuName)}</div>`
+                    : `<div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">🖥️ CPU Compute</div>`;
 
                 row.innerHTML = `
-                    <td style="font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 12.5px;">${worker.workerId}</td>
-                    <td style="font-size: 12.5px; color: var(--text-main); font-weight: 500;">${osLabel}</td>
+                    <td style="font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 12px;">${worker.workerId}</td>
+                    <td>
+                        <div style="font-size: 12px; color: var(--text-main); font-weight: 600;">${osLabel}</div>
+                        ${gpuBadge}
+                    </td>
                     <td>${blenderBadge}</td>
                     <td>
                         <span class="status-tag" style="background: ${statusColor}18; color: ${statusColor};">
@@ -1111,11 +1571,7 @@
                         </span>
                     </td>
                     <td style="font-weight: 600;">${worker.cpuUsage || '0.0'}%</td>
-                    <td style="font-weight: 600;">${worker.ramUsage}%</td>
                     <td style="font-weight: 700; color: ${tempColor};">${temp > 0 ? temp + '°C' : 'N/A'}</td>
-                    <td style="color: var(--text-muted); font-size: 12px;">
-                        ${worker.currentJobId ? `<strong>${worker.currentJobId}</strong> <span style="font-size: 11px;">(Frames ${worker.assignedFrames || ''})</span>` : '<span style="color: #999;">Idle</span>'}
-                    </td>
                 `;
                 tbody.appendChild(row);
             });

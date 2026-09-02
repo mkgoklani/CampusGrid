@@ -161,9 +161,19 @@ public class WorkerState {
         this.installProgress = installProgress;
     }
 
+    private String gpuName = "CPU";
+
+    public synchronized String getGpuName() {
+        return gpuName != null ? gpuName : "CPU";
+    }
+
+    public synchronized void setGpuName(String gpuName) {
+        this.gpuName = gpuName;
+    }
+
     @Override
     public synchronized String toString() {
-        return String.format("WorkerState[ID=%s, IP=%s, OS=%s, Blender=%s, Status=%s, Temp=%d°C, RAM=%.1f%%, Job=%s, Task=%s, Frames=%s]",
-            workerId, ipAddress, osName, (blenderInstalled ? blenderVersion : "Not Installed"), status, cpuTemperature, ramUsagePercent, currentJobId, currentTaskId, assignedFrameRange);
+        return String.format("WorkerState[ID=%s, IP=%s, OS=%s, GPU=%s, Blender=%s, Status=%s, Temp=%d°C, RAM=%.1f%%, Job=%s, Task=%s, Frames=%s]",
+            workerId, ipAddress, osName, gpuName, (blenderInstalled ? blenderVersion : "Not Installed"), status, cpuTemperature, ramUsagePercent, currentJobId, currentTaskId, assignedFrameRange);
     }
 }

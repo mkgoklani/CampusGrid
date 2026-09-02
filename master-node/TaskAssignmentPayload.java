@@ -1,5 +1,4 @@
 import java.io.Serializable;
-import com.campusgrid.core.RenderSettings;
 
 /**
  * CAMPUS GRID - TASK ASSIGNMENT PAYLOAD DTO
@@ -16,52 +15,45 @@ public class TaskAssignmentPayload implements Serializable {
     private final String workloadType;
     private final Object taskData;
     private final String assignedFrameRange;
-    private final RenderSettings settings;
+    private final String renderEngine;
+    private final int renderSamples;
+    private final boolean useDenoising;
+    private final int resolutionPercentage;
 
     public TaskAssignmentPayload(String jobId, String taskId, String workloadType, Object taskData, String assignedFrameRange) {
-        this(jobId, taskId, workloadType, taskData, assignedFrameRange, null);
+        this(jobId, taskId, workloadType, taskData, assignedFrameRange, "CYCLES", 64, true, 100);
     }
 
-    public TaskAssignmentPayload(String jobId, String taskId, String workloadType, Object taskData, String assignedFrameRange, RenderSettings settings) {
+    public TaskAssignmentPayload(String jobId, String taskId, String workloadType, Object taskData, String assignedFrameRange, String renderEngine) {
+        this(jobId, taskId, workloadType, taskData, assignedFrameRange, renderEngine, 64, true, 100);
+    }
+
+    public TaskAssignmentPayload(String jobId, String taskId, String workloadType, Object taskData, String assignedFrameRange,
+                                String renderEngine, int renderSamples, boolean useDenoising, int resolutionPercentage) {
         this.jobId = jobId;
         this.taskId = taskId;
         this.workloadType = workloadType;
         this.taskData = taskData;
         this.assignedFrameRange = assignedFrameRange;
-        this.settings = settings;
+        this.renderEngine = (renderEngine != null && !renderEngine.trim().isEmpty()) ? renderEngine.trim() : "CYCLES";
+        this.renderSamples = renderSamples > 0 ? renderSamples : 64;
+        this.useDenoising = useDenoising;
+        this.resolutionPercentage = resolutionPercentage > 0 ? resolutionPercentage : 100;
     }
 
-    public String getJobId() {
-        return jobId;
-    }
-
-    public String getTaskId() {
-        return taskId;
-    }
-
-    public String getWorkloadType() {
-        return workloadType;
-    }
-
-    public Object getTaskData() {
-        return taskData;
-    }
-
-    public String getAssignedFrameRange() {
-        return assignedFrameRange;
-    }
-
-    public RenderSettings getSettings() {
-        return settings;
-    }
-
-    public String getRenderEngine() {
-        return settings != null && settings.getRenderEngine() != null ? settings.getRenderEngine().name() : "CYCLES";
-    }
+    public String getJobId() { return jobId; }
+    public String getTaskId() { return taskId; }
+    public String getWorkloadType() { return workloadType; }
+    public Object getTaskData() { return taskData; }
+    public String getAssignedFrameRange() { return assignedFrameRange; }
+    public String getRenderEngine() { return renderEngine != null ? renderEngine : "CYCLES"; }
+    public int getRenderSamples() { return renderSamples; }
+    public boolean isUseDenoising() { return useDenoising; }
+    public int getResolutionPercentage() { return resolutionPercentage; }
 
     @Override
     public String toString() {
-        return String.format("TaskAssignmentPayload[Job=%s, Task=%s, Type=%s, Frames=%s, Settings=%s]",
-            jobId, taskId, workloadType, assignedFrameRange, settings);
+        return String.format("TaskAssignmentPayload[Job=%s, Task=%s, Type=%s, Frames=%s, Engine=%s, Samples=%d, Res=%d%%]",
+            jobId, taskId, workloadType, assignedFrameRange, renderEngine, renderSamples, resolutionPercentage);
     }
 }

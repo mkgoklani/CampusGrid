@@ -4,12 +4,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.Map;
 
 /**
  * CAMPUS GRID - RESULT COLLECTOR
  * 
  * Intercepts TASK_COMPLETE result payloads from worker nodes over TCP,
- * persists binary rendered frames or output data to disk under ./output/{jobId}/,
+ * persists binary rendered frames and output data to disk under ./output/{jobId}/,
  * and notifies JobManager and WorkerRegistry of task completion.
  */
 public class ResultCollector {
@@ -60,20 +61,48 @@ public class ResultCollector {
 
         if (result.isSuccess()) {
             Path savedPath = null;
-            byte[] data = result.getOutputData();
+            Path jobDir = baseOutputDir.resolve(jobId);
 
+            try {
+                Files.createDirectories(jobDir);
+            } catch (IOException e) {
+                System.err.println("[RESULT-COLLECTOR-ERR] Failed creating directory " + jobDir + ": " + e.getMessage());
+            }
+
+            // 1. Process all received rendered frame PNG binaries
+            Map<String, byte[]> frames = result.getRenderedFrames();
+            if (frames != null && !frames.isEmpty()) {
+                int frameSaveCount = 0;
+                for (Map.Entry<String, byte[]> entry : frames.entrySet()) {
+                    String frameName = entry.getKey();
+                    byte[] frameBytes = entry.getValue();
+                    if (frameBytes != null && frameBytes.length > 0) {
+                        try {
+                            Path framePath = jobDir.resolve(frameName);
+                            Files.write(framePath, frameBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                            savedPath = framePath;
+                            frameSaveCount++;
+                        } catch (IOException e) {
+                            System.err.printf("[RESULT-COLLECTOR-ERR] Failed saving frame %s for task %s: %s\n",
+                                frameName, taskId, e.getMessage());
+                        }
+                    }
+                }
+                System.out.printf("[RESULT-COLLECTOR] ✓ Saved %d rendered PNG frame(s) for Task [%s] in %s\n",
+                    frameSaveCount, taskId, jobDir.toString());
+            }
+
+            // 2. Process generic binary output if present
+            byte[] data = result.getOutputData();
             if (data != null && data.length > 0) {
                 try {
-                    Path jobDir = baseOutputDir.resolve(jobId);
-                    Files.createDirectories(jobDir);
-
-                    // Save output binary / frame file
                     String filename = String.format("%s_output.bin", taskId);
-                    savedPath = jobDir.resolve(filename);
-                    Files.write(savedPath, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                    Path binPath = jobDir.resolve(filename);
+                    Files.write(binPath, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                    if (savedPath == null) savedPath = binPath;
 
                     System.out.printf("[RESULT-COLLECTOR] ✓ Saved %d bytes for Task [%s] to: %s\n",
-                        data.length, taskId, savedPath.toString());
+                        data.length, taskId, binPath.toString());
 
                 } catch (IOException e) {
                     System.err.printf("[RESULT-COLLECTOR-ERR] Failed to write file for Task [%s]: %s\n",
@@ -81,10 +110,10 @@ public class ResultCollector {
                 }
             }
 
-            // 1. Notify JobManager of successful task completion
+            // 3. Notify JobManager of successful task completion
             jobManager.updateJobProgress(jobId, taskId, true);
 
-            // 2. Free worker state back to IDLE
+            // 4. Free worker state back to IDLE
             freeWorker(workerId);
 
             return savedPath;

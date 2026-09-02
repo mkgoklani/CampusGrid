@@ -27,6 +27,7 @@ public class MasterNodeApplication {
     private final BasicScheduler scheduler;
     private final HeartbeatMonitor heartbeatMonitor;
     private final DashboardServer dashboardServer;
+    private final LanDiscoveryResponder lanDiscovery;
 
     private final int agentTcpPort;
     private final int dashboardHttpPort;
@@ -50,9 +51,10 @@ public class MasterNodeApplication {
         this.jobManager = new JobManager();
         this.resultCollector = new ResultCollector(jobManager, workerRegistry, Paths.get("./output"));
 
-        // 2. Initialize Schedulers and Watchdogs
+        // 2. Initialize Schedulers, Watchdogs, and LAN Discovery
         this.scheduler = new BasicScheduler(jobManager, workerRegistry, 500);
         this.heartbeatMonitor = new HeartbeatMonitor(workerRegistry, jobManager, 15000, 5000);
+        this.lanDiscovery = new LanDiscoveryResponder(agentTcpPort);
 
         // 3. Initialize Embedded Web Dashboard Server
         this.dashboardServer = new DashboardServer(jobManager, workerRegistry, dashboardHttpPort, dashboardWsPort);
@@ -79,8 +81,9 @@ public class MasterNodeApplication {
         // 2. Start Non-Blocking Scheduler Daemon
         scheduler.start();
 
-        // 3. Start Heartbeat Watchdog Daemon
+        // 3. Start Heartbeat Watchdog Daemon & LAN Discovery Responder
         heartbeatMonitor.start();
+        lanDiscovery.start();
 
         // 4. Start TCP ServerSocket Listener for Agent Nodes
         agentServerSocket = new ServerSocket(agentTcpPort);
@@ -91,7 +94,7 @@ public class MasterNodeApplication {
         // 5. Register JVM Shutdown Hook for Graceful Teardown
         Runtime.getRuntime().addShutdownHook(new Thread(this::stop, "Master-ShutdownHook"));
 
-        System.out.println("[BOOTSTRAP] All 7 Master Node modules initialized and running successfully.");
+        System.out.println("[BOOTSTRAP] All Master Node modules & LAN Discovery initialized and running successfully.");
         System.out.println();
     }
 
@@ -135,8 +138,19 @@ public class MasterNodeApplication {
         String workerId = worker.getWorkerId();
 
         try {
-            Object obj;
-            while (running && !worker.getSocket().isClosed() && (obj = inStream.readObject()) != null) {
+            while (running && !worker.getSocket().isClosed()) {
+                Object obj = null;
+                try {
+                    obj = inStream.readObject();
+                } catch (ClassNotFoundException cnfe) {
+                    System.out.printf("[RECEIVER-WARN] Class not found on Master classpath from [%s]: %s (Stream continuing)\n", 
+                        workerId, cnfe.getMessage());
+                    continue;
+                }
+
+                if (obj == null) {
+                    break;
+                }
 
                 if (obj instanceof GridMessage message) {
                     handleProtocolEnvelope(worker, message);
@@ -208,16 +222,30 @@ public class MasterNodeApplication {
             String status = (String) clazz.getMethod("getStatus").invoke(resultObj);
             boolean success = "SUCCESS".equalsIgnoreCase(status);
 
+            java.util.Map<String, byte[]> frameBytesMap = null;
+            try {
+                @SuppressWarnings("unchecked")
+                java.util.Map<String, byte[]> frames = (java.util.Map<String, byte[]>) clazz.getMethod("getFrameBytesMap").invoke(resultObj);
+                frameBytesMap = frames;
+            } catch (Exception ignored) {}
+
+            long duration = 0;
+            try {
+                duration = (long) clazz.getMethod("getRenderDuration").invoke(resultObj);
+            } catch (Exception ignored) {}
+
             String taskId = worker.getCurrentTaskId() != null ? worker.getCurrentTaskId() : (jobId + "_T001");
-            System.out.printf("[RECEIVER] RenderResult for Job [%s] Task [%s] from [%s]: %s\n",
-                jobId, taskId, workerId, status);
+            int frameCount = frameBytesMap != null ? frameBytesMap.size() : 0;
+            System.out.printf("[RECEIVER] RenderResult for Job [%s] Task [%s] from [%s]: %s (%d frame binaries, %dms)\n",
+                jobId, taskId, workerId, status, frameCount, duration);
 
             TaskResultPayload resultPayload = new TaskResultPayload(
-                jobId, taskId, success, new byte[0], success ? null : "Render status: " + status
+                jobId, taskId, success, new byte[0], frameBytesMap, success ? null : "Render status: " + status, duration
             );
             resultCollector.handleTaskResult(workerId, resultPayload);
         } catch (Exception e) {
             System.err.println("[RECEIVER-ERR] Error unpacking RenderResult: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -261,6 +289,7 @@ public class MasterNodeApplication {
                 double cpu = 0.0;
                 double ram = 50.0;
                 String os = null;
+                String gpu = null;
                 String blenderVer = null;
                 boolean blenderInstalled = false;
                 double installPct = -1.0;
@@ -279,6 +308,8 @@ public class MasterNodeApplication {
                         ram = Double.parseDouble(r);
                     } else if (part.startsWith("OS:")) {
                         os = part.substring(3).trim();
+                    } else if (part.startsWith("GPU:")) {
+                        gpu = part.substring(4).trim();
                     } else if (part.startsWith("BLENDER:")) {
                         blenderVer = part.substring(8).trim();
                         blenderInstalled = !"Unknown".equalsIgnoreCase(blenderVer) 
@@ -292,8 +323,8 @@ public class MasterNodeApplication {
                     }
                 }
                 workerRegistry.updateTelemetry(workerId, temp, cpu, ram);
-                if (os != null || blenderVer != null || installPct >= 0) {
-                    workerRegistry.updateEnvironment(workerId, os, blenderInstalled, blenderVer, installPct);
+                if (os != null || blenderVer != null || installPct >= 0 || gpu != null) {
+                    workerRegistry.updateEnvironment(workerId, os, blenderInstalled, blenderVer, installPct, gpu);
                 }
                 if (worker.getStatus() == WorkerStatus.OFFLINE || worker.getStatus() == null) {
                     workerRegistry.updateStatus(workerId, WorkerStatus.IDLE);
@@ -316,6 +347,7 @@ public class MasterNodeApplication {
         if (dashboardServer != null) dashboardServer.stop();
         if (scheduler != null) scheduler.stop();
         if (heartbeatMonitor != null) heartbeatMonitor.stop();
+        if (lanDiscovery != null) lanDiscovery.stop();
 
         try {
             if (agentServerSocket != null && !agentServerSocket.isClosed()) {

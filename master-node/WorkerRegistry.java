@@ -60,12 +60,17 @@ public class WorkerRegistry {
     }
 
     public void updateEnvironment(String workerId, String osName, boolean blenderInstalled, String blenderVersion, double installProgress) {
+        updateEnvironment(workerId, osName, blenderInstalled, blenderVersion, installProgress, null);
+    }
+
+    public void updateEnvironment(String workerId, String osName, boolean blenderInstalled, String blenderVersion, double installProgress, String gpuName) {
         WorkerState state = registry.get(workerId);
         if (state != null) {
             synchronized (state) {
                 if (osName != null && !osName.isEmpty()) state.setOsName(osName);
                 state.setBlenderInstalled(blenderInstalled);
                 if (blenderVersion != null) state.setBlenderVersion(blenderVersion);
+                if (gpuName != null && !gpuName.isEmpty()) state.setGpuName(gpuName);
                 if (blenderInstalled) {
                     state.setInstallProgress(-1.0);
                 } else if (installProgress >= 0.0) {
@@ -165,12 +170,8 @@ public class WorkerRegistry {
     public void handleWorkerFailure(String workerId, JobManager jobManager) {
         WorkerState state = registry.get(workerId);
         if (state != null) {
-            String jobId;
-            String taskId;
             synchronized (state) {
                 state.setStatus(WorkerStatus.OFFLINE);
-                jobId = state.getCurrentJobId();
-                taskId = state.getCurrentTaskId();
                 state.setCurrentJobId(null);
                 state.setCurrentTaskId(null);
                 state.setAssignedFrameRange(null);
@@ -183,17 +184,14 @@ public class WorkerRegistry {
                 } catch (Exception ignored) {}
             }
 
-            // Automatic Task Re-queuing
-            if (jobId != null && jobManager != null) {
-                System.out.printf("[FAULT-TOLERANCE] ⚠ Worker [%s] failed. Re-queuing task [%s] for Job [%s]...\n",
-                    workerId, taskId != null ? taskId : "UNKNOWN", jobId);
-                if (taskId != null) {
-                    jobManager.updateJobProgress(jobId, taskId, false);
-                } else {
-                    Job job = jobManager.getJob(jobId);
-                    if (job != null) {
+            // Automatic Task Re-queuing across all active jobs for complete fault tolerance
+            if (jobManager != null) {
+                for (Job job : jobManager.getAllJobs().values()) {
+                    if (job.getStatus() == JobStatus.RUNNING || job.getStatus() == JobStatus.QUEUED) {
                         for (Job.SubTask st : job.getSubTasks()) {
                             if (workerId.equals(st.getAssignedWorkerId()) && st.getStatus() != Job.SubTaskStatus.COMPLETED) {
+                                System.out.printf("[FAULT-TOLERANCE] ⚡ Auto-rescheduling Task [%s] (Frames: %s) from dead Worker [%s] back to queue (Retry #%d)\n",
+                                    st.getTaskId(), st.getFrameRange(), workerId, st.getRetryCount() + 1);
                                 job.requeueSubTask(st);
                             }
                         }

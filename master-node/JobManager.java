@@ -59,7 +59,18 @@ public class JobManager {
             }
         }
 
-        // 2. If active job has no more pending tasks (or is done), advance to next queued job
+        // 2. Check all other running jobs for re-queued/pending tasks (fault tolerance recovery)
+        for (Job job : jobRegistry.values()) {
+            if (job.getStatus() == JobStatus.RUNNING && (currentActiveJob == null || !job.getJobId().equals(currentActiveJob.getJobId()))) {
+                Job.SubTask task = job.pollPendingSubTask();
+                if (task != null) {
+                    task.setStatus(Job.SubTaskStatus.DISPATCHED);
+                    return task;
+                }
+            }
+        }
+
+        // 3. If no active/running jobs have pending tasks, advance queued jobs
         while (!pendingJobQueue.isEmpty()) {
             Job nextJob = pendingJobQueue.poll();
             if (nextJob != null && nextJob.getStatus() == JobStatus.QUEUED) {

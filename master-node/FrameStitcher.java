@@ -2,13 +2,15 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.regex.*;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * CAMPUS GRID - FRAME STITCHER & POST-PROCESSING UTILITY
  * 
  * Inspects completed job output directories, validates sequence continuity,
- * normalizes frame numbering (frame_0001.png), and compiles frames into
- * high-definition MP4 video animations using FFmpeg.
+ * normalizes frame numbering (frame_0001.png), packages frames into a downloadable
+ * ZIP bundle ({jobId}_all_frames.zip), and compiles high-definition MP4 video animations.
  */
 public class FrameStitcher {
 
@@ -27,9 +29,10 @@ public class FrameStitcher {
 
     /**
      * Executes the full post-processing pipeline for a completed job:
-     * 1. Validates frame integrity and detects missing numbers.
-     * 2. Normalizes filenames to standardized zero-padded format.
-     * 3. Compiles the image sequence into an MP4 video file.
+     * 1. Normalizes filenames to standardized zero-padded format (frame_0001.png).
+     * 2. Validates frame integrity and detects missing numbers.
+     * 3. Creates a downloadable ZIP archive containing all rendered PNG frames.
+     * 4. Compiles the image sequence into an MP4 video file if FFmpeg is available.
      *
      * @param jobId The unique job identifier.
      * @param totalFrames Expected total frame count.
@@ -53,17 +56,31 @@ public class FrameStitcher {
             return null;
         }
 
-        // 1. Validate sequence integrity
-        ValidationResult validation = validateFrameSequence(jobId, totalFrames);
-        if (!validation.isValid()) {
-            System.err.printf("[FRAME-STITCHER-WARN] ⚠ Sequence incomplete for [%s]. Missing frames: %s\n",
-                jobId, validation.getMissingFrames());
-        }
+        // 1. Unpack any video containers (e.g. .mkv/.avi) to discrete PNG frames if needed
+        unpackVideoFramesIfPresent(jobDir);
 
         // 2. Normalize and ensure zero-padded numbering (frame_%04d.png)
         normalizeFrameNames(jobDir);
 
-        // 3. Compile to MP4 Video via FFmpeg
+        // 3. Validate sequence integrity
+        ValidationResult validation = validateFrameSequence(jobId, totalFrames);
+        if (!validation.isValid()) {
+            System.err.printf("[FRAME-STITCHER-WARN] ⚠ Sequence incomplete for [%s]. Missing frames: %s\n",
+                jobId, validation.getMissingFrames());
+        } else {
+            System.out.printf("[FRAME-STITCHER] ✔ Sequence validated: all %d/%d frames intact.\n",
+                validation.getValidFrames(), totalFrames);
+        }
+
+        // 3. Always create a ZIP bundle of all rendered frames for direct download
+        Path zipPath = jobDir.resolve(String.format("%s_all_frames.zip", jobId));
+        boolean zipped = createFramesZip(jobDir, zipPath);
+        if (zipped) {
+            System.out.printf("[FRAME-STITCHER] 📦 Packaged all frames into ZIP bundle: %s (Size: %d bytes)\n",
+                zipPath.getFileName(), getFileSize(zipPath));
+        }
+
+        // 4. Compile to MP4 Video via FFmpeg if present
         String videoFileName = String.format("%s_animation.mp4", jobId);
         Path videoPath = jobDir.resolve(videoFileName);
         boolean compiled = compileToVideo(jobDir, fps, videoPath);
@@ -71,18 +88,63 @@ public class FrameStitcher {
         if (compiled) {
             System.out.printf("[FRAME-STITCHER] ✔ Success! Master animation ready: %s\n", videoPath.toAbsolutePath());
             if (deleteFramesAfterStitch) {
-                deleteRawFrames(jobDir, videoFileName);
+                deleteRawFrames(jobDir, videoFileName, zipPath.getFileName().toString());
             }
             return videoPath;
         } else {
-            System.out.printf("[FRAME-STITCHER] ℹ Raw image sequence preserved at: %s\n", jobDir.toAbsolutePath());
+            System.out.printf("[FRAME-STITCHER] ℹ Raw image sequence & ZIP bundle preserved at: %s\n", jobDir.toAbsolutePath());
             return null;
         }
     }
 
     /**
-     * Stitches whatever frames are currently available, even if there are sequence gaps,
-     * so that cancelled or partially processed jobs can still be previewed.
+     * Bundles all PNG frames in the job directory into a single ZIP archive.
+     */
+    public boolean createFramesZip(Path jobDir, Path outputZipPath) {
+        try {
+            List<Path> frameFiles = new ArrayList<>();
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(jobDir)) {
+                for (Path p : stream) {
+                    String name = p.getFileName().toString().toLowerCase();
+                    if (Files.isRegularFile(p) && name.endsWith(".png")) {
+                        frameFiles.add(p);
+                    }
+                }
+            }
+
+            if (frameFiles.isEmpty()) {
+                return false;
+            }
+
+            // Sort files in ascending order
+            frameFiles.sort(Comparator.comparing(Path::getFileName));
+
+            try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(outputZipPath)))) {
+                for (Path frame : frameFiles) {
+                    ZipEntry entry = new ZipEntry(frame.getFileName().toString());
+                    zos.putNextEntry(entry);
+                    Files.copy(frame, zos);
+                    zos.closeEntry();
+                }
+            }
+            return true;
+        } catch (IOException e) {
+            System.err.printf("[FRAME-STITCHER-ERR] Failed creating ZIP archive for %s: %s\n",
+                jobDir.getFileName(), e.getMessage());
+            return false;
+        }
+    }
+
+    private long getFileSize(Path p) {
+        try {
+            return Files.size(p);
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Stitches whatever frames are currently available for partial preview.
      */
     public Path stitchAvailableFrames(String jobId, int fps) {
         System.out.printf("[FRAME-STITCHER] Running partial/cancellation stitching for Job [%s]...\n", jobId);
@@ -91,10 +153,12 @@ public class FrameStitcher {
             return null;
         }
 
-        // 1. Scan and normalize existing names
         normalizeFrameNames(jobDir);
 
-        // 2. Build continuous temp frame map to avoid gaps
+        // Also create partial ZIP archive
+        Path zipPath = jobDir.resolve(String.format("%s_all_frames.zip", jobId));
+        createFramesZip(jobDir, zipPath);
+
         List<Path> frames = new ArrayList<>();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(jobDir)) {
             Pattern p = Pattern.compile("frame_(\\d+)\\.png");
@@ -106,17 +170,14 @@ public class FrameStitcher {
         } catch (IOException ignored) {}
 
         if (frames.isEmpty()) {
-            System.out.println("[FRAME-STITCHER] No frames available to stitch for Job: " + jobId);
             return null;
         }
 
-        // Sort frames by number
         frames.sort(Comparator.comparingInt(f -> {
             String name = f.getFileName().toString();
             return Integer.parseInt(name.replaceAll("[^0-9]", ""));
         }));
 
-        // Rename to temp contiguous files
         List<Path> tempFiles = new ArrayList<>();
         for (int i = 0; i < frames.size(); i++) {
             Path src = frames.get(i);
@@ -127,7 +188,6 @@ public class FrameStitcher {
             } catch (IOException ignored) {}
         }
 
-        // 3. Compile temp frames to video
         String videoFileName = String.format("%s_animation.mp4", jobId);
         Path videoPath = jobDir.resolve(videoFileName);
         
@@ -143,29 +203,25 @@ public class FrameStitcher {
             pb.redirectErrorStream(true);
             try {
                 Process process = pb.start();
-                process.getInputStream().transferTo(OutputStream.nullOutputStream()); // drain stdout
+                process.getInputStream().transferTo(OutputStream.nullOutputStream());
                 compiled = process.waitFor() == 0;
             } catch (Exception ignored) {}
         }
 
-        // Delete temp files
         for (Path temp : tempFiles) {
             try {
                 Files.deleteIfExists(temp);
             } catch (IOException ignored) {}
         }
 
-        if (compiled) {
-            System.out.println("[FRAME-STITCHER] Partially rendered animation compiled successfully!");
-            return videoPath;
-        }
-        return null;
+        return compiled ? videoPath : null;
     }
 
-    private void deleteRawFrames(Path jobDir, String preserveVideoName) {
+    private void deleteRawFrames(Path jobDir, String preserveVideoName, String preserveZipName) {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(jobDir)) {
             for (Path entry : stream) {
-                if (Files.isRegularFile(entry) && !entry.getFileName().toString().equals(preserveVideoName)) {
+                String fname = entry.getFileName().toString();
+                if (Files.isRegularFile(entry) && !fname.equals(preserveVideoName) && !fname.equals(preserveZipName)) {
                     Files.deleteIfExists(entry);
                 }
             }
@@ -229,7 +285,7 @@ public class FrameStitcher {
 
             for (Path file : stream) {
                 String name = file.getFileName().toString();
-                if (name.endsWith(".mp4")) continue;
+                if (name.endsWith(".mp4") || name.endsWith(".zip")) continue;
 
                 Matcher matcher = pattern.matcher(name);
                 if (matcher.find()) {
@@ -278,11 +334,10 @@ public class FrameStitcher {
         try {
             Process process = pb.start();
 
-            // Drain output
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    // Suppress verbose logs unless critical
+                    // Drain stdout
                 }
             }
 
@@ -305,6 +360,34 @@ public class FrameStitcher {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private void unpackVideoFramesIfPresent(Path jobDir) {
+        if (!isFFmpegInstalled()) return;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(jobDir)) {
+            for (Path file : stream) {
+                String name = file.getFileName().toString().toLowerCase();
+                if (name.endsWith(".mkv") || name.endsWith(".avi") || name.endsWith(".webm") || (name.endsWith(".mp4") && !name.contains("_animation.mp4"))) {
+                    boolean hasPng = false;
+                    try (DirectoryStream<Path> pngStream = Files.newDirectoryStream(jobDir, "*.png")) {
+                        hasPng = pngStream.iterator().hasNext();
+                    }
+                    if (!hasPng) {
+                        System.out.printf("[FRAME-STITCHER] Extracting discrete PNG frames from container %s...\n", file.getFileName());
+                        List<String> command = List.of(
+                            "ffmpeg", "-y", "-i", file.getFileName().toString(), "-start_number", "1", "frame_%04d.png"
+                        );
+                        ProcessBuilder pb = new ProcessBuilder(command);
+                        pb.directory(jobDir.toFile());
+                        pb.redirectErrorStream(true);
+                        Process process = pb.start();
+                        process.getInputStream().transferTo(OutputStream.nullOutputStream());
+                        process.waitFor();
+                    }
+                    break;
+                }
+            }
+        } catch (Exception ignored) {}
     }
 
     // ========================================================================

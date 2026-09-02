@@ -61,7 +61,6 @@ public class DashboardServer {
         httpServer.createContext("/api/jobs", new JobsHandler());
         httpServer.createContext("/api/jobs/submit", new SubmitJobHandler());
         httpServer.createContext("/api/jobs/cancel", new CancelJobHandler());
-        httpServer.createContext("/api/jobs/download-frames", new DownloadFramesHandler());
         httpServer.createContext("/api/nodes/install-blender", new InstallBlenderHandler());
         httpServer.createContext("/output", new OutputFileHandler());
         httpServer.createContext("/", new StaticWebHandler());
@@ -119,6 +118,7 @@ public class DashboardServer {
             sb.append("\"ipAddress\":\"").append(escapeJson(w.getIpAddress())).append("\",");
             sb.append("\"status\":\"").append(w.getStatus()).append("\",");
             sb.append("\"osName\":\"").append(escapeJson(w.getOsName())).append("\",");
+            sb.append("\"gpuName\":\"").append(escapeJson(w.getGpuName())).append("\",");
             sb.append("\"blenderInstalled\":").append(w.isBlenderInstalled()).append(",");
             sb.append("\"blenderVersion\":\"").append(escapeJson(w.getBlenderVersion())).append("\",");
             sb.append("\"installProgress\":").append(String.format(Locale.US, "%.1f", w.getInstallProgress())).append(",");
@@ -148,51 +148,88 @@ public class DashboardServer {
             boolean cleanUp = (job.getParameters() != null && job.getParameters().containsKey("deleteFramesAfterStitch"))
                 && Boolean.parseBoolean(job.getParameters().get("deleteFramesAfterStitch").toString());
 
+            File jobOutDir = new File("./output/" + job.getJobId());
+            boolean hasVideo = new File(jobOutDir, job.getJobId() + "_animation.mp4").exists();
+            boolean hasZip = new File(jobOutDir, job.getJobId() + "_all_frames.zip").exists();
+            
+            int savedFramesCount = 0;
+            String latestFrameName = null;
+            File[] frames = null;
+            if (jobOutDir.exists() && jobOutDir.isDirectory()) {
+                frames = jobOutDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".png"));
+                if (frames != null && frames.length > 0) {
+                    savedFramesCount = frames.length;
+                    Arrays.sort(frames, Comparator.comparing(File::getName));
+                    latestFrameName = frames[frames.length - 1].getName();
+                }
+            }
+
+            String engine = (job.getParameters() != null && job.getParameters().containsKey("renderEngine"))
+                ? job.getParameters().get("renderEngine").toString() : "CYCLES";
+            int samples = (job.getParameters() != null && job.getParameters().containsKey("renderSamples"))
+                ? Integer.parseInt(job.getParameters().get("renderSamples").toString()) : 64;
+            int resPct = (job.getParameters() != null && job.getParameters().containsKey("resolutionPercentage"))
+                ? Integer.parseInt(job.getParameters().get("resolutionPercentage").toString()) : 100;
+
             sb.append("{");
             sb.append("\"jobId\":\"").append(escapeJson(job.getJobId())).append("\",");
             sb.append("\"jobName\":\"").append(escapeJson(job.getJobName())).append("\",");
             sb.append("\"workloadType\":\"").append(escapeJson(job.getWorkloadType())).append("\",");
+            sb.append("\"renderEngine\":\"").append(escapeJson(engine)).append("\",");
+            sb.append("\"renderSamples\":").append(samples).append(",");
+            sb.append("\"resolutionPercentage\":").append(resPct).append(",");
             sb.append("\"blendFileName\":\"").append(escapeJson(blendName)).append("\",");
             sb.append("\"blendFilePath\":\"").append(escapeJson(blendPath)).append("\",");
-            File previewFile = new File("./output/" + job.getJobId() + "/preview.mp4");
-            boolean previewAvailable = previewFile.exists() && previewFile.length() > 0;
-            
-            String renderEngine = "CYCLES";
-            String resolution = "1920x1080";
-            String outputFormat = "PNG";
-            if (job.getRenderSettings() != null) {
-                renderEngine = job.getRenderSettings().getRenderEngine().name();
-                resolution = job.getRenderSettings().getResolutionX() + "x" + job.getRenderSettings().getResolutionY();
-                outputFormat = job.getRenderSettings().getOutputFormat();
-            } else if (job.getParameters() != null) {
-                if (job.getParameters().containsKey("renderEngine")) {
-                    renderEngine = job.getParameters().get("renderEngine").toString();
+            sb.append("\"cleanUpFrames\":").append(cleanUp).append(",");
+            sb.append("\"hasVideo\":").append(hasVideo).append(",");
+            sb.append("\"hasZip\":").append(hasZip).append(",");
+            sb.append("\"videoUrl\":\"/output/").append(escapeJson(job.getJobId())).append("/").append(escapeJson(job.getJobId())).append("_animation.mp4\",");
+            sb.append("\"zipUrl\":\"/output/").append(escapeJson(job.getJobId())).append("/").append(escapeJson(job.getJobId())).append("_all_frames.zip\",");
+            sb.append("\"savedFramesCount\":").append(savedFramesCount).append(",");
+            long totalWorkerTimeMs = 0;
+            Set<String> uniqueWorkers = new HashSet<>();
+            for (Job.SubTask st : job.getSubTasks()) {
+                totalWorkerTimeMs += st.getDurationMs();
+                if (st.getAssignedWorkerId() != null) {
+                    uniqueWorkers.add(st.getAssignedWorkerId());
                 }
             }
+            long clusterDurationMs = job.getDurationMs();
+            int nodesCount = Math.max(1, uniqueWorkers.size());
+            double speedupRatio = (clusterDurationMs > 0 && totalWorkerTimeMs > 0)
+                ? (double) totalWorkerTimeMs / (double) clusterDurationMs : 1.0;
+            long timeSavedMs = (nodesCount > 1 && totalWorkerTimeMs > clusterDurationMs)
+                ? (totalWorkerTimeMs - clusterDurationMs) : 0;
 
-            long duration = (job.getEndTimestamp() > 0 ? job.getEndTimestamp() : System.currentTimeMillis()) - job.getSubmissionTimestamp();
+            sb.append("\"speedup\":{");
+            sb.append("\"nodesCount\":").append(nodesCount).append(",");
+            sb.append("\"sequentialMs\":").append(totalWorkerTimeMs).append(",");
+            sb.append("\"sequentialFormatted\":\"").append(formatDuration(totalWorkerTimeMs)).append("\",");
+            sb.append("\"ratio\":\"").append(String.format(Locale.US, "%.1fx", Math.max(1.0, speedupRatio))).append("\",");
+            sb.append("\"timeSavedFormatted\":\"").append(formatDuration(timeSavedMs)).append("\",");
+            sb.append("\"percentageSaved\":").append(totalWorkerTimeMs > 0 ? (int)((timeSavedMs * 100.0) / totalWorkerTimeMs) : 0);
+            sb.append("},");
 
-            File errorFile = new File("./output/" + job.getJobId() + "/ffmpeg_error.txt");
-            String ffmpegError = "";
-            if (errorFile.exists() && errorFile.isFile()) {
-                try {
-                    ffmpegError = java.nio.file.Files.readString(errorFile.toPath(), java.nio.charset.StandardCharsets.UTF_8);
-                } catch (Exception ignored) {}
+            sb.append("\"renderedFrames\":[");
+            if (frames != null && frames.length > 0) {
+                int fCount = 0;
+                int maxFrames = Math.min(frames.length, 300);
+                for (int i = 0; i < maxFrames; i++) {
+                    if (fCount++ > 0) sb.append(",");
+                    sb.append("\"/output/").append(escapeJson(job.getJobId())).append("/").append(escapeJson(frames[i].getName())).append("\"");
+                }
             }
+            sb.append("],");
 
-            sb.append("\"cleanUpFrames\":").append(cleanUp).append(",");
-            sb.append("\"videoUrl\":\"/output/").append(escapeJson(job.getJobId())).append("/preview.mp4\",");
-            sb.append("\"previewAvailable\":").append(previewAvailable).append(",");
-            sb.append("\"ffmpegError\":\"").append(escapeJson(ffmpegError)).append("\",");
-            sb.append("\"renderEngine\":\"").append(escapeJson(renderEngine)).append("\",");
-            sb.append("\"resolution\":\"").append(escapeJson(resolution)).append("\",");
-            sb.append("\"outputFormat\":\"").append(escapeJson(outputFormat)).append("\",");
-            sb.append("\"duration\":").append(duration).append(",");
             sb.append("\"totalFrames\":").append(job.getTotalFrames()).append(",");
             sb.append("\"status\":\"").append(job.getStatus()).append("\",");
             sb.append("\"progress\":").append(String.format(Locale.US, "%.1f", job.getProgressPercentage())).append(",");
             sb.append("\"completedTasks\":").append(job.getCompletedTaskCount()).append(",");
             sb.append("\"totalTasks\":").append(job.getSubTaskCount()).append(",");
+            sb.append("\"durationMs\":").append(job.getDurationMs()).append(",");
+            sb.append("\"durationFormatted\":\"").append(formatDuration(job.getDurationMs())).append("\",");
+            sb.append("\"startTimestamp\":").append(job.getStartTimestamp()).append(",");
+            sb.append("\"completionTimestamp\":").append(job.getCompletionTimestamp()).append(",");
             sb.append("\"submissionTime\":").append(job.getSubmissionTimestamp()).append(",");
             sb.append("\"subTasks\":[");
             int tCount = 0;
@@ -203,6 +240,8 @@ public class DashboardServer {
                 sb.append("\"range\":\"").append(escapeJson(st.getFrameRange())).append("\",");
                 sb.append("\"status\":\"").append(st.getStatus()).append("\",");
                 sb.append("\"worker\":").append(st.getAssignedWorkerId() != null ? "\"" + escapeJson(st.getAssignedWorkerId()) + "\"" : "null").append(",");
+                sb.append("\"durationMs\":").append(st.getDurationMs()).append(",");
+                sb.append("\"durationFormatted\":\"").append(formatDuration(st.getDurationMs())).append("\",");
                 sb.append("\"retries\":").append(st.getRetryCount());
                 sb.append("}");
             }
@@ -210,6 +249,19 @@ public class DashboardServer {
         }
         sb.append("]");
         return sb.toString();
+    }
+
+    private static String formatDuration(long ms) {
+        if (ms <= 0) return "0s";
+        long totalSeconds = ms / 1000;
+        long minutes = totalSeconds / 60;
+        long seconds = totalSeconds % 60;
+        long tenths = (ms % 1000) / 100;
+        if (minutes > 0) {
+            return String.format("%dm %02ds", minutes, seconds);
+        } else {
+            return String.format("%d.%ds", seconds, tenths);
+        }
     }
 
     private static String escapeJson(String s) {
@@ -274,8 +326,9 @@ public class DashboardServer {
             int framesPerTask = extractJsonInt(body, "framesPerTask", 0);
             boolean cleanUpFrames = body.contains("\"cleanUpFrames\":true") || body.contains("\"deleteFramesAfterStitch\":true");
             String renderEngine = extractJsonString(body, "renderEngine", "CYCLES");
-            String resolution = extractJsonString(body, "resolution", "1920x1080");
-            String outputFormat = extractJsonString(body, "outputFormat", "PNG");
+            int renderSamples = extractJsonInt(body, "renderSamples", 64);
+            boolean useDenoising = !body.contains("\"useDenoising\":false");
+            int resolutionPercentage = extractJsonInt(body, "resolutionPercentage", 100);
 
             byte[] blendFileBytes = null;
 
@@ -316,40 +369,14 @@ public class DashboardServer {
                 ? String.format("Render Workload #%d (%s)", jobSeq.getAndIncrement(), blendFileName)
                 : customJobName;
 
-            int resolutionX = 1920;
-            int resolutionY = 1080;
-            if (resolution.contains("x")) {
-                String[] resParts = resolution.split("x");
-                try {
-                    resolutionX = Integer.parseInt(resParts[0].trim());
-                    resolutionY = Integer.parseInt(resParts[1].trim());
-                } catch (NumberFormatException ignored) {}
-            }
-            com.campusgrid.core.RenderEngine engineEnum = com.campusgrid.core.RenderEngine.CYCLES;
-            try {
-                String normalizedEngine = renderEngine;
-                if ("BLENDER_EEVEE".equalsIgnoreCase(renderEngine)) {
-                    normalizedEngine = "EEVEE";
-                }
-                engineEnum = com.campusgrid.core.RenderEngine.valueOf(normalizedEngine.toUpperCase());
-            } catch (Exception ignored) {}
-
-            com.campusgrid.core.RenderSettings renderSettings = new com.campusgrid.core.RenderSettings(
-                engineEnum,
-                resolutionX,
-                resolutionY,
-                outputFormat,
-                64, // default samples
-                1,
-                totalFrames
-            );
-
             Map<String, Object> params = new HashMap<>();
             params.put("blendFilePath", blendFilePath);
             params.put("blendFileName", blendFileName);
             params.put("deleteFramesAfterStitch", cleanUpFrames);
             params.put("renderEngine", renderEngine);
-            params.put("renderSettings", renderSettings);
+            params.put("renderSamples", renderSamples);
+            params.put("useDenoising", useDenoising);
+            params.put("resolutionPercentage", resolutionPercentage);
             if (blendFileBytes != null) {
                 params.put("blendFileBytes", blendFileBytes);
             }
@@ -366,13 +393,23 @@ public class DashboardServer {
     private class OutputFileHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            String uriPath = exchange.getRequestURI().getPath(); // e.g. /output/JOB_123/JOB_123_animation.mp4
+            String uriPath = exchange.getRequestURI().getPath(); // e.g. /output/JOB_123/JOB_123_all_frames.zip
             File file = new File("." + uriPath);
             if (file.exists() && file.isFile()) {
-                String mime = uriPath.endsWith(".mp4") ? "video/mp4" 
-                    : (uriPath.endsWith(".png") ? "image/png" : "application/octet-stream");
+                String lower = uriPath.toLowerCase();
+                String mime = lower.endsWith(".mp4") ? "video/mp4" 
+                    : (lower.endsWith(".png") ? "image/png" 
+                    : (lower.endsWith(".zip") ? "application/zip" 
+                    : "application/octet-stream"));
+
                 exchange.getResponseHeaders().set("Content-Type", mime);
                 exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+
+                // Set download filename attachment header for ZIP archives
+                if (lower.endsWith(".zip") || lower.endsWith(".blend")) {
+                    exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + file.getName() + "\"");
+                }
+
                 exchange.sendResponseHeaders(200, file.length());
                 try (OutputStream os = exchange.getResponseBody(); InputStream is = new FileInputStream(file)) {
                     is.transferTo(os);
@@ -409,68 +446,6 @@ public class DashboardServer {
                 sendJsonResponse(exchange, 200, "{\"success\":true,\"message\":\"Job cancelled\"}");
             } else {
                 sendJsonResponse(exchange, 400, "{\"error\":\"Missing jobId parameter\"}");
-            }
-        }
-    }
-
-    private class DownloadFramesHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
-                sendJsonResponse(exchange, 204, "");
-                return;
-            }
-            if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                sendJsonResponse(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
-                return;
-            }
-
-            String query = exchange.getRequestURI().getQuery();
-            String jobId = null;
-            if (query != null && query.contains("jobId=")) {
-                String[] parts = query.split("jobId=");
-                if (parts.length > 1) {
-                    jobId = parts[1].split("&")[0];
-                }
-            }
-
-            if (jobId == null || jobId.trim().isEmpty()) {
-                sendJsonResponse(exchange, 400, "{\"error\":\"Missing jobId parameter\"}");
-                return;
-            }
-
-            File jobDir = new File("./output/" + jobId);
-            File framesDir = new File(jobDir, "frames");
-            File targetDir = framesDir.exists() && framesDir.isDirectory() ? framesDir : jobDir;
-
-            if (!targetDir.exists() || !targetDir.isDirectory()) {
-                sendJsonResponse(exchange, 404, "{\"error\":\"Job directory not found\"}");
-                return;
-            }
-
-            File[] files = targetDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".png") && !name.startsWith("temp_frame_"));
-            if (files == null || files.length == 0) {
-                sendJsonResponse(exchange, 404, "{\"error\":\"No frames found to download\"}");
-                return;
-            }
-
-            exchange.getResponseHeaders().set("Content-Type", "application/zip");
-            exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + jobId + "_frames.zip\"");
-            exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
-            exchange.sendResponseHeaders(200, 0);
-
-            try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(exchange.getResponseBody())) {
-                byte[] buffer = new byte[4096];
-                for (File file : files) {
-                    try (FileInputStream fis = new FileInputStream(file)) {
-                        zos.putNextEntry(new java.util.zip.ZipEntry(file.getName()));
-                        int len;
-                        while ((len = fis.read(buffer)) > 0) {
-                            zos.write(buffer, 0, len);
-                        }
-                        zos.closeEntry();
-                    }
-                }
             }
         }
     }

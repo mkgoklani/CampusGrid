@@ -1,3 +1,4 @@
+import java.io.File;
 import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,7 +24,6 @@ public class Job implements Serializable {
     private final Map<String, Object> parameters;
 
     private volatile JobStatus status;
-    private volatile long endTimestamp = 0;
     private final ConcurrentHashMap<String, SubTask> subTasks = new ConcurrentHashMap<>();
     private final ConcurrentLinkedQueue<SubTask> pendingSubTasks = new ConcurrentLinkedQueue<>();
     private final AtomicInteger completedTaskCount = new AtomicInteger(0);
@@ -66,6 +66,13 @@ public class Job implements Serializable {
             ? parameters.get("blendFilePath").toString() : "scene.blend";
         Object blendBytes = (parameters != null) ? parameters.get("blendFileBytes") : null;
 
+        if (blendBytes == null && blendPath != null && new File(blendPath).exists()) {
+            try {
+                blendBytes = java.nio.file.Files.readAllBytes(new File(blendPath).toPath());
+                if (parameters != null) parameters.put("blendFileBytes", blendBytes);
+            } catch (Exception ignored) {}
+        }
+
         for (int start = 1; start <= totalFrames; start += chunkSize) {
             int end = Math.min(start + chunkSize - 1, totalFrames);
             String taskId = String.format("%s_T%03d", jobId, taskSeq++);
@@ -107,6 +114,9 @@ public class Job implements Serializable {
         }
     }
 
+    private volatile long startTimestamp = 0;
+    private volatile long completionTimestamp = 0;
+
     /**
      * Marks a sub-task completed and checks if the entire job is done.
      *
@@ -117,18 +127,17 @@ public class Job implements Serializable {
         SubTask task = subTasks.get(taskId);
         if (task != null && task.getStatus() != SubTaskStatus.COMPLETED) {
             task.setStatus(SubTaskStatus.COMPLETED);
+            task.setCompletionTimestamp(System.currentTimeMillis());
             int completed = completedTaskCount.incrementAndGet();
             if (completed >= subTasks.size() && !subTasks.isEmpty()) {
                 this.status = JobStatus.COMPLETED;
-                this.endTimestamp = System.currentTimeMillis();
+                if (this.completionTimestamp == 0) {
+                    this.completionTimestamp = System.currentTimeMillis();
+                }
                 return true;
             }
         }
         return isAllCompleted();
-    }
-
-    public long getEndTimestamp() {
-        return endTimestamp;
     }
 
     /**
@@ -151,15 +160,33 @@ public class Job implements Serializable {
     public String getWorkloadType() { return workloadType; }
     public int getTotalFrames() { return totalFrames; }
     public long getSubmissionTimestamp() { return submissionTimestamp; }
+    public long getStartTimestamp() { return startTimestamp; }
+    public void setStartTimestamp(long t) { this.startTimestamp = t; }
+    public long getCompletionTimestamp() { return completionTimestamp; }
+    public void setCompletionTimestamp(long t) { this.completionTimestamp = t; }
+
+    public long getDurationMs() {
+        if (startTimestamp == 0) {
+            if (submissionTimestamp > 0 && status == JobStatus.COMPLETED) {
+                return (completionTimestamp > 0 ? completionTimestamp : System.currentTimeMillis()) - submissionTimestamp;
+            }
+            return 0;
+        }
+        if (completionTimestamp > 0) {
+            return completionTimestamp - startTimestamp;
+        }
+        return System.currentTimeMillis() - startTimestamp;
+    }
+
     public Map<String, Object> getParameters() { return parameters; }
     public JobStatus getStatus() { return status; }
-    public void setStatus(JobStatus status) { this.status = status; }
-
-    public com.campusgrid.core.RenderSettings getRenderSettings() {
-        if (parameters != null && parameters.containsKey("renderSettings")) {
-            return (com.campusgrid.core.RenderSettings) parameters.get("renderSettings");
+    public void setStatus(JobStatus status) {
+        this.status = status;
+        if (status == JobStatus.RUNNING && this.startTimestamp == 0) {
+            this.startTimestamp = System.currentTimeMillis();
+        } else if ((status == JobStatus.COMPLETED || status == JobStatus.FAILED || status == JobStatus.CANCELLED) && this.completionTimestamp == 0) {
+            this.completionTimestamp = System.currentTimeMillis();
         }
-        return null;
     }
 
     public Collection<SubTask> getSubTasks() {
@@ -206,6 +233,8 @@ public class Job implements Serializable {
         private volatile int retryCount;
         private volatile byte[] taskPayloadBytes;
         private volatile Object taskData;
+        private volatile long dispatchTimestamp = 0;
+        private volatile long completionTimestamp = 0;
 
         public SubTask(String taskId, String jobId, int startFrame, int endFrame, String frameRange, String workloadType) {
             this.taskId = taskId;
@@ -239,6 +268,18 @@ public class Job implements Serializable {
 
         public Object getTaskData() { return taskData; }
         public void setTaskData(Object taskData) { this.taskData = taskData; }
+
+        public long getDispatchTimestamp() { return dispatchTimestamp; }
+        public void setDispatchTimestamp(long t) { this.dispatchTimestamp = t; }
+
+        public long getCompletionTimestamp() { return completionTimestamp; }
+        public void setCompletionTimestamp(long t) { this.completionTimestamp = t; }
+
+        public long getDurationMs() {
+            if (dispatchTimestamp == 0) return 0;
+            if (completionTimestamp > 0) return completionTimestamp - dispatchTimestamp;
+            return System.currentTimeMillis() - dispatchTimestamp;
+        }
 
         @Override
         public String toString() {
