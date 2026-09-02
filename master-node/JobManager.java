@@ -111,28 +111,15 @@ public class JobManager {
                     currentActiveJob = null;
                 }
 
-                // Automatic Post-Processing & Video Compilation
+                // Automatic Post-Processing, ZIP bundling & Video Compilation
                 new Thread(() -> {
-                    VideoAssembler.assembleVideo(jobId, job.getTotalFrames(), 30);
-                    
                     boolean cleanUp = false;
                     if (job.getParameters() != null && job.getParameters().containsKey("deleteFramesAfterStitch")) {
                         cleanUp = Boolean.parseBoolean(job.getParameters().get("deleteFramesAfterStitch").toString());
                     }
-                    if (cleanUp) {
-                        try {
-                            java.io.File jobDir = new java.io.File("./output/" + jobId);
-                            if (jobDir.exists() && jobDir.isDirectory()) {
-                                java.io.File[] files = jobDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".png"));
-                                if (files != null) {
-                                    for (java.io.File f : files) {
-                                        f.delete();
-                                    }
-                                }
-                            }
-                        } catch (Exception ignored) {}
-                    }
-                }, "VideoAssembler-" + jobId).start();
+                    FrameStitcher stitcher = new FrameStitcher();
+                    stitcher.processJobOutput(jobId, job.getTotalFrames(), 30, cleanUp);
+                }, "FrameStitcher-" + jobId).start();
             }
         } else {
             // Task failed - requeue for retry up to 3 times

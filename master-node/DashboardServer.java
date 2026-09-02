@@ -149,8 +149,42 @@ public class DashboardServer {
                 && Boolean.parseBoolean(job.getParameters().get("deleteFramesAfterStitch").toString());
 
             File jobOutDir = new File("./output/" + job.getJobId());
-            boolean hasVideo = new File(jobOutDir, job.getJobId() + "_animation.mp4").exists();
-            boolean hasZip = new File(jobOutDir, job.getJobId() + "_all_frames.zip").exists();
+            
+            // Flexible detection of generated animation video (.mp4)
+            String videoFileName = null;
+            File stdVideo = new File(jobOutDir, job.getJobId() + "_animation.mp4");
+            if (stdVideo.exists() && stdVideo.length() > 0) {
+                videoFileName = stdVideo.getName();
+            } else {
+                File prevVideo = new File(jobOutDir, "preview.mp4");
+                if (prevVideo.exists() && prevVideo.length() > 0) {
+                    videoFileName = prevVideo.getName();
+                } else if (jobOutDir.exists() && jobOutDir.isDirectory()) {
+                    File[] mp4s = jobOutDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".mp4"));
+                    if (mp4s != null && mp4s.length > 0) {
+                        videoFileName = mp4s[0].getName();
+                    }
+                }
+            }
+            boolean hasVideo = (videoFileName != null);
+
+            // Flexible detection of generated frame archive (.zip)
+            String zipFileName = null;
+            File stdZip = new File(jobOutDir, job.getJobId() + "_all_frames.zip");
+            if (stdZip.exists() && stdZip.length() > 0) {
+                zipFileName = stdZip.getName();
+            } else {
+                File altZip = new File(jobOutDir, "all_frames.zip");
+                if (altZip.exists() && altZip.length() > 0) {
+                    zipFileName = altZip.getName();
+                } else if (jobOutDir.exists() && jobOutDir.isDirectory()) {
+                    File[] zips = jobOutDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".zip"));
+                    if (zips != null && zips.length > 0) {
+                        zipFileName = zips[0].getName();
+                    }
+                }
+            }
+            boolean hasZip = (zipFileName != null);
             
             int savedFramesCount = 0;
             String latestFrameName = null;
@@ -183,8 +217,8 @@ public class DashboardServer {
             sb.append("\"cleanUpFrames\":").append(cleanUp).append(",");
             sb.append("\"hasVideo\":").append(hasVideo).append(",");
             sb.append("\"hasZip\":").append(hasZip).append(",");
-            sb.append("\"videoUrl\":\"/output/").append(escapeJson(job.getJobId())).append("/").append(escapeJson(job.getJobId())).append("_animation.mp4\",");
-            sb.append("\"zipUrl\":\"/output/").append(escapeJson(job.getJobId())).append("/").append(escapeJson(job.getJobId())).append("_all_frames.zip\",");
+            sb.append("\"videoUrl\":\"").append(hasVideo ? ("/output/" + escapeJson(job.getJobId()) + "/" + escapeJson(videoFileName)) : "").append("\",");
+            sb.append("\"zipUrl\":\"").append(hasZip ? ("/output/" + escapeJson(job.getJobId()) + "/" + escapeJson(zipFileName)) : "").append("\",");
             sb.append("\"savedFramesCount\":").append(savedFramesCount).append(",");
             long totalWorkerTimeMs = 0;
             Set<String> uniqueWorkers = new HashSet<>();

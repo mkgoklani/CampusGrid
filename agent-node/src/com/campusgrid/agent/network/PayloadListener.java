@@ -103,6 +103,7 @@ public class PayloadListener implements Runnable {
             if (!connection.isConnected()) {
                 System.out.println("[TASK] Connection lost.");
                 stop();
+                connection.disconnect();
                 break;
             }
 
@@ -159,6 +160,7 @@ public class PayloadListener implements Runnable {
             } catch (IOException | ClassNotFoundException e) {
                 System.out.println("[TASK] Connection lost.");
                 stop();
+                connection.disconnect();
                 break;
             }
         }

@@ -27,32 +27,41 @@ public class Agent {
         String masterIp = null;
         int masterPort = 8080;
 
-        if (args != null && args.length > 0 && !args[0].trim().isEmpty()) {
-            masterIp = args[0].trim();
+        String configuredMasterIp = null;
+        int configuredMasterPort = 8080;
+        boolean autoDiscover = (args == null || args.length == 0 || args[0].trim().isEmpty());
+
+        if (!autoDiscover) {
+            configuredMasterIp = args[0].trim();
             if (args.length > 1) {
-                try { masterPort = Integer.parseInt(args[1].trim()); } catch (Exception ignored) {}
-            }
-        } else {
-            System.out.println("[DISCOVERY] No Master IP provided. Scanning local network (LAN) for Master Node...");
-            java.net.InetSocketAddress discovered = com.campusgrid.agent.network.LanDiscoveryClient.discoverMaster(2500);
-            if (discovered != null) {
-                masterIp = discovered.getHostString();
-                masterPort = discovered.getPort();
-                System.out.printf("[DISCOVERY] ✔ Auto-discovered CampusGrid Master at %s:%d\n", masterIp, masterPort);
-            } else {
-                masterIp = "127.0.0.1";
-                System.out.println("[DISCOVERY] No LAN Master beacon detected within timeout. Falling back to localhost (127.0.0.1:8080).");
+                try { configuredMasterPort = Integer.parseInt(args[1].trim()); } catch (Exception ignored) {}
             }
         }
 
-        System.out.printf("[NETWORK] Initiating connection to Master [%s:%d]...\n", masterIp, masterPort);
-
-        // Instantiate connection manager and attempt connection persistently
-        MasterConnection connection = new MasterConnection(masterIp, masterPort);
         while (true) {
+            String targetIp = configuredMasterIp;
+            int targetPort = configuredMasterPort;
+
+            if (autoDiscover) {
+                System.out.println("[DISCOVERY] Scanning local network (LAN) for Master Node...");
+                java.net.InetSocketAddress discovered = com.campusgrid.agent.network.LanDiscoveryClient.discoverMaster(2500);
+                if (discovered != null) {
+                    targetIp = discovered.getHostString();
+                    targetPort = discovered.getPort();
+                    System.out.printf("[DISCOVERY] ✔ Auto-discovered CampusGrid Master at %s:%d\n", targetIp, targetPort);
+                } else {
+                    targetIp = "127.0.0.1";
+                    System.out.println("[DISCOVERY] No LAN beacon detected. Trying localhost (127.0.0.1:8080)...");
+                }
+            }
+
+            System.out.printf("[NETWORK] Initiating connection to Master [%s:%d]...\n", targetIp, targetPort);
+
+            // Connect and block while connected
+            MasterConnection connection = new MasterConnection(targetIp, targetPort);
             connection.connect();
-            
-            // Block main thread while connection is active
+
+            // Monitor connection liveness
             while (connection.isConnected()) {
                 try {
                     Thread.sleep(1000);
@@ -60,12 +69,12 @@ public class Agent {
                     break;
                 }
             }
-            
-            System.out.println("[NETWORK] Master connection lost or closed. Re-initiating connection loop...");
-            connection.disconnect(); // Clean up socket/streams before retry
-            
+
+            System.out.println("[NETWORK] Connection to Master lost. Reconnecting automatically in 3 seconds...");
+            connection.disconnect();
+
             try {
-                Thread.sleep(2000);
+                Thread.sleep(3000);
             } catch (InterruptedException ignored) {}
         }
     }
