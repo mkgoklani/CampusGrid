@@ -1178,7 +1178,10 @@
                 const jobCard = document.createElement('div');
                 jobCard.className = 'job-card';
                 jobCard.id = `job-${job.jobId}`;
-                const percentage = Math.round(parseFloat(job.progress) || 0);
+                const totalF = Math.max(1, job.totalFrames || 50);
+                const frameCount = job.renderedFramesCount || 0;
+                const actualFrames = Math.max(frameCount, Math.round((job.completedTasks / Math.max(1, job.totalTasks)) * totalF));
+                const percentage = (job.status === 'COMPLETED') ? 100 : Math.min(99, Math.max(0, Math.round((actualFrames / totalF) * 100)));
 
                 let statusColor = '#6e6e6e';
                 if (job.status === 'COMPLETED') statusColor = 'var(--accent-green)';
@@ -1187,8 +1190,7 @@
 
                 const canCancel = (job.status === 'RUNNING' || job.status === 'QUEUED');
                 const hasVideo = job.videoUrl && job.videoUrl.length > 0 && job.videoUrl !== 'null';
-                const hasFrames = (job.hasFrames || (job.renderedFramesCount && job.renderedFramesCount > 0));
-                const frameCount = job.renderedFramesCount || 0;
+                const hasFrames = (job.hasFrames || frameCount > 0);
                 const blendName = job.blendFileName || 'test.blend';
 
                 jobCard.innerHTML = `
@@ -1221,7 +1223,7 @@
                     </div>
 
                     <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--text-muted);">
-                        <span><strong>${percentage}%</strong> Complete (${frameCount > 0 ? frameCount : Math.round((job.progress / 100) * job.totalFrames)} / ${job.totalFrames} Frames Rendered)</span>
+                        <span><strong>${percentage}%</strong> Complete (${frameCount} / ${totalF} Frames Rendered)</span>
                         <span>${job.completedTasks} / ${job.totalTasks} Slices</span>
                     </div>
                 `;

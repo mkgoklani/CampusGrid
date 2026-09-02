@@ -119,7 +119,10 @@ public class HeartbeatMonitor implements Runnable {
             long lastHeartbeat = worker.getLastHeartbeatTimestamp();
             long elapsedSinceLastBeat = now - lastHeartbeat;
 
-            if (elapsedSinceLastBeat > timeoutThresholdMs) {
+            // Allow 120s tolerance for BUSY rendering nodes and 60s for IDLE nodes
+            long allowedTimeout = (status == WorkerStatus.BUSY) ? 120000L : 60000L;
+
+            if (elapsedSinceLastBeat > allowedTimeout) {
                 String workerId = worker.getWorkerId();
                 System.out.printf("[HEARTBEAT-MONITOR] ⚠ Dead node detected: Worker [%s] missed heartbeats (Last seen %.1fs ago).\n",
                     workerId, elapsedSinceLastBeat / 1000.0);
