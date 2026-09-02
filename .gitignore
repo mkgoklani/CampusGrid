@@ -35,6 +35,8 @@ scratch_render_output/
 bin/
 **/bin/
 *.jar
+!master-node/lib/*.jar
+!**/lib/*.jar
 *.war
 *.ear
 
