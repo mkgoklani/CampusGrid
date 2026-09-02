@@ -102,9 +102,16 @@ public class BasicScheduler implements Runnable {
         }
     }
 
+    private final java.util.concurrent.ExecutorService dispatchExecutor = 
+        java.util.concurrent.Executors.newCachedThreadPool(r -> {
+            Thread t = new Thread(r, "Scheduler-DispatchWorker");
+            t.setDaemon(true);
+            return t;
+        });
+
     /**
      * Core non-blocking dispatch logic.
-     * Queries available idle nodes, fetches pending sub-tasks, and streams them over TCP.
+     * Queries available idle nodes, fetches pending sub-tasks, and streams them concurrently in parallel.
      */
     private void schedulePendingTasks() {
         List<WorkerState> availableWorkers = workerRegistry.getAvailableWorkers();
@@ -117,7 +124,7 @@ public class BasicScheduler implements Runnable {
 
         for (WorkerState worker : availableWorkers) {
             // Re-verify worker state in case a concurrent thread changed it
-            if (worker.getStatus() != WorkerStatus.IDLE || worker.getSocket().isClosed()) {
+            if (worker.getStatus() != WorkerStatus.IDLE || worker.getSocket() == null || worker.getSocket().isClosed()) {
                 continue;
             }
 
@@ -128,7 +135,19 @@ public class BasicScheduler implements Runnable {
                 break;
             }
 
-            dispatchTaskToWorker(worker, task);
+            // Atomically mark worker BUSY and bind task details in registry before launching async dispatch
+            String workerId = worker.getWorkerId();
+            String jobId = task.getJobId();
+            String taskId = task.getTaskId();
+            String frameRange = task.getFrameRange();
+
+            workerRegistry.assignTaskToWorker(workerId, jobId, taskId, frameRange);
+            task.setStatus(Job.SubTaskStatus.DISPATCHED);
+            task.setAssignedWorkerId(workerId);
+            task.setDispatchedTimestamp(System.currentTimeMillis());
+
+            // Dispatch payload asynchronously in parallel to avoid wire transmission bottlenecks
+            dispatchExecutor.submit(() -> dispatchTaskToWorker(worker, task));
         }
     }
 
@@ -141,13 +160,7 @@ public class BasicScheduler implements Runnable {
         String taskId = task.getTaskId();
         String frameRange = task.getFrameRange();
 
-        // 1. Atomically mark worker BUSY and bind task details in registry
-        workerRegistry.assignTaskToWorker(workerId, jobId, taskId, frameRange);
-        task.setStatus(Job.SubTaskStatus.DISPATCHED);
-        task.setAssignedWorkerId(workerId);
-        task.setDispatchedTimestamp(System.currentTimeMillis());
-
-        // 2. Build protocol envelope
+        // Build protocol envelope
         TaskAssignmentPayload payload = new TaskAssignmentPayload(
             jobId,
             taskId,
@@ -163,8 +176,14 @@ public class BasicScheduler implements Runnable {
             payload
         );
 
-        // 3. Transmit across wire
+        // Transmit across wire
         ObjectOutputStream outStream = worker.getOutStream();
+        if (outStream == null) {
+            System.err.printf("[SCHEDULER-WARN] Worker [%s] has null outStream. Triggering recovery.\n", workerId);
+            workerRegistry.handleWorkerFailure(workerId, jobManager);
+            return;
+        }
+
         try {
             synchronized (outStream) {
                 outStream.writeObject(message);
@@ -172,7 +191,7 @@ public class BasicScheduler implements Runnable {
                 outStream.reset(); // Prevent object stream memory leaks
             }
 
-            System.out.printf("[SCHEDULER] ➔ Dispatched Task [%s] (Frames: %s) to Worker [%s] (Temp: %d°C)\n",
+            System.out.printf("[SCHEDULER] ➔ Parallel Dispatched Task [%s] (Frames: %s) to Worker [%s] (Temp: %d°C)\n",
                 taskId, frameRange, workerId, worker.getCpuTemperature());
 
         } catch (IOException e) {

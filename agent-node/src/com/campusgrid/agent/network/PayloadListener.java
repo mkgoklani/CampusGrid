@@ -350,6 +350,11 @@ public class PayloadListener implements Runnable {
             String stateReport = "COMPLETED";
             java.util.List<String> rawFiles = null;
             java.util.List<String> renderedFiles = new java.util.ArrayList<>();
+            
+            // Immediate startup report so UI reflects active rendering instantly
+            int totalFramesToRender = Math.max(1, task.getFrameEnd() - task.getFrameStart() + 1);
+            reporter.reportStatus(task.getJobId(), task.getFrameStart(), totalFramesToRender, 0.0, -1.0, "RENDERING", blenderVer, true);
+
             try {
                 rawFiles = com.campusgrid.agent.blender.BlenderJobExecutor.executeJob(
                     task.getJobId(),
