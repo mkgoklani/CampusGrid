@@ -109,9 +109,24 @@ public class DashboardServer {
         sb.append("},");
 
         sb.append("\"workers\":[");
-        Collection<WorkerState> workers = workerRegistry.getAllWorkers();
+        Collection<WorkerState> allWorkers = workerRegistry.getAllWorkers();
+        Map<String, WorkerState> uniqueByIp = new LinkedHashMap<>();
+        for (WorkerState w : allWorkers) {
+            String ip = w.getIpAddress();
+            if (!uniqueByIp.containsKey(ip)) {
+                uniqueByIp.put(ip, w);
+            } else {
+                WorkerState existing = uniqueByIp.get(ip);
+                if (existing.getStatus() == WorkerStatus.OFFLINE && w.getStatus() != WorkerStatus.OFFLINE) {
+                    uniqueByIp.put(ip, w);
+                } else if (w.getLastHeartbeatTimestamp() > existing.getLastHeartbeatTimestamp()) {
+                    uniqueByIp.put(ip, w);
+                }
+            }
+        }
+
         int count = 0;
-        for (WorkerState w : workers) {
+        for (WorkerState w : uniqueByIp.values()) {
             if (count++ > 0) sb.append(",");
             sb.append("{");
             sb.append("\"workerId\":\"").append(escapeJson(w.getWorkerId())).append("\",");

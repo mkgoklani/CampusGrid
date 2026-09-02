@@ -23,6 +23,19 @@ public class WorkerRegistry {
      * @param state The WorkerState representing the worker node.
      */
     public void registerWorker(WorkerState state) {
+        // Automatically purge any stale or previous sessions from the same IP address
+        List<String> staleIds = new ArrayList<>();
+        for (WorkerState existing : registry.values()) {
+            if (existing.getIpAddress().equals(state.getIpAddress()) && !existing.getWorkerId().equals(state.getWorkerId())) {
+                staleIds.add(existing.getWorkerId());
+            }
+        }
+        for (String staleId : staleIds) {
+            WorkerState removed = registry.remove(staleId);
+            if (removed != null && removed.getSocket() != null && !removed.getSocket().isClosed()) {
+                try { removed.getSocket().close(); } catch (Exception ignored) {}
+            }
+        }
         registry.put(state.getWorkerId(), state);
     }
 
