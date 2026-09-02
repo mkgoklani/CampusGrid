@@ -169,6 +169,7 @@ public class MasterNodeApplication {
         try {
             Object obj;
             while (running && worker.getSocket() != null && !worker.getSocket().isClosed() && (obj = inStream.readObject()) != null) {
+                worker.setLastHeartbeatTimestamp(System.currentTimeMillis());
 
                 if (obj instanceof GridMessage message) {
                     handleProtocolEnvelope(worker, message);
@@ -372,7 +373,8 @@ public class MasterNodeApplication {
      */
     private void handleLegacyStringPacket(WorkerState worker, String raw) {
         String workerId = worker.getWorkerId();
-        if (raw.startsWith("HEARTBEAT | TEMP: ")) {
+        if (raw.startsWith("HEARTBEAT")) {
+            worker.setLastHeartbeatTimestamp(System.currentTimeMillis());
             try {
                 int temp = 36;
                 double cpu = 0.0;

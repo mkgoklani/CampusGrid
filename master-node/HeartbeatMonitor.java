@@ -14,7 +14,7 @@ import com.campusgrid.core.*;
  */
 public class HeartbeatMonitor implements Runnable {
 
-    private static final long DEFAULT_TIMEOUT_THRESHOLD_MS = 15000; // 15 seconds
+    private static final long DEFAULT_TIMEOUT_THRESHOLD_MS = 35000; // 35 seconds
     private static final long DEFAULT_CHECK_INTERVAL_MS = 5000;      // 5 seconds
 
     private final WorkerRegistry workerRegistry;
