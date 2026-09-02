@@ -5,15 +5,17 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.InputStreamReader;
 import java.lang.management.ManagementFactory;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import com.sun.management.OperatingSystemMXBean;
 
 /**
- * Accesses hardware metrics (CPU Model, Architecture, Core Count, GPU Model,
- * GPU Compute Capabilities, Temperature, and System RAM Usage)
- * across macOS, Linux, and Windows platforms.
+ * High-precision hardware telemetry engine across macOS, Linux, and Windows.
+ * Automatically resolves physical CPU cores, logical threads, dedicated vs integrated
+ * GPUs, VRAM capacity, and Blender acceleration backends (OPTIX, CUDA, HIP, METAL, ONEAPI).
  */
 public class HardwareCollector {
 
@@ -75,19 +77,20 @@ public class HardwareCollector {
     }
 
     /**
-     * Retrieves the authentic CPU Model Name across macOS, Linux, and Windows.
-     * Examples: "Apple M1 Max (10 Cores)", "13th Gen Intel(R) Core(TM) i7-13700H (14 Cores)", "AMD Ryzen 9 5900X (12 Cores)".
+     * Retrieves authentic CPU Model Name with exact physical core and logical thread counts.
+     * Examples: "12th Gen Intel(R) Core(TM) i5-12450H (8 Cores, 12 Threads)", "AMD Ryzen 7 7445HS (6 Cores, 12 Threads)".
      */
     public static String getCpuModelName() {
         if (cachedCpuModel != null) return cachedCpuModel;
 
         String os = System.getProperty("os.name", "").toLowerCase();
         String model = null;
-        int cores = Runtime.getRuntime().availableProcessors();
+        int logicalThreads = Runtime.getRuntime().availableProcessors();
+        int physicalCores = logicalThreads;
 
         try {
             if (os.contains("mac")) {
-                // macOS: query machdep.cpu.brand_string or hw.model
+                // macOS: query brand string and physical/logical core counts
                 String brand = executeCommand("sysctl", "-n", "machdep.cpu.brand_string");
                 if (brand != null && !brand.trim().isEmpty() && !brand.trim().equalsIgnoreCase("null")) {
                     model = brand.trim();
@@ -97,6 +100,12 @@ public class HardwareCollector {
                         model = hwModel.trim();
                     }
                 }
+
+                String pCoreStr = executeCommand("sysctl", "-n", "hw.physicalcpu");
+                if (pCoreStr != null && pCoreStr.matches("\\d+")) {
+                    try { physicalCores = Integer.parseInt(pCoreStr.trim()); } catch (Exception ignored) {}
+                }
+
             } else if (os.contains("linux") || os.contains("unix")) {
                 // Linux: read /proc/cpuinfo or lscpu
                 File cpuinfo = new File("/proc/cpuinfo");
@@ -115,33 +124,50 @@ public class HardwareCollector {
                     } catch (Exception ignored) {}
                 }
 
-                if (model == null) {
-                    String lscpu = executeCommand("lscpu");
-                    if (lscpu != null) {
-                        for (String line : lscpu.split("\n")) {
-                            if (line.toLowerCase().startsWith("model name:")) {
-                                model = line.substring(line.indexOf(':') + 1).trim();
-                                break;
-                            }
+                String lscpu = executeCommand("lscpu");
+                if (lscpu != null) {
+                    for (String line : lscpu.split("\n")) {
+                        if (model == null && line.toLowerCase().startsWith("model name:")) {
+                            model = line.substring(line.indexOf(':') + 1).trim();
+                        } else if (line.toLowerCase().startsWith("core(s) per socket:")) {
+                            try {
+                                physicalCores = Integer.parseInt(line.substring(line.indexOf(':') + 1).trim());
+                            } catch (Exception ignored) {}
                         }
                     }
                 }
+
             } else if (os.contains("win")) {
-                // Windows: query wmic or PowerShell or Registry
-                String wmic = executeCommand("wmic", "cpu", "get", "Name", "/value");
-                if (wmic != null && wmic.contains("Name=")) {
-                    for (String line : wmic.split("\n")) {
-                        if (line.trim().startsWith("Name=")) {
-                            model = line.trim().substring(5).trim();
-                            break;
+                // Windows: Query WMI/CIM for Name, NumberOfCores, and NumberOfLogicalProcessors
+                String psCpu = executeCommand("powershell", "-NoProfile", "-Command", 
+                    "Get-CimInstance Win32_Processor | Select-Object -First 1 Name, NumberOfCores, NumberOfLogicalProcessors | Format-List");
+                
+                if (psCpu != null && psCpu.contains("Name")) {
+                    for (String line : psCpu.split("\n")) {
+                        String trimmed = line.trim();
+                        if (trimmed.startsWith("Name") && trimmed.contains(":")) {
+                            model = trimmed.substring(trimmed.indexOf(':') + 1).trim();
+                        } else if (trimmed.startsWith("NumberOfCores") && trimmed.contains(":")) {
+                            try { physicalCores = Integer.parseInt(trimmed.substring(trimmed.indexOf(':') + 1).trim()); } catch (Exception ignored) {}
+                        } else if (trimmed.startsWith("NumberOfLogicalProcessors") && trimmed.contains(":")) {
+                            try { logicalThreads = Integer.parseInt(trimmed.substring(trimmed.indexOf(':') + 1).trim()); } catch (Exception ignored) {}
                         }
                     }
                 }
 
                 if (model == null) {
-                    String ps = executeCommand("powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_Processor).Name");
-                    if (ps != null && !ps.trim().isEmpty()) {
-                        model = ps.trim();
+                    String wmic = executeCommand("wmic", "cpu", "get", "Name,NumberOfCores,NumberOfLogicalProcessors", "/value");
+                    if (wmic != null) {
+                        for (String line : wmic.split("\n")) {
+                            String trimmed = line.trim();
+                            if (trimmed.startsWith("Name=")) {
+                                model = trimmed.substring(5).trim();
+                            } else if (trimmed.startsWith("NumberOfCores=")) {
+                                try { physicalCores = Integer.parseInt(trimmed.substring(14).trim()); } catch (Exception ignored) {}
+                            } else if (trimmed.startsWith("NumberOfLogicalProcessors=")) {
+                                try { logicalThreads = Integer.parseInt(trimmed.substring(26).trim()); } catch (Exception ignored) {}
+                            }
+                        }
                     }
                 }
             }
@@ -151,12 +177,19 @@ public class HardwareCollector {
             model = System.getProperty("os.arch").toUpperCase() + " Processor";
         }
 
-        // Clean up excessive whitespace
+        // Clean up excessive whitespace and unwanted boilerplate
         model = model.replaceAll("\\s+", " ").trim();
 
-        // Append core count if not already present in string
-        if (!model.toLowerCase().contains("core")) {
-            model += String.format(" (%d Cores)", cores);
+        // Format cores and threads cleanly
+        String coreThreadInfo;
+        if (physicalCores == logicalThreads) {
+            coreThreadInfo = String.format(" (%d Cores)", physicalCores);
+        } else {
+            coreThreadInfo = String.format(" (%d Cores, %d Threads)", physicalCores, logicalThreads);
+        }
+
+        if (!model.toLowerCase().contains("core") && !model.toLowerCase().contains("thread")) {
+            model += coreThreadInfo;
         }
 
         cachedCpuModel = model;
@@ -164,16 +197,31 @@ public class HardwareCollector {
     }
 
     /**
-     * Retrieves the authentic GPU Model Name across macOS, Linux, and Windows.
-     * Examples: "Apple M1 (7 Cores)", "NVIDIA GeForce RTX 4080 (16GB VRAM)", "AMD Radeon RX 6700 XT", "Intel Iris Xe Graphics".
+     * Retrieves the authentic dedicated GPU Model Name, prioritizing discrete high-performance
+     * graphics cards (NVIDIA GeForce RTX, AMD Radeon RX, Intel Arc) over basic integrated display adapters.
      */
     public static String getGpuModelName() {
         if (cachedGpuModel != null) return cachedGpuModel;
 
         String os = System.getProperty("os.name", "").toLowerCase();
-        String gpu = null;
+        List<String> detectedGpus = new ArrayList<>();
 
         try {
+            // 1. Check NVIDIA SMI directly (works on Windows, Linux)
+            String[] nvidiaPaths = {"nvidia-smi", "C:\\Windows\\System32\\nvidia-smi.exe", "C:\\Program Files\\NVIDIA Corporation\\NVSMI\\nvidia-smi.exe"};
+            for (String nvPath : nvidiaPaths) {
+                String nvidia = executeCommand(nvPath, "--query-gpu=gpu_name,memory.total", "--format=csv,noheader");
+                if (nvidia != null && !nvidia.trim().isEmpty() && !nvidia.toLowerCase().contains("not found") && !nvidia.toLowerCase().contains("is not recognized")) {
+                    for (String line : nvidia.split("\n")) {
+                        String trimmed = line.trim();
+                        if (!trimmed.isEmpty()) {
+                            detectedGpus.add(trimmed);
+                        }
+                    }
+                    if (!detectedGpus.isEmpty()) break;
+                }
+            }
+
             if (os.contains("mac")) {
                 // macOS: query system_profiler SPDisplaysDataType
                 String profiler = executeCommand("system_profiler", "SPDisplaysDataType");
@@ -185,6 +233,12 @@ public class HardwareCollector {
                     for (String line : profiler.split("\n")) {
                         String trimmed = line.trim();
                         if (trimmed.startsWith("Chipset Model:")) {
+                            if (chipset != null) {
+                                String entry = formatMacGpu(chipset, cores, vram);
+                                if (!entry.isEmpty()) detectedGpus.add(entry);
+                                cores = null;
+                                vram = null;
+                            }
                             chipset = trimmed.substring(14).trim();
                         } else if (trimmed.startsWith("Total Number of Cores:")) {
                             cores = trimmed.substring(22).trim();
@@ -193,82 +247,125 @@ public class HardwareCollector {
                             vram = trimmed.substring(colon + 1).trim();
                         }
                     }
-
                     if (chipset != null) {
-                        gpu = chipset;
-                        if (cores != null) {
-                            gpu += " (" + cores + " Cores)";
-                        } else if (vram != null) {
-                            gpu += " (" + vram + ")";
-                        }
+                        detectedGpus.add(formatMacGpu(chipset, cores, vram));
                     }
                 }
+
             } else if (os.contains("linux") || os.contains("unix")) {
-                // 1. Try NVIDIA SMI
-                String nvidia = executeCommand("nvidia-smi", "--query-gpu=gpu_name,memory.total", "--format=csv,noheader");
-                if (nvidia != null && !nvidia.trim().isEmpty() && !nvidia.toLowerCase().contains("not found")) {
-                    gpu = nvidia.trim();
-                }
-
-                // 2. Try lspci
-                if (gpu == null) {
-                    String lspci = executeCommand("lspci");
-                    if (lspci != null) {
-                        for (String line : lspci.split("\n")) {
-                            if (line.matches("(?i).*(vga compatible controller|3d controller|display controller).*")) {
-                                int colon = line.indexOf(':');
-                                if (colon >= 0) {
-                                    String rest = line.substring(colon + 1).trim();
-                                    int subColon = rest.indexOf(':');
-                                    gpu = (subColon >= 0 ? rest.substring(subColon + 1) : rest).trim();
-                                    break;
-                                }
+                // Linux: lspci display devices
+                String lspci = executeCommand("lspci");
+                if (lspci != null) {
+                    for (String line : lspci.split("\n")) {
+                        if (line.matches("(?i).*(vga compatible controller|3d controller|display controller).*")) {
+                            int colon = line.indexOf(':');
+                            if (colon >= 0) {
+                                String rest = line.substring(colon + 1).trim();
+                                int subColon = rest.indexOf(':');
+                                String gpuName = (subColon >= 0 ? rest.substring(subColon + 1) : rest).trim();
+                                detectedGpus.add(gpuName);
                             }
                         }
                     }
                 }
+
             } else if (os.contains("win")) {
-                // Windows: wmic path win32_VideoController
-                String wmic = executeCommand("wmic", "path", "win32_VideoController", "get", "name", "/value");
-                if (wmic != null && wmic.contains("Name=")) {
-                    for (String line : wmic.split("\n")) {
-                        if (line.trim().startsWith("Name=")) {
-                            String candidate = line.trim().substring(5).trim();
-                            if (!candidate.isEmpty()) {
-                                gpu = candidate;
-                                break;
-                            }
+                // Windows: Query all Win32_VideoController adapters with VRAM
+                String psGpu = executeCommand("powershell", "-NoProfile", "-Command",
+                    "Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM | ForEach-Object { \"$($_.Name)|$([math]::Round($_.AdapterRAM/1GB, 1))GB\" }");
+                
+                if (psGpu != null && !psGpu.trim().isEmpty()) {
+                    for (String line : psGpu.split("\n")) {
+                        String trimmed = line.trim();
+                        if (!trimmed.isEmpty() && !trimmed.startsWith("null")) {
+                            String[] parts = trimmed.split("\\|");
+                            String name = parts[0].trim();
+                            String vram = (parts.length > 1 && !parts[1].equals("0GB")) ? (" (" + parts[1].trim() + " VRAM)") : "";
+                            detectedGpus.add(name + vram);
                         }
                     }
                 }
 
-                if (gpu == null) {
-                    String ps = executeCommand("powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_VideoController).Name");
-                    if (ps != null && !ps.trim().isEmpty()) {
-                        gpu = ps.trim().split("\n")[0].trim();
+                if (detectedGpus.isEmpty()) {
+                    String wmic = executeCommand("wmic", "path", "win32_VideoController", "get", "name", "/value");
+                    if (wmic != null) {
+                        for (String line : wmic.split("\n")) {
+                            String trimmed = line.trim();
+                            if (trimmed.startsWith("Name=")) {
+                                String candidate = trimmed.substring(5).trim();
+                                if (!candidate.isEmpty()) detectedGpus.add(candidate);
+                            }
+                        }
                     }
                 }
             }
         } catch (Exception ignored) {}
 
-        if (gpu == null || gpu.isEmpty() || gpu.equalsIgnoreCase("null")) {
-            // Fallback: Check if Apple Silicon or integrated
-            if (os.contains("mac")) {
-                gpu = getCpuModelName().split("\\(")[0].trim() + " GPU";
-            } else {
-                gpu = "Integrated / Software Render GPU";
+        // Filter out virtual display drivers
+        List<String> validGpus = new ArrayList<>();
+        for (String g : detectedGpus) {
+            String lower = g.toLowerCase();
+            if (!lower.contains("microsoft basic") && !lower.contains("remote desktop") && 
+                !lower.contains("virtualbox") && !lower.contains("vmware") && !lower.contains("citrix") &&
+                !lower.contains("spacedesk") && !lower.contains("parsec")) {
+                validGpus.add(g.replaceAll("\\s+", " ").trim());
             }
         }
 
-        // Clean up
-        gpu = gpu.replaceAll("\\s+", " ").trim();
-        cachedGpuModel = gpu;
+        String chosenGpu = null;
+
+        // Prioritize Discrete High-Performance GPUs (NVIDIA RTX/GTX, AMD Radeon RX, Intel Arc)
+        for (String g : validGpus) {
+            String lower = g.toLowerCase();
+            if (lower.contains("rtx") || lower.contains("geforce") || lower.contains("quadro") || lower.contains("tesla") ||
+                lower.contains("radeon rx") || lower.contains("radeon pro") || lower.contains("arc a")) {
+                chosenGpu = g;
+                break;
+            }
+        }
+
+        // Second pass: Any non-integrated discrete GPU
+        if (chosenGpu == null) {
+            for (String g : validGpus) {
+                String lower = g.toLowerCase();
+                if (lower.contains("nvidia") || (lower.contains("radeon") && !lower.contains("graphics")) || lower.contains("arc")) {
+                    chosenGpu = g;
+                    break;
+                }
+            }
+        }
+
+        // Third pass: Integrated GPU
+        if (chosenGpu == null && !validGpus.isEmpty()) {
+            chosenGpu = validGpus.get(0);
+        }
+
+        if (chosenGpu == null || chosenGpu.isEmpty()) {
+            if (os.contains("mac")) {
+                chosenGpu = getCpuModelName().split("\\(")[0].trim() + " GPU";
+            } else {
+                chosenGpu = "Integrated / Host GPU";
+            }
+        }
+
+        cachedGpuModel = chosenGpu;
         return cachedGpuModel;
+    }
+
+    private static String formatMacGpu(String chipset, String cores, String vram) {
+        if (chipset == null) return "";
+        StringBuilder sb = new StringBuilder(chipset);
+        if (cores != null && !cores.isEmpty()) {
+            sb.append(" (").append(cores).append(" Cores)");
+        } else if (vram != null && !vram.isEmpty()) {
+            sb.append(" (").append(vram).append(")");
+        }
+        return sb.toString();
     }
 
     /**
      * Determines the optimal GPU compute backend type for Blender rendering.
-     * Returns: "METAL", "CUDA", "OPTIX", "HIP", "ONEAPI", or "NONE".
+     * Returns: "OPTIX", "CUDA", "HIP", "METAL", "ONEAPI", or "NONE".
      */
     public static String getGpuComputeType() {
         if (cachedGpuComputeType != null) return cachedGpuComputeType;
@@ -278,16 +375,18 @@ public class HardwareCollector {
 
         String computeType = "NONE";
         if (os.contains("mac")) {
-            // Apple Silicon and modern macOS AMD GPUs support METAL
             computeType = "METAL";
-        } else if (gpu.contains("nvidia") || gpu.contains("geforce") || gpu.contains("quadro") || gpu.contains("rtx") || gpu.contains("gtx")) {
-            computeType = (gpu.contains("rtx")) ? "OPTIX" : "CUDA";
+        } else if (gpu.contains("rtx") || gpu.contains("ada") || gpu.contains("ampere") || gpu.contains("turing")) {
+            // NVIDIA RTX GPUs use hardware-accelerated ray tracing via OPTIX
+            computeType = "OPTIX";
+        } else if (gpu.contains("nvidia") || gpu.contains("geforce") || gpu.contains("quadro") || gpu.contains("gtx") || gpu.contains("tesla")) {
+            computeType = "CUDA";
         } else if (gpu.contains("amd") || gpu.contains("radeon") || gpu.contains("rx ")) {
             computeType = "HIP";
-        } else if (gpu.contains("intel") || gpu.contains("arc ") || gpu.contains("iris")) {
+        } else if (gpu.contains("intel") || gpu.contains("arc") || gpu.contains("iris") || gpu.contains("uhd")) {
             computeType = "ONEAPI";
         } else if (isGpuAvailable()) {
-            computeType = "CUDA"; // Generic default for discrete
+            computeType = "CUDA";
         }
 
         cachedGpuComputeType = computeType;
