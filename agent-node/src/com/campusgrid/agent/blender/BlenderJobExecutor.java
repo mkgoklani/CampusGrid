@@ -9,7 +9,9 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -28,6 +30,7 @@ public class BlenderJobExecutor {
     
     // Tracks active Blender processes keyed by jobId to allow remote cancellation
     private static final ConcurrentHashMap<String, Process> activeProcesses = new ConcurrentHashMap<>();
+    private static final Set<String> cancelledJobs = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     /**
      * Safely terminates a running Blender process for a specific render job.
@@ -37,6 +40,7 @@ public class BlenderJobExecutor {
      */
     public static boolean cancelJob(String jobId) {
         if (jobId == null) return false;
+        cancelledJobs.add(jobId);
         Process process = activeProcesses.get(jobId);
         if (process != null) {
             System.out.println("[EXECUTOR] Cancelling Blender process for job: " + jobId);
@@ -45,17 +49,23 @@ public class BlenderJobExecutor {
             // instead of SIGKILL which discards the buffer entirely
             try {
                 String os = System.getProperty("os.name").toLowerCase();
-                if (!os.contains("win")) {
-                    // Unix: send SIGINT so Blender flushes its current tile buffer
+                if (os.contains("win")) {
+                    // Windows: execute taskkill to kill process tree cleanly
+                    Runtime.getRuntime().exec(new String[]{
+                        "taskkill", "/F", "/T", "/PID", 
+                        String.valueOf(process.toHandle().pid())
+                    });
+                } else {
+                    // Unix (macOS / Linux): send SIGINT so Blender flushes its current tile buffer
                     Runtime.getRuntime().exec(new String[]{
                         "kill", "-INT", 
                         String.valueOf(process.toHandle().pid())
                     });
-                    // Give Blender 3 seconds to write the partial frame
-                    Thread.sleep(3000);
+                    // Give Blender up to 1 second to write the partial frame
+                    Thread.sleep(1000);
                 }
             } catch (Exception e) {
-                System.err.println("[EXECUTOR] SIGINT failed, falling back to force kill");
+                System.err.println("[EXECUTOR] OS process signal failed, falling back to force kill: " + e.getMessage());
             }
             
             // Now force kill if still running
@@ -68,7 +78,22 @@ public class BlenderJobExecutor {
     }
 
     /**
-     * Executes the given Blender render job.
+     * Executes the given Blender render job using the global GPU preference.
+     */
+    public static List<String> executeJob(
+            String jobId,
+            String blendFilePath,
+            int frameStart,
+            int frameEnd,
+            String outputDir,
+            String renderEngine,
+            ProgressReporter reporter
+    ) throws Exception {
+        return executeJob(jobId, blendFilePath, frameStart, frameEnd, outputDir, renderEngine, com.campusgrid.agent.network.PayloadListener.useGpu, reporter);
+    }
+
+    /**
+     * Executes the given Blender render job with explicit GPU/CPU device acceleration selection.
      * Launches Blender in headless mode and reports progress frame-by-frame.
      */
     public static List<String> executeJob(
@@ -78,6 +103,7 @@ public class BlenderJobExecutor {
             int frameEnd,
             String outputDir,
             String renderEngine,
+            boolean useGpu,
             ProgressReporter reporter
     ) throws Exception {
 
@@ -94,14 +120,56 @@ public class BlenderJobExecutor {
             return executeSoftwareRender(jobId, blendFile.getName(), frameStart, frameEnd, outputDir, reporter);
         }
 
-        System.out.printf("[EXECUTOR] Running Blender Headless Render on File: %s (Size: %d bytes)\n",
-            blendFile.getAbsolutePath(), blendFile.length());
+        System.out.printf("[EXECUTOR] Running Blender Headless Render on File: %s (Size: %d bytes, GPU Acceleration: %b)\n",
+            blendFile.getAbsolutePath(), blendFile.length(), useGpu);
 
         // Build command
         List<String> command = new ArrayList<>();
         command.add(blenderPath);
         command.add("-b"); // headless mode
         command.add(blendFile.getAbsolutePath());
+
+        // Configure GPU / CPU compute device in Blender via Python script
+        if (useGpu) {
+            System.out.println("[EXECUTOR] Activating GPU Acceleration backend (METAL / CUDA / OPTIX / HIP / ONEAPI)...");
+            command.add("--python-expr");
+            command.add("import bpy\n" +
+                "try:\n" +
+                "    if hasattr(bpy.context.scene, 'cycles'):\n" +
+                "        bpy.context.scene.cycles.device = 'GPU'\n" +
+                "    cpref = bpy.context.preferences.addons.get('cycles')\n" +
+                "    if cpref:\n" +
+                "        cpref.preferences.get_devices()\n" +
+                "        for dev_type in ('METAL', 'OPTIX', 'CUDA', 'HIP', 'ONEAPI'):\n" +
+                "            found = False\n" +
+                "            for d in cpref.preferences.devices:\n" +
+                "                if d.type == dev_type:\n" +
+                "                    d.use = True\n" +
+                "                    found = True\n" +
+                "                elif d.type == 'CPU':\n" +
+                "                    d.use = False\n" +
+                "            if found:\n" +
+                "                cpref.preferences.compute_device_type = dev_type\n" +
+                "                break\n" +
+                "except Exception as e:\n" +
+                "    print('GPU Setup Notice:', e)\n");
+        } else {
+            System.out.println("[EXECUTOR] Disabling GPU Acceleration — using standard multi-core CPU compute...");
+            command.add("--python-expr");
+            command.add("import bpy\n" +
+                "try:\n" +
+                "    if hasattr(bpy.context.scene, 'cycles'):\n" +
+                "        bpy.context.scene.cycles.device = 'CPU'\n" +
+                "    cpref = bpy.context.preferences.addons.get('cycles')\n" +
+                "    if cpref:\n" +
+                "        for d in cpref.preferences.devices:\n" +
+                "            if d.type == 'CPU':\n" +
+                "                d.use = True\n" +
+                "            else:\n" +
+                "                d.use = False\n" +
+                "except Exception as e:\n" +
+                "    print('CPU Setup Notice:', e)\n");
+        }
 
         if (outputDir != null && !outputDir.trim().isEmpty()) {
             String outPath = outputDir.trim();
@@ -120,8 +188,16 @@ public class BlenderJobExecutor {
         }
 
         if (renderEngine != null && !renderEngine.trim().isEmpty()) {
+            String engine = renderEngine.trim();
+            // Blender 4.2+ uses BLENDER_EEVEE_NEXT
+            if ("BLENDER_EEVEE".equalsIgnoreCase(engine)) {
+                String ver = BlenderInstaller.getInstallationStatus().getVersion();
+                if (ver != null && (ver.startsWith("4.2") || ver.startsWith("4.3") || ver.startsWith("4.4") || ver.startsWith("5."))) {
+                    engine = "BLENDER_EEVEE_NEXT";
+                }
+            }
             command.add("-E");
-            command.add(renderEngine.trim());
+            command.add(engine);
         }
 
         command.add("-s");
@@ -216,8 +292,18 @@ public class BlenderJobExecutor {
         int exitCode = process.waitFor();
         System.out.println("[EXECUTOR] Blender process exited with code: " + exitCode);
         
+        if (cancelledJobs.remove(jobId) || Thread.currentThread().isInterrupted()) {
+            throw new InterruptedException("Render job " + jobId + " was cancelled");
+        }
+
         if (exitCode != 0) {
-            throw new RuntimeException("Blender process failed with exit code: " + exitCode);
+            if (useGpu) {
+                System.out.printf("[EXECUTOR-FALLBACK] ⚠ GPU compute execution failed with exit code %d (e.g. Device OOM or Driver issue). Falling back to CPU compute mode...\n", exitCode);
+                return executeJob(jobId, blendFilePath, frameStart, frameEnd, outputDir, renderEngine, false, reporter);
+            } else {
+                System.out.printf("[EXECUTOR-FALLBACK] ⚠ Native Blender execution failed with exit code %d. Falling back to Software Rendering Pipeline...\n", exitCode);
+                return executeSoftwareRender(jobId, blendFile.getName(), frameStart, frameEnd, outputDir, reporter);
+            }
         }
 
         // Report final completion if not fully updated

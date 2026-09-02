@@ -323,6 +323,28 @@
             color: #fff;
         }
 
+        .btn-frames {
+            background: rgba(46, 125, 50, 0.1);
+            color: var(--accent-green);
+            border: 1px solid rgba(46, 125, 50, 0.25);
+            padding: 6px 12px;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s;
+        }
+
+        .btn-frames:hover {
+            background: var(--accent-green);
+            color: #fff;
+        }
+
         .job-card {
             background: rgba(255, 255, 255, 0.55);
             border: 1px solid rgba(0, 0, 0, 0.05);
@@ -473,7 +495,7 @@
     <div class="header">
         <div class="header-title">
             <h1>CampusGrid Master Center</h1>
-            <p>Distributed Edge Rendering &amp; Compute Telemetry • <a href="/download/agent.jar" download style="color: var(--accent-blue); font-weight: 600; text-decoration: none;">📥 Download Node Agent (.jar)</a></p>
+            <p>Distributed Edge Rendering &amp; Compute Telemetry • <a href="/download/agent.jar" download style="color: var(--accent-blue); font-weight: 600; text-decoration: none;">Download Node Agent (.jar)</a> • <a href="javascript:void(0)" onclick="compileAndSyncAgent()" style="color: #6a11cb; font-weight: 600; text-decoration: none;">Compile &amp; Sync Agent Nodes</a></p>
         </div>
         <div class="stats-bar">
             <div class="stat-card neumorphic-outset">
@@ -488,6 +510,10 @@
                 <h3 id="stat-busy" style="color: var(--accent-blue);">0</h3>
                 <p>Rendering</p>
             </div>
+            <div class="stat-card neumorphic-outset" style="cursor: pointer; border: 1px solid rgba(106, 17, 203, 0.3); background: rgba(106, 17, 203, 0.04); transition: all 0.2s;" onclick="openBenchmarkModal()" title="Click to view 1 PC vs Multi-PC real performance & hardware comparison">
+                <h3 id="stat-speedup" style="color: #6a11cb;">Scaling</h3>
+                <p style="color: #6a11cb; font-weight: 600;">1 PC vs N PCs</p>
+            </div>
         </div>
     </div>
 
@@ -495,7 +521,7 @@
     <div class="install-banner" id="install-banner">
         <div style="flex: 1;">
             <div style="display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--accent-orange);">
-                <span>⏳ Installing Blender 3D Suite on Connected Worker...</span>
+                <span>Installing Blender 3D Suite on Connected Worker...</span>
                 <span id="install-banner-pct">0%</span>
             </div>
             <div class="progress-container" style="margin: 6px 0 0 0; height: 6px;">
@@ -517,9 +543,12 @@
                     <thead>
                         <tr>
                             <th>Node Endpoint</th>
-                            <th>Platform / OS</th>
-                            <th>Blender Status</th>
-                            <th>Queue Tasks</th>
+                            <th>OS & Arch</th>
+                            <th>CPU Specification</th>
+                            <th>GPU Specification</th>
+                            <th>Blender</th>
+                            <th style="text-align: center;" title="Assign CPU Tasks">CPU Tasks</th>
+                            <th style="text-align: center;" title="Enable GPU Hardware Compute (Cycles/Metal/CUDA/OptiX)">GPU Accel</th>
                             <th>Status</th>
                             <th>CPU</th>
                             <th>RAM</th>
@@ -529,7 +558,7 @@
                     </thead>
                     <tbody id="worker-table-body">
                         <tr>
-                            <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 40px 0;">
+                            <td colspan="12" style="text-align: center; color: var(--text-muted); padding: 40px 0;">
                                 Awaiting worker agent connections...
                             </td>
                         </tr>
@@ -565,7 +594,7 @@
                 <label>Target .blend File <span style="color: var(--accent-red);">*</span></label>
                 <div class="file-drop-area" id="file-drop-box" onclick="document.getElementById('blend-file-picker').click()">
                     <div id="file-display-name" style="font-weight: 600; font-size: 14px; color: #111;">
-                        📁 Click here to select your 3D Scene (<code>*.blend</code> file)
+                        Click here to select your 3D Scene (<code>*.blend</code> file)
                     </div>
                     <small style="color: var(--text-muted); font-size: 12px; margin-top: 5px; display: block;" id="file-size-hint">
                         Choose any .blend file on your computer to transmit across the cluster
@@ -591,7 +620,7 @@
                     <strong>Auto-balance frames across connected nodes</strong>
                 </label>
                 <div class="auto-calc-box" id="auto-calc-notice">
-                    ⚡ Auto-balance: 50 frames &divide; 1 connected node = <strong>50 frames / worker (1 slice)</strong>
+                    Auto-balance: 50 frames &divide; 1 connected node = <strong>50 frames / worker (1 slice)</strong>
                 </div>
             </div>
 
@@ -639,7 +668,7 @@
 
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeSubmitModal()">Cancel</button>
-                <button class="btn" id="btn-submit-workload" onclick="submitWorkloadForm()">🚀 Launch Grid Job</button>
+                <button class="btn" id="btn-submit-workload" onclick="submitWorkloadForm()">Launch Grid Job</button>
             </div>
         </div>
     </div>
@@ -649,12 +678,167 @@
         <div class="modal-box neumorphic-outset" style="max-width: 720px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
                 <h3 id="video-modal-title">Compiled Animation Video</h3>
-                <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="closeVideoModal()">✕ Close</button>
+                <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="closeVideoModal()">Close</button>
             </div>
             <video id="video-player" controls autoplay loop>
                 <source id="video-source" src="" type="video/mp4">
                 Your browser does not support the video tag.
             </video>
+        </div>
+    </div>
+
+    <!-- Frame / Image Gallery & Animation Viewer Modal -->
+    <div class="modal-overlay" id="frame-modal">
+        <div class="modal-box neumorphic-outset" style="max-width: 860px; width: 95%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <div>
+                    <h3 id="frame-modal-title">Rendered Frame Gallery</h3>
+                    <div id="frame-modal-subtitle" style="font-size: 12px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 2px;"></div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <a id="frame-modal-download" class="btn btn-secondary" style="padding: 6px 12px; text-decoration: none;" href="#" target="_blank">View Image</a>
+                    <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="closeFrameModal()">Close</button>
+                </div>
+            </div>
+            
+            <div style="position: relative; background: #0a0d14; border-radius: 12px; overflow: hidden; display: flex; justify-content: center; align-items: center; min-height: 380px; max-height: 520px; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);">
+                <img id="frame-viewer-img" src="" style="max-width: 100%; max-height: 520px; object-fit: contain; display: block;" alt="Rendered Frame" />
+                <div id="frame-loading-spinner" style="display: none; color: #fff; font-size: 14px;">Loading frames...</div>
+            </div>
+
+            <!-- Frame Controls / Animation Player -->
+            <div style="margin-top: 14px; background: rgba(0,0,0,0.03); padding: 12px 16px; border-radius: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button class="btn btn-secondary" style="padding: 5px 12px;" onclick="stepFrame(-1)" title="Previous Frame">Previous</button>
+                        <button class="btn" style="padding: 5px 14px;" id="btn-play-frame-loop" onclick="toggleFramePlayback()">Play Animation</button>
+                        <button class="btn btn-secondary" style="padding: 5px 12px;" onclick="stepFrame(1)" title="Next Frame">Next</button>
+                    </div>
+                    <div style="font-size: 13px; font-weight: 600; font-family: 'JetBrains Mono', monospace;">
+                        Frame <span id="frame-current-idx">1</span> / <span id="frame-total-count">1</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted);">
+                        <span>Speed:</span>
+                        <select id="frame-fps-select" onchange="updatePlaybackFps()" style="padding: 2px 6px; border-radius: 4px; border: 1px solid #ccc; font-size: 12px; background: #fff;">
+                            <option value="12">12 FPS</option>
+                            <option value="24" selected>24 FPS</option>
+                            <option value="30">30 FPS</option>
+                            <option value="60">60 FPS</option>
+                        </select>
+                    </div>
+                </div>
+                <input type="range" id="frame-scrubber" min="0" max="0" value="0" style="width: 100%; cursor: pointer; accent-color: var(--accent-blue);" oninput="onScrubberInput(this.value)" />
+            </div>
+        </div>
+    </div>
+
+    <!-- Cluster Performance & Parallel Scaling Comparison Modal -->
+    <div class="modal-overlay" id="benchmark-modal">
+        <div class="modal-box neumorphic-outset" style="max-width: 980px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 26px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 1px solid rgba(0,0,0,0.08); padding-bottom: 14px;">
+                <div>
+                    <h2 style="font-size: 20px; font-weight: 700; color: #111; display: flex; align-items: center; gap: 8px;">
+                        Empirical Cluster Performance &amp; Parallel Scaling
+                    </h2>
+                    <p style="font-size: 12.5px; color: var(--text-muted); margin: 4px 0 0 0;">
+                        Authentic practical execution benchmarks comparing <strong>1 PC baseline</strong> vs <strong>Multi-PC distributed topologies</strong>.
+                    </p>
+                </div>
+                <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="closeBenchmarkModal()">Close</button>
+            </div>
+
+            <!-- Top Level Benchmark KPI Summary Cards -->
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px;">
+                <div class="stat-card neumorphic-outset" style="padding: 16px; text-align: left; background: rgba(106, 17, 203, 0.03); border: 1px solid rgba(106, 17, 203, 0.15);">
+                    <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Parallel Speedup</span>
+                    <div id="bm-speedup" style="font-size: 26px; font-weight: 800; color: #6a11cb; margin-top: 4px;">1.00x</div>
+                    <span id="bm-speedup-sub" style="font-size: 11px; color: var(--text-muted);">vs single node baseline</span>
+                </div>
+                <div class="stat-card neumorphic-outset" style="padding: 16px; text-align: left; background: rgba(46, 125, 50, 0.03); border: 1px solid rgba(46, 125, 50, 0.15);">
+                    <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Scaling Efficiency</span>
+                    <div id="bm-efficiency" style="font-size: 26px; font-weight: 800; color: var(--accent-green); margin-top: 4px;">100%</div>
+                    <span style="font-size: 11px; color: var(--text-muted);">Parallel compute yield</span>
+                </div>
+                <div class="stat-card neumorphic-outset" style="padding: 16px; text-align: left; background: rgba(0, 102, 204, 0.03); border: 1px solid rgba(0, 102, 204, 0.15);">
+                    <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Render Time Saved</span>
+                    <div id="bm-timesaved" style="font-size: 26px; font-weight: 800; color: var(--accent-blue); margin-top: 4px;">0%</div>
+                    <span id="bm-timesaved-sub" style="font-size: 11px; color: var(--text-muted);">Wall-clock reduction</span>
+                </div>
+                <div class="stat-card neumorphic-outset" style="padding: 16px; text-align: left; background: rgba(230, 81, 0, 0.03); border: 1px solid rgba(230, 81, 0, 0.15);">
+                    <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Frame Throughput</span>
+                    <div id="bm-throughput" style="font-size: 26px; font-weight: 800; color: #e65100; margin-top: 4px;">0 fpm</div>
+                    <span style="font-size: 11px; color: var(--text-muted);">Rendered frames / min</span>
+                </div>
+            </div>
+
+            <!-- Job History Dropdown Selector & Details -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; background: rgba(0,0,0,0.025); padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06);">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-main);">Selected Workload:</label>
+                    <select id="bm-job-selector" onchange="loadBenchmarkForJob(this.value)" style="padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.2); font-size: 12px; font-weight: 600; background: #fff;">
+                        <option value="">Latest Cluster Execution</option>
+                    </select>
+                </div>
+                <div id="bm-job-details" style="font-size: 12px; color: var(--text-muted);">
+                    Scene: <strong id="bm-scene-name" style="color: var(--text-main);">-</strong> • Engine: <strong id="bm-engine-name" style="color: var(--text-main);">-</strong> • Frames: <strong id="bm-total-frames" style="color: var(--text-main);">-</strong>
+                </div>
+            </div>
+
+            <!-- 1. Parallel Scaling Comparison Table (1 PC vs 2 PCs vs 3 PCs vs 4 PCs) -->
+            <div style="margin-bottom: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h3 style="font-size: 14.5px; font-weight: 700; color: #111;">
+                        Parallel Execution Scaling Matrix (1 PC vs Multi-PC Topologies)
+                    </h3>
+                    <span style="font-size: 11.5px; color: var(--text-muted);">Derived from actual node compute times</span>
+                </div>
+                <div class="table-responsive">
+                    <table style="width: 100%;">
+                        <thead>
+                            <tr>
+                                <th>Topology</th>
+                                <th>Execution Time</th>
+                                <th>Speedup Multiplier</th>
+                                <th>Scaling Efficiency</th>
+                                <th>Time Saved</th>
+                                <th>Throughput</th>
+                                <th>Run Verification</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bm-scaling-table-body">
+                            <tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 25px 0;">Awaiting benchmark data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 2. Hardware Breakdown & GPU Compute Mode -->
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h3 style="font-size: 14.5px; font-weight: 700; color: #111;">
+                        Participating Hardware Specifications &amp; Compute Mode
+                    </h3>
+                    <span style="font-size: 11.5px; color: var(--text-muted);">Authentic probe metrics per node</span>
+                </div>
+                <div class="table-responsive">
+                    <table style="width: 100%;">
+                        <thead>
+                            <tr>
+                                <th>Node Endpoint</th>
+                                <th>Platform / Arch</th>
+                                <th>CPU Model</th>
+                                <th>GPU Model</th>
+                                <th>Compute Acceleration</th>
+                                <th>Frames Rendered</th>
+                                <th>Node Work Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bm-nodes-table-body">
+                            <tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 25px 0;">No active worker contributions recorded yet.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -664,6 +848,13 @@
         let isFileReading = false;
         let activeWorkersCount = 1;
         let jobSequenceNumber = 1;
+
+        // Frame gallery state
+        let currentFrameJobId = null;
+        let currentFrameList = [];
+        let currentFrameIndex = 0;
+        let framePlaybackInterval = null;
+        let playbackFps = 24;
 
         function openSubmitModal() {
             document.getElementById('submit-modal').style.display = 'flex';
@@ -692,6 +883,106 @@
             const player = document.getElementById('video-player');
             player.load();
             document.getElementById('video-modal').style.display = 'flex';
+        }
+
+        async function previewFrames(jobId, title) {
+            currentFrameJobId = jobId;
+            document.getElementById('frame-modal-title').innerText = title || `Job ${jobId} Frames`;
+            document.getElementById('frame-modal-subtitle').innerText = `Job ID: ${jobId} • Fetching frame index...`;
+            document.getElementById('frame-loading-spinner').style.display = 'block';
+            document.getElementById('frame-viewer-img').style.display = 'none';
+            document.getElementById('frame-modal').style.display = 'flex';
+
+            stopFramePlayback();
+
+            try {
+                const res = await fetch(`/api/jobs/frames?jobId=${encodeURIComponent(jobId)}`);
+                const data = await res.json();
+                if (data.success && data.frames && data.frames.length > 0) {
+                    currentFrameList = data.frames;
+                    currentFrameIndex = 0;
+                    document.getElementById('frame-total-count').innerText = currentFrameList.length;
+                    document.getElementById('frame-scrubber').max = currentFrameList.length - 1;
+                    document.getElementById('frame-scrubber').value = 0;
+                    document.getElementById('frame-loading-spinner').style.display = 'none';
+                    document.getElementById('frame-viewer-img').style.display = 'block';
+                    showFrame(0);
+                } else {
+                    document.getElementById('frame-loading-spinner').innerText = 'No frames available yet.';
+                    document.getElementById('frame-modal-subtitle').innerText = 'No frame images found on disk for this job.';
+                }
+            } catch (err) {
+                document.getElementById('frame-loading-spinner').innerText = 'Error loading frames: ' + err.message;
+            }
+        }
+
+        function showFrame(idx) {
+            if (!currentFrameList || currentFrameList.length === 0) return;
+            currentFrameIndex = Math.max(0, Math.min(idx, currentFrameList.length - 1));
+            const frameUrl = currentFrameList[currentFrameIndex];
+            const img = document.getElementById('frame-viewer-img');
+            img.src = frameUrl;
+            document.getElementById('frame-current-idx').innerText = currentFrameIndex + 1;
+            document.getElementById('frame-scrubber').value = currentFrameIndex;
+            document.getElementById('frame-modal-download').href = frameUrl;
+            document.getElementById('frame-modal-subtitle').innerText = 
+                `${currentFrameList[currentFrameIndex].split('/').pop()} (${currentFrameIndex + 1} of ${currentFrameList.length})`;
+        }
+
+        function stepFrame(delta) {
+            stopFramePlayback();
+            showFrame(currentFrameIndex + delta);
+        }
+
+        function onScrubberInput(val) {
+            stopFramePlayback();
+            showFrame(parseInt(val));
+        }
+
+        function toggleFramePlayback() {
+            if (framePlaybackInterval) {
+                stopFramePlayback();
+            } else {
+                startFramePlayback();
+            }
+        }
+
+        function startFramePlayback() {
+            if (!currentFrameList || currentFrameList.length <= 1) return;
+            const btn = document.getElementById('btn-play-frame-loop');
+            btn.innerText = 'Pause Animation';
+            btn.style.background = 'var(--accent-orange)';
+            const intervalMs = Math.round(1000 / playbackFps);
+            framePlaybackInterval = setInterval(() => {
+                let next = currentFrameIndex + 1;
+                if (next >= currentFrameList.length) next = 0;
+                showFrame(next);
+            }, intervalMs);
+        }
+
+        function stopFramePlayback() {
+            if (framePlaybackInterval) {
+                clearInterval(framePlaybackInterval);
+                framePlaybackInterval = null;
+            }
+            const btn = document.getElementById('btn-play-frame-loop');
+            if (btn) {
+                btn.innerText = 'Play Animation';
+                btn.style.background = 'var(--accent-blue)';
+            }
+        }
+
+        function updatePlaybackFps() {
+            playbackFps = parseInt(document.getElementById('frame-fps-select').value || '24');
+            if (framePlaybackInterval) {
+                stopFramePlayback();
+                startFramePlayback();
+            }
+        }
+
+        function closeFrameModal() {
+            stopFramePlayback();
+            document.getElementById('frame-modal').style.display = 'none';
         }
 
         function toggleAutoBalance(checked) {
@@ -726,7 +1017,7 @@
             const slices = Math.ceil(total / framesPerNode);
 
             document.getElementById('auto-calc-notice').innerHTML = 
-                `⚡ Auto-balance: ${total} frames &divide; ${nodes} connected node(s) = <strong>${framesPerNode} frames / node (${slices} slice${slices > 1 ? 's' : ''})</strong>`;
+                `Auto-balance: ${total} frames &divide; ${nodes} connected node(s) = <strong>${framesPerNode} frames / node (${slices} slice${slices > 1 ? 's' : ''})</strong>`;
             document.getElementById('modal-chunk-size').value = framesPerNode;
         }
 
@@ -736,7 +1027,7 @@
                 selectedFileName = file.name;
                 const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
                 
-                document.getElementById('file-display-name').innerHTML = `📁 Loading: <strong>${file.name}</strong> (${sizeMb} MB)...`;
+                document.getElementById('file-display-name').innerHTML = `Loading: <strong>${file.name}</strong> (${sizeMb} MB)...`;
                 document.getElementById('file-size-hint').innerText = "Reading file into memory for network transmission...";
 
                 isFileReading = true;
@@ -748,8 +1039,8 @@
                         selectedFileBase64 = dataUrl.substring(base64Index + 1);
                     }
                     isFileReading = false;
-                    document.getElementById('file-display-name').innerHTML = `📁 Selected: <strong>${file.name}</strong>`;
-                    document.getElementById('file-size-hint').innerHTML = `<span style="color: var(--accent-green); font-weight: 600;">✓ Ready to transmit across cluster (${sizeMb} MB)</span>`;
+                    document.getElementById('file-display-name').innerHTML = `Selected: <strong>${file.name}</strong>`;
+                    document.getElementById('file-size-hint').innerHTML = `<span style="color: var(--accent-green); font-weight: 600;">Ready to transmit across cluster (${sizeMb} MB)</span>`;
                     document.getElementById('modal-job-name').placeholder = `Render Workload #${jobSequenceNumber} (${file.name})`;
                 };
                 reader.onerror = function() {
@@ -839,7 +1130,7 @@
                 alert("Error connecting to Master API: " + err.message);
             } finally {
                 btn.disabled = false;
-                btn.innerText = '🚀 Launch Grid Job';
+                btn.innerText = 'Launch Grid Job';
             }
         }
 
@@ -896,22 +1187,32 @@
 
                 const canCancel = (job.status === 'RUNNING' || job.status === 'QUEUED');
                 const hasVideo = job.videoUrl && job.videoUrl.length > 0 && job.videoUrl !== 'null';
+                const hasFrames = (job.hasFrames || (job.renderedFramesCount && job.renderedFramesCount > 0));
+                const frameCount = job.renderedFramesCount || 0;
                 const blendName = job.blendFileName || 'test.blend';
 
                 jobCard.innerHTML = `
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-                        <div>
-                            <strong style="font-size: 15.5px; color: #111;">${job.jobName || job.jobId}</strong>
-                            <div style="font-size: 11.5px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 3px;">
-                                📁 Scene: <strong>${blendName}</strong> &bull; #${job.jobId}
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            ${job.previewFrameUrl ? `
+                                <img src="${job.previewFrameUrl}" onclick="previewFrames('${job.jobId}', '${escapeHtml(job.jobName)}')" 
+                                     style="width: 44px; height: 44px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid rgba(0,0,0,0.15); box-shadow: 0 2px 4px rgba(0,0,0,0.08);" 
+                                     title="Click to preview frames" />
+                            ` : ''}
+                            <div>
+                                <strong style="font-size: 15.5px; color: #111;">${job.jobName || job.jobId}</strong>
+                                <div style="font-size: 11.5px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 3px;">
+                                    Scene: <strong>${blendName}</strong> &bull; #${job.jobId}
+                                </div>
                             </div>
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <span class="status-tag" style="background: ${statusColor}18; color: ${statusColor};">
                                 ${job.status}
                             </span>
-                            ${canCancel ? `<button class="btn-cancel" onclick="cancelJob('${job.jobId}')">✕ Cancel</button>` : ''}
-                            ${hasVideo ? `<button class="btn-play" onclick="previewVideo('${job.videoUrl}', '${escapeHtml(job.jobName)}')">▶ ${job.status === 'CANCELLED' ? 'Preview Partial' : 'Preview Video'}</button>` : ''}
+                            ${canCancel ? `<button class="btn-cancel" onclick="cancelJob('${job.jobId}')">Cancel</button>` : ''}
+                            ${hasFrames ? `<button class="btn-frames" onclick="previewFrames('${job.jobId}', '${escapeHtml(job.jobName)}')">Frames (${frameCount})</button>` : ''}
+                            ${hasVideo ? `<button class="btn-play" onclick="previewVideo('${job.videoUrl}', '${escapeHtml(job.jobName)}')">${job.status === 'CANCELLED' ? 'Partial Video' : 'Preview Video'}</button>` : ''}
                         </div>
                     </div>
 
@@ -920,7 +1221,7 @@
                     </div>
 
                     <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--text-muted);">
-                        <span><strong>${percentage}%</strong> Complete (${Math.round((job.progress / 100) * job.totalFrames)} / ${job.totalFrames} Frames Rendered)</span>
+                        <span><strong>${percentage}%</strong> Complete (${frameCount > 0 ? frameCount : Math.round((job.progress / 100) * job.totalFrames)} / ${job.totalFrames} Frames Rendered)</span>
                         <span>${job.completedTasks} / ${job.totalTasks} Slices</span>
                     </div>
                 `;
@@ -938,7 +1239,7 @@
         const ws = new WebSocket(`${wsProtocol}//${wsHost}:8082/ws/telemetry`);
 
         ws.onopen = () => {
-            console.log('✓ Connected to Master Node Real-Time Telemetry Stream');
+            console.log('Connected to Master Node Real-Time Telemetry Stream');
             document.getElementById('stream-indicator').innerText = 'Live Stream';
             fetchJobs();
         };
@@ -981,7 +1282,7 @@
             
             if (!workers || workers.length === 0) {
                 activeWorkersCount = 0;
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 35px 0;">Awaiting node connections...</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="12" style="text-align: center; color: var(--text-muted); padding: 35px 0;">Awaiting node connections...</td></tr>';
                 return;
             }
 
@@ -1004,8 +1305,8 @@
                 // Blender status rendering
                 let blenderBadge = `
                     <div style="display: flex; align-items: center;">
-                        <span class="badge-pill not-installed">✖ Not Installed</span>
-                        <button class="btn-install" onclick="triggerBlenderInstall('${worker.workerId}')">⚡ Install</button>
+                        <span class="badge-pill not-installed">Not Installed</span>
+                        <button class="btn-install" onclick="triggerBlenderInstall('${worker.workerId}')">Install Blender</button>
                     </div>
                 `;
 
@@ -1020,27 +1321,58 @@
 
                     blenderBadge = `
                         <div>
-                            <span style="font-size: 11px; font-weight: 600; color: var(--accent-orange);">⏳ Installing (${worker.installProgress.toFixed(0)}%) - ${worker.installMsg || 'Working...'}</span>
-                            <div class="progress-container" style="height: 4px; margin: 4px 0 0 0; width: 140px;">
+                            <span style="font-size: 11px; font-weight: 600; color: var(--accent-orange);">Installing (${worker.installProgress.toFixed(0)}%) - ${worker.installMsg || 'Working...'}</span>
+                            <div class="progress-container" style="height: 4px; margin: 4px 0 0 0; width: 130px;">
                                 <div class="progress-bar" style="width: ${worker.installProgress}%; background: var(--accent-orange);"></div>
                             </div>
                         </div>
                     `;
                 } else if (worker.blenderInstalled) {
-                    blenderBadge = `<span class="badge-pill installed">✔ Installed (${worker.blenderVersion || 'Active'})</span>`;
+                    blenderBadge = `<span class="badge-pill installed">Installed (${worker.blenderVersion || 'Active'})</span>`;
                 }
 
                 const osLabel = worker.osName || 'macOS';
+                const archLabel = worker.cpuArch || 'ARM64 (aarch64)';
+                const cpuLabel = worker.cpuModel || 'System CPU';
+                const gpuLabel = worker.gpuModel || 'Integrated GPU';
+                const gpuCompute = worker.gpuComputeType || 'NONE';
+                const isGpuActive = worker.useGpu !== false;
+                const isGpuCapable = worker.gpuAvailable !== false;
+
+                const versionBadge = worker.isOutdated
+                    ? `<div style="margin-top: 2px;"><span style="font-size: 9.5px; font-weight: 700; color: #b45309; background: rgba(245,158,11,0.14); padding: 1px 5px; border-radius: 3px; border: 1px solid rgba(245,158,11,0.25);">v${worker.agentVersion || '1.0.0'} (Syncing)</span></div>`
+                    : `<div style="margin-top: 2px;"><span style="font-size: 9.5px; font-weight: 700; color: var(--accent-green); background: rgba(46,125,50,0.08); padding: 1px 5px; border-radius: 3px;">v${worker.agentVersion || '1.0.1'}</span></div>`;
 
                 row.innerHTML = `
-                    <td style="font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 12.5px;">${worker.workerId}</td>
-                    <td style="font-size: 12.5px; color: var(--text-main); font-weight: 500;">${osLabel}</td>
+                    <td>
+                        <div style="font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 12px;">${worker.workerId}</div>
+                        ${versionBadge}
+                    </td>
+                    <td>
+                        <div style="font-weight: 600; font-size: 12px; color: var(--text-main);">${osLabel}</div>
+                        <span style="font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--accent-blue); background: rgba(0,102,204,0.08); padding: 1px 5px; border-radius: 4px; border: 1px solid rgba(0,102,204,0.18);">${archLabel}</span>
+                    </td>
+                    <td>
+                        <div style="font-size: 11.5px; font-weight: 600; color: var(--text-main); max-width: 140px; line-height: 1.25;">${cpuLabel}</div>
+                    </td>
+                    <td>
+                        <div style="font-size: 11.5px; font-weight: 600; color: #6a1b9a; max-width: 140px; line-height: 1.25;">${gpuLabel}</div>
+                        <span style="font-size: 9.5px; font-weight: 700; color: #6a1b9a; background: rgba(106,27,154,0.1); padding: 1px 4px; border-radius: 3px; text-transform: uppercase;">${gpuCompute}</span>
+                    </td>
                     <td>${blenderBadge}</td>
                     <td style="text-align: center;">
                         <input type="checkbox" 
                                ${worker.taskAssignmentEnabled ? 'checked' : ''} 
                                onchange="toggleTaskAssignment('${worker.workerId}', this.checked)"
-                               style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-blue);" />
+                               title="Toggle CPU Workload Execution"
+                               style="width: 17px; height: 17px; cursor: pointer; accent-color: var(--accent-blue);" />
+                    </td>
+                    <td style="text-align: center;">
+                        <input type="checkbox" 
+                               ${isGpuActive ? 'checked' : ''} 
+                               ${!isGpuCapable ? 'disabled title="No capable hardware GPU detected"' : 'title="Toggle GPU Hardware Acceleration (Metal/OptiX/CUDA/HIP)"'}
+                               onchange="toggleGpuCompute('${worker.workerId}', this.checked)"
+                               style="width: 17px; height: 17px; cursor: pointer; accent-color: #6a1b9a;" />
                     </td>
                     <td>
                         <span class="status-tag" style="background: ${statusColor}18; color: ${statusColor};">
@@ -1050,7 +1382,7 @@
                     <td style="font-weight: 600;">${worker.cpuUsage || '0.0'}%</td>
                     <td style="font-weight: 600;">${worker.ramUsage}%</td>
                     <td style="font-weight: 700; color: ${tempColor};">${temp > 0 ? temp + '°C' : 'N/A'}</td>
-                    <td style="color: var(--text-muted); font-size: 12px; min-width: 150px;">
+                    <td style="color: var(--text-muted); font-size: 12px; min-width: 140px;">
                         ${worker.currentJobId ? `
                             <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
                                 <strong>${worker.currentJobId}</strong>
@@ -1092,6 +1424,169 @@
             } catch (e) {
                 alert('Network error toggling task assignment: ' + e.message);
             }
+        }
+
+        async function toggleGpuCompute(workerId, enabled) {
+            try {
+                const res = await fetch('/api/nodes/toggle-gpu', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ workerId: workerId, enabled: enabled.toString() })
+                });
+                const data = await res.json();
+                if (!data.success) {
+                    alert('Failed to toggle GPU acceleration: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Network error toggling GPU acceleration: ' + e.message);
+            }
+        }
+
+        async function compileAndSyncAgent() {
+            if (!confirm("Increment Agent build version, package executable agent.jar, and broadcast auto-sync to all connected nodes?")) {
+                return;
+            }
+            try {
+                const res = await fetch('/api/agent/compile-sync', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    alert(`Agent updated to v${data.version} (Build ${data.build}).\nDispatched auto-update directive to ${data.notifiedWorkers} connected worker node(s).`);
+                } else {
+                    alert('Failed to sync agent: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Network error syncing agent: ' + e.message);
+            }
+        }
+
+        // ========================================================================
+        // 6. BENCHMARK & SCALING COMPARISON MODAL LOGIC
+        // ========================================================================
+        async function openBenchmarkModal() {
+            document.getElementById('benchmark-modal').style.display = 'flex';
+            await loadBenchmarkForJob('');
+        }
+
+        function closeBenchmarkModal() {
+            document.getElementById('benchmark-modal').style.display = 'none';
+        }
+
+        async function loadBenchmarkForJob(jobId) {
+            try {
+                const url = jobId ? `/api/benchmarks/comparison?jobId=${encodeURIComponent(jobId)}` : '/api/benchmarks/comparison';
+                const res = await fetch(url);
+                if (!res.ok) return;
+                const data = await res.json();
+                renderBenchmarkComparison(data);
+            } catch (e) {
+                console.error('Failed to load benchmark comparison:', e);
+            }
+        }
+
+        function renderBenchmarkComparison(data) {
+            if (!data) return;
+
+            // Populate Dropdown
+            const selector = document.getElementById('bm-job-selector');
+            const history = data.history || [];
+            
+            // Keep current value if selected
+            const currVal = selector.value;
+            selector.innerHTML = '<option value="">Latest Cluster Execution</option>';
+            history.forEach(h => {
+                const opt = document.createElement('option');
+                opt.value = h.jobId;
+                opt.innerText = `${h.jobName || h.jobId} (${h.totalFrames} frames • ${h.activeNodesCount} node(s) • ${h.speedupMultiplier}x speedup)`;
+                if (h.jobId === currVal) opt.selected = true;
+                selector.appendChild(opt);
+            });
+
+            if (!data.hasData || !data.selectedJob) {
+                document.getElementById('bm-speedup').innerText = '1.00x';
+                document.getElementById('bm-speedup-sub').innerText = 'Awaiting real render runs';
+                document.getElementById('bm-efficiency').innerText = '100%';
+                document.getElementById('bm-timesaved').innerText = '0%';
+                document.getElementById('bm-throughput').innerText = '0 fpm';
+                document.getElementById('bm-scene-name').innerText = 'No jobs executed yet';
+                document.getElementById('bm-engine-name').innerText = 'CYCLES';
+                document.getElementById('bm-total-frames').innerText = '0';
+                
+                document.getElementById('bm-scaling-table-body').innerHTML = 
+                    '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px 0;">No completed render jobs found. Submit a render workload to capture authentic performance metrics.</td></tr>';
+                document.getElementById('bm-nodes-table-body').innerHTML = 
+                    '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 25px 0;">No worker nodes recorded for this run.</td></tr>';
+                return;
+            }
+
+            const job = data.selectedJob;
+            document.getElementById('bm-speedup').innerText = `${job.speedupMultiplier}x`;
+            document.getElementById('bm-speedup-sub').innerText = `vs 1 PC baseline (${job.totalComputeTimeFormatted})`;
+            document.getElementById('bm-efficiency').innerText = `${job.parallelEfficiencyPct}%`;
+            document.getElementById('bm-timesaved').innerText = `${job.timeSavedPercent}%`;
+            document.getElementById('bm-timesaved-sub').innerText = `Finished in ${job.wallClockDurationFormatted}`;
+            document.getElementById('bm-throughput').innerText = `${job.framesPerMinute} fpm`;
+            
+            document.getElementById('bm-scene-name').innerText = job.sceneName || 'scene.blend';
+            document.getElementById('bm-engine-name').innerText = job.renderEngine || 'CYCLES';
+            document.getElementById('bm-total-frames').innerText = `${job.totalFrames} frames`;
+
+            // Render Scaling Table (1 PC vs 2 PCs vs 3 PCs vs 4 PCs vs N PCs)
+            const scalingTbody = document.getElementById('bm-scaling-table-body');
+            scalingTbody.innerHTML = '';
+            
+            (data.scalingComparison || []).forEach(row => {
+                const tr = document.createElement('tr');
+                const isBaseline = row.nodeCount === 1;
+                const isActual = row.isActualRun;
+                
+                let badge = isActual 
+                    ? `<span style="font-size: 10.5px; font-weight: 700; color: #fff; background: #6a11cb; padding: 2px 8px; border-radius: 4px;">Measured Run (${row.nodeCount} PCs)</span>`
+                    : (isBaseline 
+                        ? `<span style="font-size: 10.5px; font-weight: 700; color: var(--text-muted); background: rgba(0,0,0,0.06); padding: 2px 8px; border-radius: 4px;">Baseline (1 PC)</span>`
+                        : `<span style="font-size: 10.5px; font-weight: 600; color: var(--accent-blue); background: rgba(0,102,204,0.08); padding: 2px 8px; border-radius: 4px;">Empirical Model</span>`
+                      );
+
+                let speedupColor = row.speedup > 1.0 ? '#6a11cb' : 'var(--text-main)';
+                let effColor = row.efficiencyPct >= 90 ? 'var(--accent-green)' : (row.efficiencyPct >= 75 ? 'var(--accent-blue)' : 'var(--accent-orange)');
+
+                tr.innerHTML = `
+                    <td style="font-weight: 700; color: var(--text-main);">
+                        ${row.nodeCount} Node${row.nodeCount > 1 ? 's' : ''} ${isBaseline ? '(Single PC)' : '(Distributed Grid)'}
+                    </td>
+                    <td style="font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 12.5px;">${row.durationFormatted}</td>
+                    <td style="font-weight: 800; font-size: 13.5px; color: ${speedupColor};">${row.speedup}x</td>
+                    <td style="font-weight: 700; color: ${effColor};">${row.efficiencyPct}%</td>
+                    <td style="font-weight: 600; color: var(--accent-blue);">${row.timeSavedPct}%</td>
+                    <td style="font-weight: 600;">${row.framesPerMinute} fpm</td>
+                    <td>${badge}</td>
+                `;
+                scalingTbody.appendChild(tr);
+            });
+
+            // Render Hardware Breakdown Table
+            const nodesTbody = document.getElementById('bm-nodes-table-body');
+            nodesTbody.innerHTML = '';
+            
+            (job.nodes || []).forEach(node => {
+                const tr = document.createElement('tr');
+                const computeBadge = node.useGpu 
+                    ? `<span style="font-size: 10.5px; font-weight: 700; color: #6a1b9a; background: rgba(106,27,154,0.1); padding: 2px 6px; border-radius: 4px;">GPU (${node.gpuComputeType || 'Metal/CUDA'})</span>`
+                    : `<span style="font-size: 10.5px; font-weight: 600; color: var(--text-muted); background: rgba(0,0,0,0.06); padding: 2px 6px; border-radius: 4px;">CPU Multi-thread</span>`;
+
+                tr.innerHTML = `
+                    <td style="font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 12px;">${node.workerId}</td>
+                    <td>
+                        <div style="font-weight: 600; font-size: 12px;">${node.osName || 'Host OS'}</div>
+                        <span style="font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--accent-blue);">${node.cpuArch || ''}</span>
+                    </td>
+                    <td style="font-size: 12px; font-weight: 600; color: var(--text-main);">${node.cpuModel || 'Generic CPU'}</td>
+                    <td style="font-size: 12px; font-weight: 600; color: #6a1b9a;">${node.gpuModel || 'Integrated GPU'}</td>
+                    <td>${computeBadge}</td>
+                    <td style="font-weight: 700; font-family: 'JetBrains Mono', monospace;">${node.framesRendered} frames</td>
+                    <td style="font-family: 'JetBrains Mono', monospace; font-weight: 600;">${node.durationFormatted}</td>
+                `;
+                nodesTbody.appendChild(tr);
+            });
         }
 
         // Initial fetch and continuous job progress polling

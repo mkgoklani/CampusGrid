@@ -195,7 +195,7 @@ public class FrameStitcher {
 
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(jobDir)) {
             Set<Integer> detectedFrames = new HashSet<>();
-            Pattern pattern = Pattern.compile("(?i)(?:frame_?|task_.*_)?(\\d+).*\\.(?:png|jpg|jpeg|bin)");
+            Pattern pattern = Pattern.compile("(?i)(?:.*[_-])?(\\d+)\\.(?:png|jpg|jpeg|webp|bmp|bin)");
 
             for (Path entry : stream) {
                 if (Files.isRegularFile(entry) && Files.size(entry) > 0) {
@@ -230,11 +230,11 @@ public class FrameStitcher {
      */
     public void normalizeFrameNames(Path jobDir) {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(jobDir)) {
-            Pattern pattern = Pattern.compile("(?i)(?:frame_?|task_.*_)?(\\d+).*\\.(png|jpg|jpeg|bin)");
+            Pattern pattern = Pattern.compile("(?i)(?:.*[_-])?(\\d+)\\.(png|jpg|jpeg|webp|bmp|bin)");
 
             for (Path file : stream) {
                 String name = file.getFileName().toString();
-                if (name.endsWith(".mp4")) continue;
+                if (name.endsWith(".mp4") || name.startsWith("temp_")) continue;
 
                 Matcher matcher = pattern.matcher(name);
                 if (matcher.find()) {
@@ -259,15 +259,16 @@ public class FrameStitcher {
      * Invokes local FFmpeg via ProcessBuilder to encode image sequence into MP4.
      */
     public boolean compileToVideo(Path jobDir, int fps, Path outputVideoPath) {
-        if (!isFFmpegInstalled()) {
+        String ffmpegBin = findFFmpegExecutable();
+        if (ffmpegBin == null) {
             System.out.println("[FRAME-STITCHER-WARN] FFmpeg is not installed on this host. Skipping MP4 encoding.");
             return false;
         }
 
-        System.out.printf("[FRAME-STITCHER] Invoking FFmpeg (Framerate: %d FPS)...\n", fps);
+        System.out.printf("[FRAME-STITCHER] Invoking FFmpeg (%s, Framerate: %d FPS)...\n", ffmpegBin, fps);
 
         List<String> command = List.of(
-            "ffmpeg",
+            ffmpegBin,
             "-y",                               // Overwrite output if exists
             "-framerate", String.valueOf(fps),  // Frame rate
             "-i", "frame_%04d.png",             // Input pattern
@@ -301,15 +302,56 @@ public class FrameStitcher {
     }
 
     /**
-     * Checks if FFmpeg binary is available on the system PATH.
+     * Checks if FFmpeg binary is available on the system.
      */
     public static boolean isFFmpegInstalled() {
+        return findFFmpegExecutable() != null;
+    }
+
+    /**
+     * Finds the absolute path to the FFmpeg binary across Windows, macOS, and Linux.
+     */
+    public static String findFFmpegExecutable() {
+        String os = System.getProperty("os.name").toLowerCase();
+        String exeName = os.contains("win") ? "ffmpeg.exe" : "ffmpeg";
+
+        // 1. Try PATH first
         try {
-            Process process = new ProcessBuilder("ffmpeg", "-version").start();
-            return process.waitFor() == 0;
-        } catch (Exception e) {
-            return false;
+            Process process = new ProcessBuilder(exeName, "-version").redirectErrorStream(true).start();
+            boolean finished = process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS);
+            if (finished && process.exitValue() == 0) {
+                return exeName;
+            } else if (!finished) {
+                process.destroyForcibly();
+            }
+        } catch (Exception ignored) {}
+
+        // 2. Try OS-specific standard directories
+        List<String> candidates = new ArrayList<>();
+        if (os.contains("win")) {
+            candidates.add("C:\\ffmpeg\\bin\\ffmpeg.exe");
+            candidates.add("C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe");
+            candidates.add("C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe");
+            candidates.add(".\\ffmpeg.exe");
+            candidates.add(".\\bin\\ffmpeg.exe");
+        } else if (os.contains("mac")) {
+            candidates.add("/opt/homebrew/bin/ffmpeg");
+            candidates.add("/usr/local/bin/ffmpeg");
+            candidates.add("/usr/bin/ffmpeg");
+        } else {
+            candidates.add("/usr/bin/ffmpeg");
+            candidates.add("/usr/local/bin/ffmpeg");
+            candidates.add("/snap/bin/ffmpeg");
         }
+
+        for (String p : candidates) {
+            File f = new File(p);
+            if (f.exists() && f.canExecute()) {
+                return f.getAbsolutePath();
+            }
+        }
+
+        return null;
     }
 
     // ========================================================================

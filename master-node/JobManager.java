@@ -17,6 +17,15 @@ public class JobManager {
     private final ConcurrentLinkedQueue<Job> pendingJobQueue = new ConcurrentLinkedQueue<>();
     private final ConcurrentHashMap<String, Job> jobRegistry = new ConcurrentHashMap<>();
     private volatile Job currentActiveJob = null;
+    private volatile BenchmarkManager benchmarkManager = null;
+
+    public void setBenchmarkManager(BenchmarkManager benchmarkManager) {
+        this.benchmarkManager = benchmarkManager;
+    }
+
+    public BenchmarkManager getBenchmarkManager() {
+        return benchmarkManager;
+    }
 
     /**
      * Submits a new job to the manager. Slices into default frame slices (25 frames)
@@ -104,7 +113,16 @@ public class JobManager {
                     currentActiveJob = null;
                 }
 
-                // Automatic Post-Processing & Video Compilation
+                // 1. Record authentic benchmark metrics
+                if (benchmarkManager != null) {
+                    try {
+                        benchmarkManager.recordJobCompletion(job);
+                    } catch (Exception e) {
+                        System.err.println("[JOB-MANAGER-ERR] Failed recording benchmark metrics: " + e.getMessage());
+                    }
+                }
+
+                // 2. Automatic Post-Processing & Video Compilation
                 new Thread(() -> {
                     boolean cleanUp = false;
                     if (job.getParameters() != null && job.getParameters().containsKey("deleteFramesAfterStitch")) {

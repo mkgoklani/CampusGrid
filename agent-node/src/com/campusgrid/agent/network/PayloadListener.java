@@ -21,6 +21,9 @@ public class PayloadListener implements Runnable {
     private Thread currentRenderThread = null;
     private String currentJobId = null;
 
+    // GPU Compute acceleration preference (can be toggled live by Master)
+    public static volatile boolean useGpu = com.campusgrid.agent.os.HardwareCollector.isGpuAvailable();
+
     /**
      * Constructs a PayloadListener associated with the given MasterConnection.
      *
@@ -151,6 +154,28 @@ public class PayloadListener implements Runnable {
                         job.getJobId(), job.getBlendFilePath(), job.getFrameStart(), job.getFrameEnd(), job.getOutputDir(), job.getRenderEngine()
                     );
                     handleAsyncRender(wrapped, job.getJobId() + "_T001");
+                } else if (obj instanceof String rawString && rawString.startsWith("TOGGLE_GPU:")) {
+                    boolean enabled = Boolean.parseBoolean(rawString.substring(11).trim());
+                    useGpu = enabled;
+                    System.out.println("[TASK] GPU acceleration preference set to: " + useGpu);
+                } else if (obj instanceof String rawString && rawString.startsWith("UPDATE_AGENT:")) {
+                    String payload = rawString.substring(13).trim();
+                    String downloadUrl = "/download/agent.jar";
+                    String targetVer = null;
+                    int targetBuild = 0;
+                    for (String part : payload.split("\\|")) {
+                        part = part.trim();
+                        if (part.startsWith("URL:")) {
+                            downloadUrl = part.substring(4).trim();
+                        } else if (part.startsWith("VERSION:")) {
+                            targetVer = part.substring(8).trim();
+                        } else if (part.startsWith("BUILD:")) {
+                            try { targetBuild = Integer.parseInt(part.substring(6).trim()); } catch (Exception ignored) {}
+                        } else if (!part.contains(":") && !part.isEmpty()) {
+                            downloadUrl = part;
+                        }
+                    }
+                    AgentUpdater.performAutoUpdate(downloadUrl, targetVer, targetBuild, connection.getMasterIp(), connection.getMasterPort());
                 } else if (isKillCommand(obj)) {
                     String targetJobId = extractJobIdFromPacket(obj);
                     System.out.println("[TASK] Kill/Cancel command received for jobId: " + targetJobId);
@@ -175,11 +200,30 @@ public class PayloadListener implements Runnable {
             } else if (typeVal == MessageType.CANCEL_TASK) {
                 String cancelJobId = (payloadVal != null) ? payloadVal.toString() : null;
                 cancelActiveRender(cancelJobId);
+            } else if (typeVal == MessageType.TOGGLE_GPU) {
+                boolean enabled = Boolean.parseBoolean(String.valueOf(payloadVal));
+                useGpu = enabled;
+                System.out.println("[TASK] GPU acceleration preference set to: " + useGpu);
+            } else if (typeVal == MessageType.UPDATE_AGENT) {
+                String downloadUrl = (payloadVal != null) ? payloadVal.toString() : "/download/agent.jar";
+                AgentUpdater.performAutoUpdate(downloadUrl, null, 0, connection.getMasterIp(), connection.getMasterPort());
             } else if (typeVal == MessageType.INSTALL_BLENDER) {
                 String downloadUrl = (payloadVal != null) ? payloadVal.toString() : "";
-                System.out.println("[TASK] Received INSTALL_BLENDER command from Master. Starting installer from: " + downloadUrl);
+                
+                // If downloadUrl contains 0.0.0.0 or loopback while master is remote, rewrite host
+                if (downloadUrl != null && !downloadUrl.isEmpty() && connection.getMasterIp() != null) {
+                    String masterIp = connection.getMasterIp();
+                    if (!masterIp.equals("127.0.0.1") && !masterIp.equalsIgnoreCase("localhost")) {
+                        downloadUrl = downloadUrl.replace("://0.0.0.0:", "://" + masterIp + ":")
+                                                 .replace("://127.0.0.1:", "://" + masterIp + ":")
+                                                 .replace("://localhost:", "://" + masterIp + ":");
+                    }
+                }
+                
+                final String finalDownloadUrl = downloadUrl;
+                System.out.println("[TASK] Received INSTALL_BLENDER command from Master. Starting installer from: " + finalDownloadUrl);
                 new Thread(() -> {
-                    com.campusgrid.agent.blender.BlenderInstaller.installBlender(downloadUrl, (pct, msg) -> {
+                    com.campusgrid.agent.blender.BlenderInstaller.installBlender(finalDownloadUrl, (pct, msg) -> {
                         try {
                             String ver = com.campusgrid.agent.blender.BlenderInstaller.getInstallationStatus().getVersion();
                             connection.sendObject(String.format("HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | BLENDER: %s | INSTALL: %.1f | MSG: %s",
@@ -296,6 +340,7 @@ public class PayloadListener implements Runnable {
                     task.getFrameEnd(),
                     task.getOutputDir(),
                     task.getRenderEngine(),
+                    useGpu,
                     reporter
                 );
             } catch (InterruptedException e) {
@@ -443,8 +488,13 @@ public class PayloadListener implements Runnable {
             java.io.File[] list = dir.listFiles();
             if (list != null) {
                 for (java.io.File f : list) {
-                    if (f.isFile() && f.getName().toLowerCase().endsWith(".png")) {
-                        files.add(f.getAbsolutePath());
+                    if (f.isFile() && f.length() > 0) {
+                        String name = f.getName().toLowerCase();
+                        if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg")
+                                || name.endsWith(".webp") || name.endsWith(".bmp") || name.endsWith(".exr")
+                                || name.endsWith(".tga") || name.endsWith(".tif") || name.endsWith(".tiff")) {
+                            files.add(f.getAbsolutePath());
+                        }
                     }
                 }
             }

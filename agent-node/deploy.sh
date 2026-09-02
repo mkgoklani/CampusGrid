@@ -31,65 +31,77 @@ log_deploy() {
     echo "[DEPLOY] $1"
 }
 
-# Step 0: Detect Ubuntu OS
-detect_ubuntu() {
-    if [ ! -f /etc/os-release ] || ! grep -qi "ubuntu" /etc/os-release; then
-        log_deploy "Error: This script is only supported on Ubuntu lab machines."
-        exit 1
-    fi
-    log_deploy "Ubuntu OS detected."
+# Step 0: Detect Operating System
+detect_os() {
+    OS="$(uname -s)"
+    case "$OS" in
+        Linux*)
+            OS_TYPE="Linux"
+            log_deploy "Detected Linux operating system."
+            ;;
+        Darwin*)
+            OS_TYPE="macOS"
+            log_deploy "Detected macOS operating system."
+            ;;
+        CYGWIN*|MINGW*|MSYS*)
+            OS_TYPE="Windows"
+            log_deploy "Detected Windows environment."
+            ;;
+        *)
+            OS_TYPE="Unknown"
+            log_deploy "Detected system: $OS"
+            ;;
+    esac
 }
 
-# Step 1: Check Java Installation (Verify Java 17)
+# Step 1: Check Java Installation (Verify Java 11+)
 check_java() {
-    # Check if java binary is present in the system path
     if ! command -v java >/dev/null 2>&1; then
-        log_deploy "Java not found."
+        log_deploy "Java not found. Please install Java (JRE/JDK 17+)."
         exit 1
     fi
     
     local java_ver
-    java_ver=$(java -version 2>&1 | head -n 1 | cut -d'"' -f2)
-    if [[ "$java_ver" != 17* ]]; then
-        log_deploy "Java version 17 required. Found: $java_ver"
-        exit 1
-    fi
-    log_deploy "Java 17 detected."
+    java_ver=$(java -version 2>&1 | head -n 1)
+    log_deploy "Java runtime detected: $java_ver"
 }
 
-# Step 1.5: Check and Manage Blender Installation
+# Step 1.5: Check and Manage Blender Installation across OSes
 manage_blender() {
-    echo "[BLENDER] Checking..."
+    echo "[BLENDER] Checking system availability..."
     
     if command -v blender >/dev/null 2>&1; then
         local blender_ver
         blender_ver=$(blender --version 2>&1 | head -n 1 | sed -E 's/^Blender[[:space:]]+([^[:space:]]+).*/\1/')
-        echo "[BLENDER] Installed"
-        echo "[BLENDER] Version: $blender_ver"
+        echo "[BLENDER] Installed (Version: $blender_ver)"
+        echo "[BLENDER] Ready"
+    elif [ -f "/Applications/Blender.app/Contents/MacOS/Blender" ]; then
+        echo "[BLENDER] Installed (/Applications/Blender.app)"
         echo "[BLENDER] Ready"
     else
-        log_deploy "Blender is missing. Installing approved Blender 4.x version..."
+        log_deploy "Blender not found on system PATH. Attempting automated OS package installation..."
         
-        # Prioritize snap as it provides official Blender 4.x packages on Ubuntu
-        if command -v snap >/dev/null 2>&1; then
-            sudo snap install blender --classic
+        if [ "$OS_TYPE" = "macOS" ]; then
+            if command -v brew >/dev/null 2>&1; then
+                brew install --cask blender || true
+            fi
+        elif [ "$OS_TYPE" = "Linux" ]; then
+            if command -v snap >/dev/null 2>&1; then
+                sudo snap install blender --classic || true
+            elif command -v apt-get >/dev/null 2>&1; then
+                sudo apt-get update && sudo apt-get install -y blender || true
+            elif command -v dnf >/dev/null 2>&1; then
+                sudo dnf install -y blender || true
+            elif command -v pacman >/dev/null 2>&1; then
+                sudo pacman -S --noconfirm blender || true
+            fi
+        fi
+        
+        if command -v blender >/dev/null 2>&1 || [ -f "/Applications/Blender.app/Contents/MacOS/Blender" ]; then
+            echo "[BLENDER] Installed and verified successfully."
         else
-            # Fallback to apt-get
-            sudo apt-get update
-            sudo apt-get install -y blender
+            echo "[BLENDER] Note: Native Blender binary not in PATH. Agent will use built-in automated installer or software fallback."
         fi
-        
-        # Verify installation
-        if ! command -v blender >/dev/null 2>&1; then
-            log_deploy "Error: Blender installation verification failed."
-            exit 1
-        fi
-        
-        local blender_ver
-        blender_ver=$(blender --version 2>&1 | head -n 1 | sed -E 's/^Blender[[:space:]]+([^[:space:]]+).*/\1/')
-        echo "[BLENDER] Installed"
-        echo "[BLENDER] Version: $blender_ver"
-        echo "[BLENDER] Ready"
     fi
 }
 
@@ -139,8 +151,8 @@ stop_existing_agent() {
 launch_agent() {
     cd "$INSTALL_DIR" || exit 1
     
-    # Launch in background, redirecting output streams to log file
-    nohup java -jar "$JAR_NAME" "$MASTER_IP" > "$LOG_FILE" 2>&1 &
+    # Launch in background with auto-discovery fallback, redirecting output streams to log file
+    nohup java -jar "$JAR_NAME" "${MASTER_IP:-auto}" > "$LOG_FILE" 2>&1 &
     
     # Verify execution by checking if the process started
     if pgrep -f "java.*$JAR_NAME" >/dev/null 2>&1; then

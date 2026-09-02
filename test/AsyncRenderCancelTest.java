@@ -90,15 +90,18 @@ public class AsyncRenderCancelTest {
                     Thread.sleep(100);
                 }
 
-                // Read RenderResult
-                Object finalMsg = in.readObject();
-                System.out.println("[SERVER] Received final result: " + finalMsg);
+                // Read until RenderResult is received
+                for (int k = 0; k < 15; k++) {
+                    Object finalMsg = in.readObject();
+                    System.out.println("[SERVER] Received message: " + finalMsg);
 
-                if (finalMsg instanceof RenderResult) {
-                    RenderResult res = (RenderResult) finalMsg;
-                    if ("CANCELLED".equals(res.getStatus())) {
-                        System.out.println("[SERVER] SUCCESS: RenderResult status is CANCELLED.");
-                        testPassed = true;
+                    if (finalMsg instanceof RenderResult) {
+                        RenderResult res = (RenderResult) finalMsg;
+                        if ("CANCELLED".equals(res.getStatus())) {
+                            System.out.println("[SERVER] SUCCESS: RenderResult status is CANCELLED.");
+                            testPassed = true;
+                            break;
+                        }
                     }
                 }
 

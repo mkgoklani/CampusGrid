@@ -32,7 +32,9 @@ Thumbs.db
 cache/
 uploads/
 output/
+render_output/
 out/
 agent.jar
 *.blend
+*.blend1
 blender_archives/

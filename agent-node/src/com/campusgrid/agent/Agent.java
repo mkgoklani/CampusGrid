@@ -11,6 +11,20 @@ import com.campusgrid.agent.network.MasterConnection;
  */
 public class Agent {
 
+    public static volatile String CURRENT_VERSION = "1.0.0";
+    public static volatile int CURRENT_BUILD = 100;
+
+    static {
+        try (java.io.InputStream is = Agent.class.getResourceAsStream("/agent_version.properties")) {
+            if (is != null) {
+                java.util.Properties props = new java.util.Properties();
+                props.load(is);
+                CURRENT_VERSION = props.getProperty("agent.version", CURRENT_VERSION);
+                CURRENT_BUILD = Integer.parseInt(props.getProperty("agent.build", String.valueOf(CURRENT_BUILD)));
+            }
+        } catch (Exception ignored) {}
+    }
+
     /**
      * The main entry point of the CampusGrid Agent.
      * Starts the agent, processes command line arguments, and connects to the Master.
@@ -18,22 +32,55 @@ public class Agent {
      * @param args command line arguments. The first argument must be the Master node IP address.
      */
     public static void main(String[] args) {
-        System.setProperty("java.awt.headless", "true");
-        if (args == null || args.length == 0) {
-            System.out.println("Usage:");
-            System.out.println("java Agent <MASTER_IP>");
-            System.exit(1);
-        }
-
         System.out.println("==================================");
-        System.out.println("CampusGrid Agent");
+        System.out.printf("CampusGrid Agent v%s (Build %d)\n", CURRENT_VERSION, CURRENT_BUILD);
         System.out.println("Starting Agent...");
         System.out.println("==================================");
 
-        String masterIp = args[0];
+        // 0. OS-Specific Preflight Verification & Dependency Audit
+        boolean autoProvision = false;
+        if (args != null) {
+            for (String arg : args) {
+                if ("--auto-install".equalsIgnoreCase(arg) || "--provision".equalsIgnoreCase(arg)) {
+                    autoProvision = true;
+                    break;
+                }
+            }
+        }
+        com.campusgrid.agent.os.SystemPreflight.runPreflight(autoProvision);
+
+        String masterIp = null;
+        int port = MasterConnection.MASTER_PORT;
+
+        if (args != null && args.length > 0 && !args[0].equalsIgnoreCase("auto") && !args[0].equalsIgnoreCase("discover")) {
+            masterIp = args[0];
+            if (masterIp.contains(":")) {
+                String[] parts = masterIp.split(":", 2);
+                masterIp = parts[0];
+                try {
+                    port = Integer.parseInt(parts[1]);
+                } catch (NumberFormatException ignored) {}
+            } else if (args.length > 1) {
+                try {
+                    port = Integer.parseInt(args[1]);
+                } catch (NumberFormatException ignored) {}
+            }
+        } else {
+            // Zero-Configuration LAN Auto-Discovery
+            com.campusgrid.agent.network.MasterFinder.DiscoveredMaster discovered = 
+                com.campusgrid.agent.network.MasterFinder.discoverMasterLoop();
+            if (discovered != null) {
+                masterIp = discovered.getIpAddress();
+                port = discovered.getTcpPort();
+            } else {
+                masterIp = "127.0.0.1";
+            }
+        }
+
+        System.out.printf("[NETWORK] Initiating TCP connection to Master Node at %s:%d...\n", masterIp, port);
 
         // Instantiate connection manager and attempt connection persistently
-        MasterConnection connection = new MasterConnection(masterIp);
+        MasterConnection connection = new MasterConnection(masterIp, port);
         while (true) {
             connection.connect();
             

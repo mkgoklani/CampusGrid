@@ -54,10 +54,16 @@ public class MasterConnection {
      * On successful connection, starts the HeartbeatService and PayloadListener.
      */
     public void connect() {
+        long currentDelay = 2000;
+        final long MAX_DELAY = 15000;
+        java.util.Random rng = new java.util.Random();
+
         while (true) {
             try {
-                System.out.println("[NETWORK] Connecting to Master...");
+                System.out.println("[NETWORK] Connecting to Master at " + masterIp + ":" + masterPort + "...");
                 socket = new Socket();
+                socket.setTcpNoDelay(true);
+                socket.setKeepAlive(true);
                 socket.connect(new InetSocketAddress(masterIp, masterPort), 5000);
                 System.out.println("[NETWORK] Connected to Master at " + masterIp + ":" + masterPort);
 
@@ -85,16 +91,17 @@ public class MasterConnection {
                 payloadListener.start();
                 break;
             } catch (IOException e) {
-                System.out.println("[NETWORK] Master unavailable.");
-                System.out.println("[NETWORK] Retrying in 5 seconds...");
+                long jitter = rng.nextInt(1000);
+                long waitTime = Math.min(MAX_DELAY, currentDelay + jitter);
+                System.out.printf("[NETWORK] Master unavailable (%s). Retrying in %.1fs...\n", e.getMessage(), waitTime / 1000.0);
 
                 try {
-                    Thread.sleep(RETRY_DELAY_MS);
+                    Thread.sleep(waitTime);
                 } catch (InterruptedException ie) {
-                    // Restore interrupted status
                     Thread.currentThread().interrupt();
                     System.out.println("[NETWORK] Retry delay interrupted. Retrying connection...");
                 }
+                currentDelay = Math.min(MAX_DELAY, currentDelay * 2);
             }
         }
     }
@@ -122,7 +129,7 @@ public class MasterConnection {
      * Closes the streams and active socket connection, handling any IOExceptions internally.
      * Also stops the heartbeat service and payload listener.
      */
-    public void disconnect() {
+    public synchronized void disconnect() {
         if (heartbeatService != null) {
             heartbeatService.stop();
         }
@@ -207,5 +214,19 @@ public class MasterConnection {
      */
     public PayloadListener getPayloadListener() {
         return payloadListener;
+    }
+
+    /**
+     * Gets the configured Master IP or hostname.
+     */
+    public String getMasterIp() {
+        return masterIp;
+    }
+
+    /**
+     * Gets the configured Master TCP port.
+     */
+    public int getMasterPort() {
+        return masterPort;
     }
 }

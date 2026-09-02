@@ -31,13 +31,21 @@ public class WorkerState {
     private int totalRenderFrames;
     private long lastHeartbeatTimestamp;
 
-    // Platform & Blender Environment
+    // Platform & Hardware Environment
     private String osName = "Unknown OS";
+    private String cpuModel = "Unknown CPU";
+    private String cpuArch = "Unknown Arch";
+    private String gpuModel = "Unknown GPU";
+    private String gpuComputeType = "NONE";
+    private boolean gpuAvailable = false;
+    private boolean useGpu = true;
     private boolean blenderInstalled = false;
     private String blenderVersion = "Unknown";
     private double installProgress = -1.0; // -1 if not installing, 0-100% when installing
     private String installMsg = null;
     private boolean taskAssignmentEnabled = true;
+    private String agentVersion = "1.0.0";
+    private int agentBuildNumber = 100;
 
 
     /**
@@ -209,9 +217,83 @@ public class WorkerState {
         this.installMsg = installMsg;
     }
 
+    public synchronized String getCpuModel() {
+        return cpuModel;
+    }
+
+    public synchronized void setCpuModel(String cpuModel) {
+        if (cpuModel != null && !cpuModel.trim().isEmpty()) {
+            this.cpuModel = cpuModel.trim();
+        }
+    }
+
+    public synchronized String getCpuArch() {
+        return cpuArch;
+    }
+
+    public synchronized void setCpuArch(String cpuArch) {
+        if (cpuArch != null && !cpuArch.trim().isEmpty()) {
+            this.cpuArch = cpuArch.trim();
+        }
+    }
+
+    public synchronized String getGpuModel() {
+        return gpuModel;
+    }
+
+    public synchronized void setGpuModel(String gpuModel) {
+        if (gpuModel != null && !gpuModel.trim().isEmpty()) {
+            this.gpuModel = gpuModel.trim();
+        }
+    }
+
+    public synchronized String getGpuComputeType() {
+        return gpuComputeType;
+    }
+
+    public synchronized void setGpuComputeType(String gpuComputeType) {
+        if (gpuComputeType != null && !gpuComputeType.trim().isEmpty()) {
+            this.gpuComputeType = gpuComputeType.trim();
+        }
+    }
+
+    public synchronized boolean isGpuAvailable() {
+        return gpuAvailable;
+    }
+
+    public synchronized void setGpuAvailable(boolean gpuAvailable) {
+        this.gpuAvailable = gpuAvailable;
+    }
+
+    public synchronized boolean isUseGpu() {
+        return useGpu;
+    }
+
+    public synchronized void setUseGpu(boolean useGpu) {
+        this.useGpu = useGpu;
+    }
+
+    public synchronized String getAgentVersion() {
+        return agentVersion != null ? agentVersion : "1.0.0";
+    }
+
+    public synchronized void setAgentVersion(String agentVersion) {
+        if (agentVersion != null && !agentVersion.trim().isEmpty()) {
+            this.agentVersion = agentVersion.trim();
+        }
+    }
+
+    public synchronized int getAgentBuildNumber() {
+        return agentBuildNumber;
+    }
+
+    public synchronized void setAgentBuildNumber(int agentBuildNumber) {
+        this.agentBuildNumber = agentBuildNumber;
+    }
+
     @Override
     public synchronized String toString() {
-        return String.format("WorkerState[ID=%s, IP=%s, OS=%s, Blender=%s, Status=%s, Temp=%d°C, RAM=%.1f%%, Job=%s, Task=%s, Frames=%s]",
-            workerId, ipAddress, osName, (blenderInstalled ? blenderVersion : "Not Installed"), status, cpuTemperature, ramUsagePercent, currentJobId, currentTaskId, assignedFrameRange);
+        return String.format("WorkerState[ID=%s, Version=v%s(b%d), IP=%s, OS=%s, Arch=%s, CPU='%s', GPU='%s' (%s, UseGPU=%b), Blender=%s, Status=%s, Temp=%d°C, RAM=%.1f%%, Job=%s, Task=%s, Frames=%s]",
+            workerId, agentVersion, agentBuildNumber, ipAddress, osName, cpuArch, cpuModel, gpuModel, gpuComputeType, useGpu, (blenderInstalled ? blenderVersion : "Not Installed"), status, cpuTemperature, ramUsagePercent, currentJobId, currentTaskId, assignedFrameRange);
     }
 }

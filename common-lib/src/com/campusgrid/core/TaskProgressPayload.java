@@ -18,10 +18,11 @@ public class TaskProgressPayload implements Serializable {
     private final String statusMessage;
 
     public TaskProgressPayload(String jobId, String taskId, double progressPercentage, String statusMessage) {
-        this.jobId = jobId;
-        this.taskId = taskId;
-        this.progressPercentage = progressPercentage;
-        this.statusMessage = statusMessage;
+        this.jobId = jobId != null ? jobId : "UNKNOWN_JOB";
+        this.taskId = taskId != null ? taskId : "UNKNOWN_TASK";
+        this.progressPercentage = Double.isNaN(progressPercentage) || Double.isInfinite(progressPercentage)
+            ? 0.0 : Math.max(0.0, Math.min(100.0, progressPercentage));
+        this.statusMessage = statusMessage != null ? statusMessage : "Running";
     }
 
     public String getJobId() {

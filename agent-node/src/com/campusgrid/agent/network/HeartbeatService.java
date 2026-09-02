@@ -117,27 +117,36 @@ public class HeartbeatService implements Runnable {
                 continue;
             }
 
-            // Call LinuxTelemetry to retrieve authentic hardware metrics dynamically before sending heartbeat
+            // Call LinuxTelemetry & HardwareCollector to retrieve authentic hardware metrics dynamically before sending heartbeat
             int tempCelsius = LinuxTelemetry.getCpuTemperatureCelsius();
             double cpuLoad = LinuxTelemetry.getCpuLoadPercent();
             double ramUsage = LinuxTelemetry.getRamUsagePercent();
             String osName = System.getProperty("os.name");
+            String cpuModel = com.campusgrid.agent.os.HardwareCollector.getCpuModelName();
+            String cpuArch = com.campusgrid.agent.os.HardwareCollector.getCpuArchitecture();
+            String gpuModel = com.campusgrid.agent.os.HardwareCollector.getGpuModelName();
+            String gpuCompute = com.campusgrid.agent.os.HardwareCollector.getGpuComputeType();
+            boolean gpuAvail = com.campusgrid.agent.os.HardwareCollector.isGpuAvailable();
+            boolean useGpu = PayloadListener.useGpu;
+            String agentVer = com.campusgrid.agent.Agent.CURRENT_VERSION;
+            int agentBuild = com.campusgrid.agent.Agent.CURRENT_BUILD;
             String blenderVer = com.campusgrid.agent.blender.BlenderInstaller.getInstallationStatus().getVersion();
             double installProgress = com.campusgrid.agent.blender.BlenderInstaller.currentInstallProgress;
             String progressSuffix = installProgress >= 0 ? String.format(" | PROGRESS: %.1f%%", installProgress) : "";
 
             // Send authentic telemetry heartbeat to Master node
             try {
-                connection.sendObject(String.format("HEARTBEAT | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | BLENDER: %s%s",
-                    tempCelsius, cpuLoad, ramUsage, osName, blenderVer, progressSuffix));
+                connection.sendObject(String.format(
+                    "HEARTBEAT | AGENT_VERSION: %s | AGENT_BUILD: %d | TEMP: %d°C | CPU: %.1f%% | RAM: %.1f%% | OS: %s | CPU_MODEL: %s | ARCH: %s | GPU: %s | GPUTYPE: %s | GPU_AVAIL: %b | USEGPU: %b | BLENDER: %s%s",
+                    agentVer, agentBuild, tempCelsius, cpuLoad, ramUsage, osName, cpuModel, cpuArch, gpuModel, gpuCompute, gpuAvail, useGpu, blenderVer, progressSuffix));
             } catch (IOException e) {
                 System.out.println("[HEARTBEAT] Connection lost: " + e.getMessage());
                 connection.disconnect();
                 break;
             }
 
-            System.out.printf("[HEARTBEAT] Sent (Temp: %d°C, CPU: %.1f%%, RAM: %.1f%%, OS: %s, Blender: %s)\n",
-                tempCelsius, cpuLoad, ramUsage, osName, blenderVer);
+            System.out.printf("[HEARTBEAT] Sent (Agent: v%s-b%d, Temp: %d°C, CPU: %.1f%%, RAM: %.1f%%, OS: %s, Arch: %s, CPU_Model: %s, GPU: %s [%s, Active: %b], Blender: %s)\n",
+                agentVer, agentBuild, tempCelsius, cpuLoad, ramUsage, osName, cpuArch, cpuModel, gpuModel, gpuCompute, useGpu, blenderVer);
 
             try {
                 Thread.sleep(HEARTBEAT_INTERVAL_MS);

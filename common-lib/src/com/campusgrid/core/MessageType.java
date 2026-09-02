@@ -20,5 +20,7 @@ public enum MessageType {
     EVICTED,
     TASK_COMPLETE,
     INSTALL_BLENDER,
-    INSTALL_PROGRESS
+    INSTALL_PROGRESS,
+    TOGGLE_GPU,
+    UPDATE_AGENT
 }

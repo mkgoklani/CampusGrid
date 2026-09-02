@@ -78,6 +78,23 @@ public class WorkerRegistry {
     }
 
     /**
+     * Updates authentic CPU, Architecture, and GPU hardware specifications.
+     */
+    public void updateHardwareSpecs(String workerId, String cpuModel, String cpuArch, String gpuModel, String gpuComputeType, Boolean gpuAvailable, Boolean useGpu) {
+        WorkerState state = registry.get(workerId);
+        if (state != null) {
+            synchronized (state) {
+                if (cpuModel != null) state.setCpuModel(cpuModel);
+                if (cpuArch != null) state.setCpuArch(cpuArch);
+                if (gpuModel != null) state.setGpuModel(gpuModel);
+                if (gpuComputeType != null) state.setGpuComputeType(gpuComputeType);
+                if (gpuAvailable != null) state.setGpuAvailable(gpuAvailable);
+                if (useGpu != null) state.setUseGpu(useGpu);
+            }
+        }
+    }
+
+    /**
      * Safely updates the operational status of a worker node.
      * 
      * @param workerId Unique identifier of the worker node.

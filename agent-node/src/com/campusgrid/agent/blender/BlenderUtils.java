@@ -14,16 +14,41 @@ public class BlenderUtils {
 
     private static final Pattern VERSION_PATTERN = Pattern.compile("Blender\\s+(\\d+\\.\\d+(?:\\.\\d+)?)");
 
+    public static boolean isWindows() {
+        return System.getProperty("os.name", "").toLowerCase().contains("win");
+    }
+
+    public static boolean isMac() {
+        return System.getProperty("os.name", "").toLowerCase().contains("mac") || 
+               System.getProperty("os.name", "").toLowerCase().contains("darwin");
+    }
+
+    public static boolean isLinux() {
+        String os = System.getProperty("os.name", "").toLowerCase();
+        return os.contains("linux") || os.contains("unix");
+    }
+
+    public static String getOsType() {
+        if (isWindows()) return "windows";
+        if (isMac()) return "macos";
+        return "linux";
+    }
+
+    public static String getSystemArch() {
+        String raw = System.getProperty("os.arch", "x64").toLowerCase();
+        if (raw.contains("aarch64") || raw.contains("arm64")) return "arm64";
+        if (raw.contains("86") && !raw.contains("64")) return "x86";
+        return "x64";
+    }
+
     /**
      * Finds the absolute path to the Blender executable on the host system.
-     * Supports Ubuntu/Linux (via 'which' and common paths) and Windows (via 'where' and Registry/Program Files folders).
+     * Supports Ubuntu/Linux (via 'which' and common paths), macOS (/Applications, Homebrew), and Windows (Program Files, where).
      *
      * @return the absolute path to the Blender executable, or null if it cannot be found.
      */
     public static String findExecutablePath() {
-        String os = System.getProperty("os.name").toLowerCase();
-        
-        if (os.contains("win")) {
+        if (isWindows()) {
             // 1. Try 'where' command on Windows
             String pathFromWhere = executeCommandSilently("where", "blender");
             if (pathFromWhere != null && !pathFromWhere.isEmpty()) {
@@ -100,9 +125,13 @@ public class BlenderUtils {
                 "/Applications/Blender.app/Contents/MacOS/Blender",
                 "/Applications/Blender.app/Contents/MacOS/blender",
                 userHome + "/Applications/Blender.app/Contents/MacOS/Blender",
+                userHome + "/Applications/Blender.app/Contents/MacOS/blender",
                 workDir + "/blender_bin/Blender.app/Contents/MacOS/Blender",
+                workDir + "/blender_bin/Blender.app/Contents/MacOS/blender",
                 workDir + "/blender_bin/blender",
                 workDir + "/blender_bin/blender.exe",
+                workDir + "/../blender_bin/blender",
+                workDir + "/../blender_bin/Blender.app/Contents/MacOS/Blender",
                 "/opt/homebrew/bin/blender",
                 "/usr/local/bin/blender",
                 "/usr/bin/blender",
@@ -114,8 +143,33 @@ public class BlenderUtils {
                     return f.getAbsolutePath();
                 }
             }
+
+            // 3. Scan local ./blender_bin and ../blender_bin recursively for portable blender binaries
+            String[] binDirs = { workDir + "/blender_bin", workDir + "/../blender_bin" };
+            for (String bDir : binDirs) {
+                File b = new File(bDir);
+                if (b.exists() && b.isDirectory()) {
+                    File found = findExecutableInDir(b, "blender");
+                    if (found != null) return found.getAbsolutePath();
+                }
+            }
         }
         
+        return null;
+    }
+
+    private static File findExecutableInDir(File dir, String baseName) {
+        if (!dir.exists() || !dir.isDirectory()) return null;
+        File[] files = dir.listFiles();
+        if (files == null) return null;
+        for (File f : files) {
+            if (f.isFile() && f.getName().equalsIgnoreCase(baseName) && f.canExecute()) {
+                return f;
+            } else if (f.isDirectory() && !f.getName().startsWith(".")) {
+                File sub = findExecutableInDir(f, baseName);
+                if (sub != null) return sub;
+            }
+        }
         return null;
     }
 

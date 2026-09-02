@@ -25,6 +25,7 @@ public class Job implements Serializable {
     private final Map<String, Object> parameters;
 
     private volatile JobStatus status;
+    private volatile long completedTimestamp = 0;
     private volatile String compiledVideoUrl = null;
     private final ConcurrentHashMap<String, SubTask> subTasks = new ConcurrentHashMap<>();
     private final ConcurrentLinkedQueue<SubTask> pendingSubTasks = new ConcurrentLinkedQueue<>();
@@ -122,11 +123,18 @@ public class Job implements Serializable {
         SubTask task = subTasks.get(taskId);
         if (task != null && task.getStatus() != SubTaskStatus.COMPLETED) {
             task.setStatus(SubTaskStatus.COMPLETED);
+            if (task.getCompletedTimestamp() <= 0) {
+                task.setCompletedTimestamp(System.currentTimeMillis());
+            }
             int completed = completedTaskCount.incrementAndGet();
             if (completed >= subTasks.size() && !subTasks.isEmpty()) {
                 this.status = JobStatus.COMPLETED;
+                this.completedTimestamp = System.currentTimeMillis();
                 return true;
             }
+        }
+        if (isAllCompleted() && this.completedTimestamp <= 0) {
+            this.completedTimestamp = System.currentTimeMillis();
         }
         return isAllCompleted();
     }
@@ -162,6 +170,8 @@ public class Job implements Serializable {
     public String getWorkloadType() { return workloadType; }
     public int getTotalFrames() { return totalFrames; }
     public long getSubmissionTimestamp() { return submissionTimestamp; }
+    public long getCompletedTimestamp() { return completedTimestamp; }
+    public void setCompletedTimestamp(long completedTimestamp) { this.completedTimestamp = completedTimestamp; }
     public Map<String, Object> getParameters() { return parameters; }
     public JobStatus getStatus() { return status; }
     public void setStatus(JobStatus status) { this.status = status; }
@@ -217,6 +227,8 @@ public class Job implements Serializable {
         private volatile byte[] taskPayloadBytes;
         private volatile Object taskData;
         private volatile double progressPercentage; // Track individual subtask progress
+        private volatile long dispatchedTimestamp = 0;
+        private volatile long completedTimestamp = 0;
 
         public SubTask(String taskId, String jobId, int startFrame, int endFrame, String frameRange, String workloadType, String renderEngine) {
             this.taskId = taskId;
@@ -257,10 +269,23 @@ public class Job implements Serializable {
         public double getProgressPercentage() { return progressPercentage; }
         public void setProgressPercentage(double pct) { this.progressPercentage = pct; }
 
+        public long getDispatchedTimestamp() { return dispatchedTimestamp; }
+        public void setDispatchedTimestamp(long dispatchedTimestamp) { this.dispatchedTimestamp = dispatchedTimestamp; }
+
+        public long getCompletedTimestamp() { return completedTimestamp; }
+        public void setCompletedTimestamp(long completedTimestamp) { this.completedTimestamp = completedTimestamp; }
+
+        public long getExecutionDurationMs() {
+            if (completedTimestamp > dispatchedTimestamp && dispatchedTimestamp > 0) {
+                return completedTimestamp - dispatchedTimestamp;
+            }
+            return 0;
+        }
+
         @Override
         public String toString() {
-            return String.format("SubTask[ID=%s, Range=%s, Status=%s, Worker=%s, Retries=%d]",
-                taskId, frameRange, status, assignedWorkerId != null ? assignedWorkerId : "NONE", retryCount);
+            return String.format("SubTask[ID=%s, Range=%s, Status=%s, Worker=%s, Retries=%d, Dur=%dms]",
+                taskId, frameRange, status, assignedWorkerId != null ? assignedWorkerId : "NONE", retryCount, getExecutionDurationMs());
         }
     }
 }

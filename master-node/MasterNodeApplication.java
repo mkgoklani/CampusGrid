@@ -29,6 +29,9 @@ public class MasterNodeApplication {
     private final BasicScheduler scheduler;
     private final HeartbeatMonitor heartbeatMonitor;
     private final DashboardServer dashboardServer;
+    private final BenchmarkManager benchmarkManager;
+    private final AgentVersionManager versionManager;
+    private final MasterDiscoveryBeacon discoveryBeacon;
 
     private final int agentTcpPort;
     private final int dashboardHttpPort;
@@ -51,13 +54,25 @@ public class MasterNodeApplication {
         this.workerRegistry = new WorkerRegistry();
         this.jobManager = new JobManager();
         this.resultCollector = new ResultCollector(jobManager, workerRegistry, Paths.get("./output"));
+        this.benchmarkManager = new BenchmarkManager(workerRegistry);
+        this.versionManager = new AgentVersionManager();
+        this.jobManager.setBenchmarkManager(this.benchmarkManager);
 
-        // 2. Initialize Schedulers and Watchdogs
+        // 2. Initialize Schedulers, Watchdogs, and LAN Discovery Beacon
         this.scheduler = new BasicScheduler(jobManager, workerRegistry, 500);
         this.heartbeatMonitor = new HeartbeatMonitor(workerRegistry, jobManager, 15000, 5000);
+        this.discoveryBeacon = new MasterDiscoveryBeacon(agentTcpPort, dashboardHttpPort);
 
         // 3. Initialize Embedded Web Dashboard Server
-        this.dashboardServer = new DashboardServer(jobManager, workerRegistry, dashboardHttpPort, dashboardWsPort);
+        this.dashboardServer = new DashboardServer(jobManager, workerRegistry, benchmarkManager, versionManager, dashboardHttpPort, dashboardWsPort);
+    }
+
+    public MasterDiscoveryBeacon getDiscoveryBeacon() {
+        return discoveryBeacon;
+    }
+
+    public AgentVersionManager getVersionManager() {
+        return versionManager;
     }
 
     /**
@@ -84,16 +99,23 @@ public class MasterNodeApplication {
         // 3. Start Heartbeat Watchdog Daemon
         heartbeatMonitor.start();
 
-        // 4. Start TCP ServerSocket Listener for Agent Nodes
+        // 4. Start UDP LAN Discovery Beacon Daemon
+        try {
+            discoveryBeacon.start();
+        } catch (Exception e) {
+            System.err.println("[BOOTSTRAP-WARN] Could not start UDP Discovery Beacon: " + e.getMessage());
+        }
+
+        // 5. Start TCP ServerSocket Listener for Agent Nodes
         agentServerSocket = new ServerSocket(agentTcpPort);
         Thread acceptThread = new Thread(this::runAgentAcceptLoop, "Master-Agent-Accept");
         acceptThread.setDaemon(false);
         acceptThread.start();
 
-        // 5. Register JVM Shutdown Hook for Graceful Teardown
+        // 6. Register JVM Shutdown Hook for Graceful Teardown
         Runtime.getRuntime().addShutdownHook(new Thread(this::stop, "Master-ShutdownHook"));
 
-        System.out.println("[BOOTSTRAP] All 7 Master Node modules initialized and running successfully.");
+        System.out.println("[BOOTSTRAP] All 8 Master Node modules (including UDP LAN Auto-Discovery) initialized and running.");
         System.out.println();
     }
 
@@ -104,8 +126,12 @@ public class MasterNodeApplication {
         System.out.println("[NETWORK] Listening for Worker Agents on TCP port: " + agentServerSocket.getLocalPort());
 
         while (running && !agentServerSocket.isClosed()) {
+            Socket socket = null;
             try {
-                Socket socket = agentServerSocket.accept();
+                socket = agentServerSocket.accept();
+                socket.setTcpNoDelay(true);
+                socket.setKeepAlive(true);
+
                 String workerId = socket.getInetAddress().getHostAddress() + ":" + socket.getPort();
                 System.out.println("[REGISTRY] Inbound worker connection accepted: " + workerId);
 
@@ -124,8 +150,11 @@ public class MasterNodeApplication {
 
             } catch (SocketException e) {
                 if (!running) break; // Server shutting down
-            } catch (IOException e) {
-                System.err.println("[NETWORK-ERR] Error accepting agent connection: " + e.getMessage());
+            } catch (Exception e) {
+                System.err.println("[NETWORK-ERR] Error setting up agent connection: " + e.getMessage());
+                if (socket != null && !socket.isClosed()) {
+                    try { socket.close(); } catch (IOException ignored) {}
+                }
             }
         }
     }
@@ -138,7 +167,7 @@ public class MasterNodeApplication {
 
         try {
             Object obj;
-            while (running && !worker.getSocket().isClosed() && (obj = inStream.readObject()) != null) {
+            while (running && worker.getSocket() != null && !worker.getSocket().isClosed() && (obj = inStream.readObject()) != null) {
 
                 if (obj instanceof GridMessage message) {
                     handleProtocolEnvelope(worker, message);
@@ -159,7 +188,21 @@ public class MasterNodeApplication {
             System.err.printf("[NETWORK-ERR] Stream exception on Worker [%s]: %s\n", workerId, e.getMessage());
         } finally {
             // Fault tolerance: Trigger cleanup and auto-requeue of active tasks
-            workerRegistry.handleWorkerFailure(workerId, jobManager);
+            try {
+                workerRegistry.handleWorkerFailure(workerId, jobManager);
+            } catch (Exception e) {
+                System.err.printf("[REGISTRY-ERR] Error during worker failure handling for [%s]: %s\n", workerId, e.getMessage());
+            }
+
+            try {
+                if (inStream != null) inStream.close();
+            } catch (Exception ignored) {}
+            try {
+                if (worker.getOutStream() != null) worker.getOutStream().close();
+            } catch (Exception ignored) {}
+            try {
+                if (worker.getSocket() != null && !worker.getSocket().isClosed()) worker.getSocket().close();
+            } catch (Exception ignored) {}
         }
     }
 
@@ -170,14 +213,18 @@ public class MasterNodeApplication {
         String workerId = worker.getWorkerId();
         MessageType type = message.getType();
         Object payload = message.getPayload();
-
         switch (type) {
             case HEARTBEAT -> {
                 if (payload instanceof HeartbeatPayload hb) {
-                    workerRegistry.updateTelemetry(workerId, hb.getCpuTemperature(), hb.getRamUsagePercent());
+                    workerRegistry.updateTelemetry(workerId, hb.getCpuTemperature(), hb.getCpuUsagePercent(), hb.getRamUsagePercent());
+                    if (hb.getOsName() != null) worker.setOsName(hb.getOsName());
+                    workerRegistry.updateHardwareSpecs(workerId, hb.getCpuModel(), hb.getCpuArch(), hb.getGpuModel(), hb.getGpuComputeType(), hb.isGpuAvailable(), hb.isUseGpu());
+                    if (hb.getAgentVersion() != null) worker.setAgentVersion(hb.getAgentVersion());
+                    if (hb.getAgentBuildNumber() > 0) worker.setAgentBuildNumber(hb.getAgentBuildNumber());
                     if (hb.getStatus() != null && worker.getStatus() != WorkerStatus.BUSY) {
                         workerRegistry.updateStatus(workerId, hb.getStatus());
                     }
+                    checkAndTriggerAgentUpdate(worker, hb.getAgentVersion(), hb.getAgentBuildNumber());
                 }
             }
             case TASK_PROGRESS -> {
@@ -246,13 +293,15 @@ public class MasterNodeApplication {
                 if (entry.isDirectory()) {
                     continue;
                 }
-                java.io.File destFile = new java.io.File(outputDir, entry.getName());
+                String cleanName = new java.io.File(entry.getName()).getName();
+                if (cleanName.isEmpty()) continue;
+                java.io.File destFile = new java.io.File(outputDir, cleanName);
                 // Zip slip protection
                 if (!destFile.getCanonicalPath().startsWith(outputDir.getCanonicalPath())) {
                     throw new SecurityException("Zip slip detected: " + entry.getName());
                 }
                 try (java.io.FileOutputStream fos = new java.io.FileOutputStream(destFile)) {
-                    byte[] buffer = new byte[4096];
+                    byte[] buffer = new byte[8192];
                     int len;
                     while ((len = zis.read(buffer)) > 0) {
                         fos.write(buffer, 0, len);
@@ -328,16 +377,28 @@ public class MasterNodeApplication {
                 double cpu = 0.0;
                 double ram = 50.0;
                 String os = null;
+                String cpuModel = null;
+                String cpuArch = null;
+                String gpuModel = null;
+                String gpuCompute = null;
+                Boolean gpuAvail = null;
+                Boolean useGpu = null;
                 String blenderVer = null;
                 boolean blenderInstalled = false;
                 double installPct = -1.0;
                 double renderPct = -1.0;
                 String installMsg = null;
 
+                String agentVer = null;
+                int agentBuild = 0;
                 String[] parts = raw.split("\\|");
                 for (String part : parts) {
                     part = part.trim();
-                    if (part.startsWith("TEMP:")) {
+                    if (part.startsWith("AGENT_VERSION:")) {
+                        agentVer = part.substring(14).trim();
+                    } else if (part.startsWith("AGENT_BUILD:")) {
+                        try { agentBuild = Integer.parseInt(part.substring(12).trim()); } catch (Exception ignored) {}
+                    } else if (part.startsWith("TEMP:")) {
                         String t = part.substring(5).replace("°C", "").trim();
                         temp = Integer.parseInt(t);
                     } else if (part.startsWith("CPU:")) {
@@ -348,6 +409,18 @@ public class MasterNodeApplication {
                         ram = Double.parseDouble(r);
                     } else if (part.startsWith("OS:")) {
                         os = part.substring(3).trim();
+                    } else if (part.startsWith("CPU_MODEL:")) {
+                        cpuModel = part.substring(10).trim();
+                    } else if (part.startsWith("ARCH:")) {
+                        cpuArch = part.substring(5).trim();
+                    } else if (part.startsWith("GPU:")) {
+                        gpuModel = part.substring(4).trim();
+                    } else if (part.startsWith("GPUTYPE:")) {
+                        gpuCompute = part.substring(8).trim();
+                    } else if (part.startsWith("GPU_AVAIL:")) {
+                        gpuAvail = Boolean.parseBoolean(part.substring(10).trim());
+                    } else if (part.startsWith("USEGPU:")) {
+                        useGpu = Boolean.parseBoolean(part.substring(7).trim());
                     } else if (part.startsWith("BLENDER:")) {
                         blenderVer = part.substring(8).trim();
                         blenderInstalled = !"Unknown".equalsIgnoreCase(blenderVer) 
@@ -368,8 +441,16 @@ public class MasterNodeApplication {
                     }
                 }
                 workerRegistry.updateTelemetry(workerId, temp, cpu, ram);
+                if (agentVer != null) worker.setAgentVersion(agentVer);
+                if (agentBuild > 0) worker.setAgentBuildNumber(agentBuild);
                 if (os != null || blenderVer != null || installPct >= 0 || installMsg != null) {
                     workerRegistry.updateEnvironment(workerId, os, blenderInstalled, blenderVer, installPct, installMsg);
+                }
+                if (cpuModel != null || cpuArch != null || gpuModel != null || gpuCompute != null || gpuAvail != null || useGpu != null) {
+                    workerRegistry.updateHardwareSpecs(workerId, cpuModel, cpuArch, gpuModel, gpuCompute, gpuAvail, useGpu);
+                }
+                if (agentVer != null || agentBuild > 0) {
+                    checkAndTriggerAgentUpdate(worker, agentVer, agentBuild);
                 }
 
                 String currentJobId = worker.getCurrentJobId();
@@ -396,6 +477,27 @@ public class MasterNodeApplication {
         }
     }
 
+    private void checkAndTriggerAgentUpdate(WorkerState worker, String agentVer, int agentBuild) {
+        if (versionManager.isAgentOutdated(agentVer, agentBuild)) {
+            String workerId = worker.getWorkerId();
+            System.out.printf("[VERSION-SYNC] ⚠ Outdated Agent detected on [%s] (v%s-b%d < Master v%s-b%d). Dispatched UPDATE_AGENT directive.\n",
+                workerId, agentVer, agentBuild, versionManager.getCurrentVersion(), versionManager.getCurrentBuild());
+            try {
+                ObjectOutputStream out = worker.getOutStream();
+                if (out != null) {
+                    synchronized (out) {
+                        out.writeObject(new GridMessage(MessageType.UPDATE_AGENT, "MASTER", "/download/agent.jar"));
+                        out.writeObject("UPDATE_AGENT: /download/agent.jar | VERSION: " + versionManager.getCurrentVersion() + " | BUILD: " + versionManager.getCurrentBuild());
+                        out.flush();
+                        out.reset();
+                    }
+                }
+            } catch (Exception e) {
+                System.err.printf("[VERSION-SYNC-ERR] Failed dispatching update to worker %s: %s\n", workerId, e.getMessage());
+            }
+        }
+    }
+
     /**
      * Gracefully stops the entire Master Node application.
      */
@@ -407,6 +509,7 @@ public class MasterNodeApplication {
         if (dashboardServer != null) dashboardServer.stop();
         if (scheduler != null) scheduler.stop();
         if (heartbeatMonitor != null) heartbeatMonitor.stop();
+        if (discoveryBeacon != null) discoveryBeacon.stop();
 
         try {
             if (agentServerSocket != null && !agentServerSocket.isClosed()) {
