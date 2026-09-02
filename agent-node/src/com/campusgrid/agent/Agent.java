@@ -11,16 +11,42 @@ import com.campusgrid.agent.network.MasterConnection;
  */
 public class Agent {
 
-    public static volatile String CURRENT_VERSION = "1.0.0";
-    public static volatile int CURRENT_BUILD = 100;
+    public static volatile String CURRENT_VERSION = "1.0.2";
+    public static volatile int CURRENT_BUILD = 102;
 
     static {
+        // 1. Check System Properties (-Dagent.version / -Dagent.build)
+        String sysVer = System.getProperty("agent.version");
+        String sysBuild = System.getProperty("agent.build");
+        if (sysVer != null && !sysVer.isEmpty()) CURRENT_VERSION = sysVer;
+        if (sysBuild != null && !sysBuild.isEmpty()) {
+            try { CURRENT_BUILD = Integer.parseInt(sysBuild); } catch (Exception ignored) {}
+        }
+
+        // 2. Check agent_version.properties in classpath
         try (java.io.InputStream is = Agent.class.getResourceAsStream("/agent_version.properties")) {
             if (is != null) {
                 java.util.Properties props = new java.util.Properties();
                 props.load(is);
                 CURRENT_VERSION = props.getProperty("agent.version", CURRENT_VERSION);
                 CURRENT_BUILD = Integer.parseInt(props.getProperty("agent.build", String.valueOf(CURRENT_BUILD)));
+            }
+        } catch (Exception ignored) {}
+
+        // 3. Check JAR Manifest Attributes
+        try {
+            java.net.URL classUrl = Agent.class.getResource("Agent.class");
+            if (classUrl != null && classUrl.toString().startsWith("jar:")) {
+                java.net.JarURLConnection connection = (java.net.JarURLConnection) classUrl.openConnection();
+                java.util.jar.Manifest manifest = connection.getManifest();
+                if (manifest != null) {
+                    String mVer = manifest.getMainAttributes().getValue("Agent-Version");
+                    String mBuild = manifest.getMainAttributes().getValue("Agent-Build");
+                    if (mVer != null && !mVer.isEmpty()) CURRENT_VERSION = mVer;
+                    if (mBuild != null && !mBuild.isEmpty()) {
+                        try { CURRENT_BUILD = Integer.parseInt(mBuild); } catch (Exception ignored) {}
+                    }
+                }
             }
         } catch (Exception ignored) {}
     }

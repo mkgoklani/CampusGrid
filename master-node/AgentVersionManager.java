@@ -176,6 +176,14 @@ public class AgentVersionManager {
             manifest.getMainAttributes().put(new Attributes.Name("Agent-Build"), String.valueOf(this.currentBuild));
 
             try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(targetJarFile), manifest)) {
+                // Explicitly inject agent_version.properties into JAR root
+                JarEntry verEntry = new JarEntry("agent_version.properties");
+                jos.putNextEntry(verEntry);
+                String verProps = String.format("agent.version=%s\nagent.build=%d\nagent.timestamp=%d\n",
+                    this.currentVersion, this.currentBuild, System.currentTimeMillis());
+                jos.write(verProps.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                jos.closeEntry();
+
                 addDirectoryToJar(jos, classesDir, classesDir);
             }
 

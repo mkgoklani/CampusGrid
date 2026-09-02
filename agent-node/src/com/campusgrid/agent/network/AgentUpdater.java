@@ -130,6 +130,12 @@ public class AgentUpdater {
                 // 5. Construct ProcessBuilder launch arguments
                 List<String> command = new ArrayList<>();
                 command.add(javaBin);
+                if (targetVersion != null && !targetVersion.isEmpty()) {
+                    command.add("-Dagent.version=" + targetVersion);
+                }
+                if (targetBuild > 0) {
+                    command.add("-Dagent.build=" + targetBuild);
+                }
                 command.add("-jar");
                 command.add(updateJarFile.getAbsolutePath());
                 command.add(masterHost + ":" + masterPort);

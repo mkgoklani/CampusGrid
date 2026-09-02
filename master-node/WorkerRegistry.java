@@ -25,6 +25,18 @@ public class WorkerRegistry {
      * @param state The WorkerState representing the worker node.
      */
     public void registerWorker(WorkerState state) {
+        // Clean up any stale offline workers with the same IP address to avoid duplicate phantom entries
+        String ip = state.getIpAddress();
+        if (ip != null && !ip.isEmpty() && !ip.equals("127.0.0.1")) {
+            registry.entrySet().removeIf(entry -> {
+                WorkerState existing = entry.getValue();
+                boolean sameIp = ip.equals(existing.getIpAddress());
+                boolean isDead = existing.getStatus() == WorkerStatus.OFFLINE 
+                              || existing.getSocket() == null 
+                              || existing.getSocket().isClosed();
+                return sameIp && isDead && !entry.getKey().equals(state.getWorkerId());
+            });
+        }
         registry.put(state.getWorkerId(), state);
     }
 

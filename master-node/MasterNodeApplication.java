@@ -38,6 +38,7 @@ public class MasterNodeApplication {
     private final int dashboardWsPort;
 
     private final ExecutorService agentThreadPool = Executors.newCachedThreadPool();
+    private final ConcurrentHashMap<String, Long> lastUpdateTriggerTimes = new ConcurrentHashMap<>();
     private ServerSocket agentServerSocket;
     private volatile boolean running = false;
 
@@ -480,6 +481,17 @@ public class MasterNodeApplication {
     private void checkAndTriggerAgentUpdate(WorkerState worker, String agentVer, int agentBuild) {
         if (versionManager.isAgentOutdated(agentVer, agentBuild)) {
             String workerId = worker.getWorkerId();
+            String ip = worker.getIpAddress();
+            long now = System.currentTimeMillis();
+            Long last = (ip != null) ? lastUpdateTriggerTimes.get(ip) : null;
+            if (last != null && (now - last) < 45000) {
+                // Throttle updates to once every 45s per host to prevent restart loops
+                return;
+            }
+            if (ip != null) {
+                lastUpdateTriggerTimes.put(ip, now);
+            }
+
             System.out.printf("[VERSION-SYNC] ⚠ Outdated Agent detected on [%s] (v%s-b%d < Master v%s-b%d). Dispatched UPDATE_AGENT directive.\n",
                 workerId, agentVer, agentBuild, versionManager.getCurrentVersion(), versionManager.getCurrentBuild());
             try {
