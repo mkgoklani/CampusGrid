@@ -280,7 +280,74 @@ public class JobManager {
     }
 
     /**
-     * Resumes execution of a CANCELLED or FAILED job by re-queuing all uncompleted sub-tasks.
+     * Pauses an actively RUNNING or QUEUED job:
+     * - Signals busy workers assigned to this job to halt active tasks (via CANCEL_TASK).
+     * - Frees those workers back to IDLE.
+     * - Keeps the unfinished sub-tasks intact for resumption.
+     * - Sets job status to PAUSED and removes from pendingJobQueue.
+     */
+    public synchronized boolean pauseJob(String jobId, WorkerRegistry workerRegistry) {
+        Job job = jobRegistry.get(jobId);
+        if (job == null) return false;
+
+        if (job.getStatus() == JobStatus.RUNNING || job.getStatus() == JobStatus.QUEUED) {
+            job.setStatus(JobStatus.PAUSED);
+            pendingJobQueue.remove(job);
+            if (currentActiveJob != null && currentActiveJob.getJobId().equals(jobId)) {
+                currentActiveJob = null;
+            }
+
+            // Signal workers currently executing tasks for this job to halt and return to IDLE
+            if (workerRegistry != null) {
+                GridMessage cancelMsg = new GridMessage(
+                    MessageType.CANCEL_TASK,
+                    "MASTER_CONTROL_PLANE",
+                    jobId
+                );
+
+                for (WorkerState worker : workerRegistry.getAllWorkers()) {
+                    String assignedJob;
+                    String assignedTask;
+                    synchronized (worker) {
+                        assignedJob = worker.getCurrentJobId();
+                        assignedTask = worker.getCurrentTaskId();
+                    }
+
+                    if (jobId.equals(assignedJob)) {
+                        System.out.printf("[JOB-MANAGER] ⏸ Pausing active Task [%s] on Worker [%s]...\n",
+                            assignedTask, worker.getWorkerId());
+
+                        try {
+                            java.io.ObjectOutputStream out = worker.getOutStream();
+                            if (out != null) {
+                                synchronized (out) {
+                                    out.writeObject(cancelMsg);
+                                    out.flush();
+                                    out.reset();
+                                }
+                            }
+                        } catch (java.io.IOException ignored) {}
+                        finally {
+                            synchronized (worker) {
+                                if (worker.getStatus() == WorkerStatus.BUSY) {
+                                    worker.setStatus(WorkerStatus.IDLE);
+                                }
+                                worker.setCurrentJobId(null);
+                                worker.setCurrentTaskId(null);
+                            }
+                        }
+                    }
+                }
+            }
+
+            System.out.printf("[JOB-MANAGER] ⏸ Job [%s] PAUSED by operator.\n", jobId);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Resumes execution of a CANCELLED, PAUSED, or FAILED job by re-queuing all uncompleted sub-tasks.
      */
     public synchronized boolean resumeJob(String jobId) {
         Job job = jobRegistry.get(jobId);
@@ -318,7 +385,7 @@ public class JobManager {
         if (job == null) return false;
 
         // Cancel if active
-        if (job.getStatus() == JobStatus.RUNNING || job.getStatus() == JobStatus.QUEUED) {
+        if (job.getStatus() == JobStatus.RUNNING || job.getStatus() == JobStatus.QUEUED || job.getStatus() == JobStatus.PAUSED) {
             cancelJob(jobId, workerRegistry);
         }
         pendingJobQueue.remove(job);
@@ -358,17 +425,18 @@ public class JobManager {
      * Returns cluster job statistics.
      */
     public String getJobSummary() {
-        int queued = 0, running = 0, completed = 0, cancelled = 0, failed = 0;
+        int queued = 0, running = 0, paused = 0, completed = 0, cancelled = 0, failed = 0;
         for (Job j : jobRegistry.values()) {
             switch (j.getStatus()) {
                 case QUEUED -> queued++;
                 case RUNNING -> running++;
+                case PAUSED -> paused++;
                 case COMPLETED -> completed++;
                 case CANCELLED -> cancelled++;
                 case FAILED -> failed++;
             }
         }
-        return String.format("JobSummary[Total=%d, Queued=%d, Running=%d, Completed=%d, Cancelled=%d, Failed=%d]",
-            jobRegistry.size(), queued, running, completed, cancelled, failed);
+        return String.format("JobSummary[Total=%d, Queued=%d, Running=%d, Paused=%d, Completed=%d, Cancelled=%d, Failed=%d]",
+            jobRegistry.size(), queued, running, paused, completed, cancelled, failed);
     }
 }

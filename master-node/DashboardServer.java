@@ -98,6 +98,7 @@ public class DashboardServer {
         httpServer.createContext("/api/jobs", new JobsHandler());
         httpServer.createContext("/api/jobs/submit", new SubmitJobHandler());
         httpServer.createContext("/api/jobs/cancel", new CancelJobHandler());
+        httpServer.createContext("/api/jobs/pause", new PauseJobHandler());
         httpServer.createContext("/api/jobs/resume", new ResumeJobHandler());
         httpServer.createContext("/api/jobs/delete", new DeleteJobHandler());
         httpServer.createContext("/api/nodes/install-blender", new InstallBlenderHandler());
@@ -633,6 +634,39 @@ public class DashboardServer {
                     checkpointManager.saveCheckpoint();
                 }
                 sendJsonResponse(exchange, 200, "{\"success\":true,\"message\":\"Job cancelled\"}");
+            } else {
+                sendJsonResponse(exchange, 400, "{\"error\":\"Missing jobId parameter\"}");
+            }
+        }
+    }
+
+    private class PauseJobHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 204, "");
+                return;
+            }
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
+                return;
+            }
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String jobId = extractJsonString(body, "jobId", "");
+
+            if (jobId.isEmpty() && exchange.getRequestURI().getQuery() != null) {
+                for (String param : exchange.getRequestURI().getQuery().split("&")) {
+                    if (param.startsWith("jobId=")) jobId = param.substring(6);
+                }
+            }
+
+            if (!jobId.isEmpty()) {
+                boolean paused = jobManager.pauseJob(jobId, workerRegistry);
+                if (checkpointManager != null) {
+                    checkpointManager.saveCheckpoint();
+                }
+                sendJsonResponse(exchange, 200, "{\"success\":" + paused + ",\"message\":\"Job paused\"}");
             } else {
                 sendJsonResponse(exchange, 400, "{\"error\":\"Missing jobId parameter\"}");
             }

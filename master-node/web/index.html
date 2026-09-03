@@ -321,6 +321,27 @@
             color: #fff;
         }
 
+        .btn-pause {
+            background: rgba(245, 158, 11, 0.12);
+            color: #d97706;
+            border: 1px solid rgba(245, 158, 11, 0.35);
+            padding: 6px 12px;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .btn-pause:hover {
+            background: #f59e0b;
+            color: #fff;
+        }
+
         .btn-resume {
             background: rgba(46, 125, 50, 0.12);
             color: var(--accent-green);
@@ -1815,6 +1836,25 @@
             }
         }
 
+        // Pause Job Request
+        async function pauseJob(jobId) {
+            try {
+                const res = await fetch('/api/jobs/pause', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jobId: jobId })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    fetchJobs();
+                } else {
+                    alert("Pause failed: " + (result.message || JSON.stringify(result)));
+                }
+            } catch (err) {
+                alert("Error sending pause request: " + err.message);
+            }
+        }
+
         // Resume Job Request
         async function resumeJob(jobId) {
             try {
@@ -1902,19 +1942,25 @@
                 let statusColor = '#6e6e6e';
                 if (job.status === 'COMPLETED') statusColor = 'var(--accent-green)';
                 else if (job.status === 'RUNNING') statusColor = 'var(--accent-blue)';
+                else if (job.status === 'PAUSED') statusColor = '#d97706';
                 else if (job.status === 'CANCELLED' || job.status === 'FAILED') statusColor = 'var(--accent-red)';
 
-                const canCancel = (job.status === 'RUNNING' || job.status === 'QUEUED');
+                const canCancel = (job.status === 'RUNNING' || job.status === 'QUEUED' || job.status === 'PAUSED');
+                const canPause = (job.status === 'RUNNING' || job.status === 'QUEUED');
+                const canResume = (job.status === 'PAUSED' || job.status === 'CANCELLED' || job.status === 'FAILED');
                 const isComplete = (job.status === 'COMPLETED');
                 const blendName = job.blendFileName || 'scene.blend';
 
                 // Action buttons
                 let actionButtonsHtml = '';
+                if (canPause) {
+                    actionButtonsHtml += `<button class="btn-pause" onclick="pauseJob('${job.jobId}')">⏸ Pause</button>`;
+                }
+                if (canResume) {
+                    actionButtonsHtml += `<button class="btn-resume" onclick="resumeJob('${job.jobId}')">▶ Resume</button>`;
+                }
                 if (canCancel) {
                     actionButtonsHtml += `<button class="btn-cancel" onclick="cancelJob('${job.jobId}')">✕ Cancel</button>`;
-                }
-                if (job.status === 'CANCELLED' || job.status === 'FAILED') {
-                    actionButtonsHtml += `<button class="btn-resume" onclick="resumeJob('${job.jobId}')">▶ Resume</button>`;
                 }
                 if (isComplete || (job.savedFramesCount && job.savedFramesCount > 0)) {
                     actionButtonsHtml += `<a class="btn-action-report" href="/report/${job.jobId}" target="_blank" style="background: #0d47a1; color: #fff; text-decoration: none; padding: 5px 11px; border-radius: 6px; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 2px 6px rgba(13,71,161,0.25);">📄 Defense Report</a>`;
