@@ -19,8 +19,8 @@ public class HardwareCollector {
      * @return the used system memory in MB.
      */
     public static long getSystemRamUsageMB() {
-        long totalMemory = OS_BEAN.getTotalMemorySize();
-        long freeMemory = OS_BEAN.getFreeMemorySize();
+        long totalMemory = OS_BEAN.getTotalPhysicalMemorySize();
+        long freeMemory = OS_BEAN.getFreePhysicalMemorySize();
         long usedMemory = totalMemory - freeMemory;
         return Math.max(0, usedMemory / (1024 * 1024));
     }

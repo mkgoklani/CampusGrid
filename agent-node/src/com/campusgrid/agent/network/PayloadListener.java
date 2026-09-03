@@ -231,15 +231,21 @@ public class PayloadListener implements Runnable {
             }
 
             String blendPath = "test.blend";
-            if (taskData instanceof String s && !s.trim().isEmpty()) {
-                blendPath = s.trim();
-            } else if (taskData instanceof byte[] bytes && bytes.length > 0) {
-                java.io.File cacheDir = new java.io.File("./cache/" + jobId);
-                if (!cacheDir.exists()) cacheDir.mkdirs();
-                java.io.File cachedFile = new java.io.File(cacheDir, "scene.blend");
-                java.nio.file.Files.write(cachedFile.toPath(), bytes);
-                blendPath = cachedFile.getAbsolutePath();
-                System.out.printf("[TASK] Unpacked binary blend file (%d bytes) to: %s\n", bytes.length, blendPath);
+            if (taskData instanceof String) {
+                String s = (String) taskData;
+                if (!s.trim().isEmpty()) {
+                    blendPath = s.trim();
+                }
+            } else if (taskData instanceof byte[]) {
+                byte[] bytes = (byte[]) taskData;
+                if (bytes.length > 0) {
+                    java.io.File cacheDir = new java.io.File("./cache/" + jobId);
+                    if (!cacheDir.exists()) cacheDir.mkdirs();
+                    java.io.File cachedFile = new java.io.File(cacheDir, "scene.blend");
+                    java.nio.file.Files.write(cachedFile.toPath(), bytes);
+                    blendPath = cachedFile.getAbsolutePath();
+                    System.out.printf("[TASK] Unpacked binary blend file (%d bytes) to: %s\n", bytes.length, blendPath);
+                }
             }
 
             String renderEngine = "CYCLES";
@@ -249,29 +255,34 @@ public class PayloadListener implements Runnable {
 
             try {
                 Object engineObj = clazz.getMethod("getRenderEngine").invoke(taskAssignmentObj);
-                if (engineObj instanceof String eng && !eng.trim().isEmpty()) {
-                    renderEngine = eng.trim();
+                if (engineObj instanceof String) {
+                    String eng = (String) engineObj;
+                    if (!eng.trim().isEmpty()) {
+                        renderEngine = eng.trim();
+                    }
                 }
             } catch (Exception ignored) {}
 
             try {
                 Object samplesObj = clazz.getMethod("getRenderSamples").invoke(taskAssignmentObj);
-                if (samplesObj instanceof Integer s && s > 0) {
-                    renderSamples = s;
+                if (samplesObj instanceof Integer) {
+                    int s = (Integer) samplesObj;
+                    if (s > 0) renderSamples = s;
                 }
             } catch (Exception ignored) {}
 
             try {
                 Object denoiseObj = clazz.getMethod("isUseDenoising").invoke(taskAssignmentObj);
-                if (denoiseObj instanceof Boolean d) {
-                    useDenoising = d;
+                if (denoiseObj instanceof Boolean) {
+                    useDenoising = (Boolean) denoiseObj;
                 }
             } catch (Exception ignored) {}
 
             try {
                 Object resObj = clazz.getMethod("getResolutionPercentage").invoke(taskAssignmentObj);
-                if (resObj instanceof Integer r && r > 0) {
-                    resolutionPercentage = r;
+                if (resObj instanceof Integer) {
+                    int r = (Integer) resObj;
+                    if (r > 0) resolutionPercentage = r;
                 }
             } catch (Exception ignored) {}
 

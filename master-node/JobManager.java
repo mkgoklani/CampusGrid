@@ -90,6 +90,57 @@ public class JobManager {
     }
 
     /**
+     * Retrieves the best hardware-matched pending SubTask for a requesting worker.
+     * High-spec workers (GPUs) receive the larger slices, while lower-spec workers (CPUs)
+     * receive smaller slices to balance execution times.
+     *
+     * @param worker The target worker node.
+     * @return Hardware-matched SubTask, or null if no tasks are available.
+     */
+    public synchronized Job.SubTask getNextPendingTaskForWorker(WorkerState worker) {
+        if (worker == null) return getNextPendingTask();
+        double workerScore = ComputeCapabilityEngine.calculateScore(worker);
+
+        // 1. Check current active job
+        if (currentActiveJob != null && currentActiveJob.getStatus() == JobStatus.RUNNING) {
+            Job.SubTask task = currentActiveJob.pollBestSubTaskForWorker(workerScore);
+            if (task != null) {
+                task.setStatus(Job.SubTaskStatus.DISPATCHED);
+                return task;
+            }
+        }
+
+        // 2. Check all other running jobs
+        for (Job job : jobRegistry.values()) {
+            if (job.getStatus() == JobStatus.RUNNING && (currentActiveJob == null || !job.getJobId().equals(currentActiveJob.getJobId()))) {
+                Job.SubTask task = job.pollBestSubTaskForWorker(workerScore);
+                if (task != null) {
+                    task.setStatus(Job.SubTaskStatus.DISPATCHED);
+                    return task;
+                }
+            }
+        }
+
+        // 3. Advance queued jobs
+        while (!pendingJobQueue.isEmpty()) {
+            Job nextJob = pendingJobQueue.poll();
+            if (nextJob != null && nextJob.getStatus() == JobStatus.QUEUED) {
+                nextJob.setStatus(JobStatus.RUNNING);
+                currentActiveJob = nextJob;
+                System.out.println("[JOB-MANAGER] Switched active job to [" + nextJob.getJobId() + "]");
+
+                Job.SubTask task = currentActiveJob.pollBestSubTaskForWorker(workerScore);
+                if (task != null) {
+                    task.setStatus(Job.SubTaskStatus.DISPATCHED);
+                    return task;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Updates sub-task execution status and marks the job COMPLETED when all sub-tasks finish.
      *
      * @param jobId The parent job identifier.

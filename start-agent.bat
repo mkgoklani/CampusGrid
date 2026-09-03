@@ -17,17 +17,30 @@ if exist ".git" (
     git pull --quiet
 )
 
-:: 2. Auto-compile common-lib and agent-node
+:: 2. Auto-compile common-lib and agent-node if javac is available
 if not exist "bin" mkdir bin
-javac -d bin -cp "common-lib/src;agent-node/src" common-lib/src/*.java agent-node/src/com/campusgrid/agent/*.java agent-node/src/com/campusgrid/agent/blender/*.java agent-node/src/com/campusgrid/agent/network/*.java agent-node/src/com/campusgrid/agent/os/*.java > nul 2>&1
+where javac >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    javac -encoding UTF-8 -d bin -cp "common-lib/src;agent-node/src" common-lib/src/*.java common-lib/src/com/campusgrid/core/*.java agent-node/src/com/campusgrid/agent/*.java agent-node/src/com/campusgrid/agent/blender/*.java agent-node/src/com/campusgrid/agent/network/*.java agent-node/src/com/campusgrid/agent/os/*.java
+)
 
 :: 3. Launch Agent Node
-if "%MASTER_IP%"=="" (
-    echo [NETWORK] Mode: Zero-Config LAN Auto-Discovery (UDP Broadcast)
-    java -cp "bin" com.campusgrid.agent.Agent
+if exist "bin\agent.jar" (
+    if "%MASTER_IP%"=="" (
+        echo [NETWORK] Mode: Zero-Config LAN Auto-Discovery (UDP Broadcast)
+        java -jar "bin\agent.jar"
+    ) else (
+        echo [NETWORK] Mode: Direct Master Connection to: %MASTER_IP%
+        java -jar "bin\agent.jar" %MASTER_IP%
+    )
 ) else (
-    echo [NETWORK] Mode: Direct Master Connection to: %MASTER_IP%
-    java -cp "bin" com.campusgrid.agent.Agent %MASTER_IP%
+    if "%MASTER_IP%"=="" (
+        echo [NETWORK] Mode: Zero-Config LAN Auto-Discovery (UDP Broadcast)
+        java -cp "bin" com.campusgrid.agent.Agent
+    ) else (
+        echo [NETWORK] Mode: Direct Master Connection to: %MASTER_IP%
+        java -cp "bin" com.campusgrid.agent.Agent %MASTER_IP%
+    )
 )
 
 echo.

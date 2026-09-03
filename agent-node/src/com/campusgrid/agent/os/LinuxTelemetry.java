@@ -172,7 +172,7 @@ public class LinuxTelemetry {
     }
 
     private static double getCpuLoadRatio() {
-        double sysCpu = OS_BEAN.getCpuLoad();
+        double sysCpu = OS_BEAN.getSystemCpuLoad();
         if (sysCpu < 0 || Double.isNaN(sysCpu) || sysCpu <= 0.0) {
             sysCpu = OS_BEAN.getProcessCpuLoad();
         }
@@ -246,8 +246,8 @@ public class LinuxTelemetry {
             } catch (Throwable ignored) {}
         }
 
-        long totalMem = OS_BEAN.getTotalMemorySize();
-        long freeMem = OS_BEAN.getFreeMemorySize();
+        long totalMem = OS_BEAN.getTotalPhysicalMemorySize();
+        long freeMem = OS_BEAN.getFreePhysicalMemorySize();
         if (totalMem <= 0) return 0.0;
         return ((double) (totalMem - freeMem) / totalMem) * 100.0;
     }

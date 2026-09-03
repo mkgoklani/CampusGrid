@@ -10,7 +10,7 @@ import java.util.TreeMap;
  */
 public final class GridDashboard {
 
-    private static final char[] BLOCKS = {' ', '░', '▒', '▓', '█'};
+    private static final char[] BLOCKS = {' ', '\u2591', '\u2592', '\u2593', '\u2588'};
 
     private final int previewColumns;
     private final int previewRows;
@@ -62,9 +62,9 @@ public final class GridDashboard {
         frame.append('[');
         for (int i = 0; i < barWidth; i++) {
             if (i < filled) {
-                frame.append(AnsiConsole.FG_GREEN).append('█').append(AnsiConsole.RESET);
+                frame.append(AnsiConsole.FG_GREEN).append('\u2588').append(AnsiConsole.RESET);
             } else {
-                frame.append(AnsiConsole.FG_BRIGHT_BLACK).append('·').append(AnsiConsole.RESET);
+                frame.append(AnsiConsole.FG_BRIGHT_BLACK).append('\u00B7').append(AnsiConsole.RESET);
             }
         }
         frame.append("] ")
@@ -119,7 +119,7 @@ public final class GridDashboard {
             return;
         }
 
-        String display = fit(cpuTempCelsius + "°C", 8);
+        String display = fit(cpuTempCelsius + "\u00B0C", 8);
         if (cpuTempCelsius >= 80) {
             frame.append(AnsiConsole.BOLD).append(AnsiConsole.FG_RED).append(display).append(AnsiConsole.RESET);
         } else if (cpuTempCelsius >= 65) {

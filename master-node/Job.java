@@ -161,6 +161,44 @@ public class Job implements Serializable {
     }
 
     /**
+     * Retrieves the best hardware-matched pending sub-task for a given worker.
+     * High-spec workers (GPU score >= 2.5) are allocated the largest available slice,
+     * while low-spec workers (CPU score < 2.5) are allocated smaller slices to avoid stragglers.
+     *
+     * @param workerScore The ComputeCapabilityEngine score of the target worker.
+     * @return Best matched SubTask if available, null otherwise.
+     */
+    public synchronized SubTask pollBestSubTaskForWorker(double workerScore) {
+        if (pendingSubTasks.isEmpty()) return null;
+        if (pendingSubTasks.size() == 1) return pendingSubTasks.poll();
+
+        boolean wantLargest = (workerScore >= 2.5);
+        SubTask chosen = null;
+        int targetSize = wantLargest ? -1 : Integer.MAX_VALUE;
+
+        for (SubTask st : pendingSubTasks) {
+            int size = st.getEndFrame() - st.getStartFrame() + 1;
+            if (wantLargest) {
+                if (size > targetSize) {
+                    targetSize = size;
+                    chosen = st;
+                }
+            } else {
+                if (size < targetSize) {
+                    targetSize = size;
+                    chosen = st;
+                }
+            }
+        }
+
+        if (chosen != null) {
+            pendingSubTasks.remove(chosen);
+            return chosen;
+        }
+        return pendingSubTasks.poll();
+    }
+
+    /**
      * Re-enqueues an unfinished or timed-out sub-task for recovery by another worker.
      *
      * @param subTask The sub-task to re-queue.

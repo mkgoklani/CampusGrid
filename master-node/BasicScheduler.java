@@ -119,17 +119,22 @@ public class BasicScheduler implements Runnable {
             return;
         }
 
-        // Thermal & Reliability Load Balancing:
-        // Prioritize nodes with high reliability history and cooler thermal profiles
+        // Hardware-Aware Capability & Reliability Load Balancing:
+        // Prioritize fastest compute nodes (GPUs) first, factoring reliability and thermal headroom
         availableWorkers.sort((w1, w2) -> {
+            double comp1 = ComputeCapabilityEngine.calculateScore(w1);
+            double comp2 = ComputeCapabilityEngine.calculateScore(w2);
+
             double rel1 = (reliabilityTracker != null) ? reliabilityTracker.getReliabilityScore(w1.getWorkerId()) : w1.getReliabilityScore();
             double rel2 = (reliabilityTracker != null) ? reliabilityTracker.getReliabilityScore(w2.getWorkerId()) : w2.getReliabilityScore();
+            
             double tempFactor1 = 1.0 - Math.min(1.0, (double) w1.getCpuTemperature() / 90.0);
             double tempFactor2 = 1.0 - Math.min(1.0, (double) w2.getCpuTemperature() / 90.0);
 
-            double p1 = (rel1 * 0.6) + (tempFactor1 * 0.4);
-            double p2 = (rel2 * 0.6) + (tempFactor2 * 0.4);
-            return Double.compare(p2, p1); // Highest priority dispatched first
+            // Compute score (4.5 vs 1.0) is the dominant factor (0.6), followed by reliability (0.25) and thermals (0.15)
+            double p1 = (comp1 * 0.6) + (rel1 * 0.25) + (tempFactor1 * 0.15);
+            double p2 = (comp2 * 0.6) + (rel2 * 0.25) + (tempFactor2 * 0.15);
+            return Double.compare(p2, p1); // Highest capability node dispatched first
         });
 
         for (WorkerState worker : availableWorkers) {
@@ -138,8 +143,8 @@ public class BasicScheduler implements Runnable {
                 continue;
             }
 
-            // Fetch next pending task from active job queue
-            Job.SubTask task = jobManager.getNextPendingTask();
+            // Fetch hardware-matched pending task from active job queue
+            Job.SubTask task = jobManager.getNextPendingTaskForWorker(worker);
             if (task == null) {
                 // Adaptive Dynamic Work Stealing: Steal from active stragglers
                 task = stealWorkForIdleWorker(worker);
