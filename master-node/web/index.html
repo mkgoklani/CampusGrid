@@ -1051,19 +1051,22 @@
             }
         }
 
-        // Trigger Blender Installation on worker
+        // Trigger Blender Installation or Version Switch on worker
         async function triggerBlenderInstall(workerId) {
-            if (!confirm(`Trigger automatic installation of Blender 3D on node [${workerId}]?`)) return;
+            const sel = document.getElementById(`blender-ver-${workerId}`);
+            const chosenVer = sel ? sel.value : '5.2.1';
+
+            if (!confirm(`Trigger installation / update of Blender v${chosenVer} on node [${workerId}]?`)) return;
 
             document.getElementById('install-banner').style.display = 'flex';
             document.getElementById('install-banner-pct').innerText = 'Starting...';
-            document.getElementById('install-banner-msg').innerText = `Initiating package install on ${workerId}...`;
+            document.getElementById('install-banner-msg').innerText = `Initiating Blender v${chosenVer} install on ${workerId}...`;
 
             try {
                 const res = await fetch('/api/nodes/install-blender', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ workerId: workerId })
+                    body: JSON.stringify({ workerId: workerId, version: chosenVer })
                 });
                 const data = await res.json();
                 console.log("Install triggered:", data);
@@ -1293,6 +1296,12 @@
 
             let anyInstalling = false;
 
+            const prevSelections = {};
+            workers.forEach(w => {
+                const el = document.getElementById(`blender-ver-${w.workerId}`);
+                if (el) prevSelections[w.workerId] = el.value;
+            });
+
             tbody.innerHTML = '';
             workers.forEach(worker => {
                 const row = document.createElement('tr');
@@ -1304,11 +1313,24 @@
                 else if (worker.status === 'OFFLINE') statusColor = 'var(--accent-red)';
                 else if (worker.status === 'EVICTED') statusColor = 'var(--accent-orange)';
 
+                const selVer = prevSelections[worker.workerId] || '5.2.1';
+
                 // Blender status rendering
                 let blenderBadge = `
-                    <div style="display: flex; align-items: center;">
-                        <span class="badge-pill not-installed">Not Installed</span>
-                        <button class="btn-install" onclick="triggerBlenderInstall('${worker.workerId}')">Install Blender</button>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span class="badge-pill not-installed">Not Installed</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+                            <select id="blender-ver-${worker.workerId}" class="form-control" style="padding: 2px 5px; font-size: 11px; height: 24px; width: 95px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.15);">
+                                <option value="5.2.1" ${selVer === '5.2.1' ? 'selected' : ''}>v5.2.1 (Latest)</option>
+                                <option value="5.2.0" ${selVer === '5.2.0' ? 'selected' : ''}>v5.2.0</option>
+                                <option value="4.2.0" ${selVer === '4.2.0' ? 'selected' : ''}>v4.2.0 LTS</option>
+                                <option value="4.1.1" ${selVer === '4.1.1' ? 'selected' : ''}>v4.1.1</option>
+                                <option value="3.6.13" ${selVer === '3.6.13' ? 'selected' : ''}>v3.6 LTS</option>
+                            </select>
+                            <button class="btn-install" style="padding: 2px 8px; font-size: 11px; border-radius: 4px; height: 24px;" onclick="triggerBlenderInstall('${worker.workerId}')">Install</button>
+                        </div>
                     </div>
                 `;
 
@@ -1330,7 +1352,23 @@
                         </div>
                     `;
                 } else if (worker.blenderInstalled) {
-                    blenderBadge = `<span class="badge-pill installed">Installed (${worker.blenderVersion || 'Active'})</span>`;
+                    blenderBadge = `
+                        <div style="display: flex; flex-direction: column; gap: 3px;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="badge-pill installed">Installed (${worker.blenderVersion || 'Active'})</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+                                <select id="blender-ver-${worker.workerId}" class="form-control" style="padding: 1px 4px; font-size: 10.5px; height: 22px; width: 92px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.15);" title="Select target Blender version to update or switch">
+                                    <option value="5.2.1" ${selVer === '5.2.1' ? 'selected' : ''}>v5.2.1 (Latest)</option>
+                                    <option value="5.2.0" ${selVer === '5.2.0' ? 'selected' : ''}>v5.2.0</option>
+                                    <option value="4.2.0" ${selVer === '4.2.0' ? 'selected' : ''}>v4.2.0 LTS</option>
+                                    <option value="4.1.1" ${selVer === '4.1.1' ? 'selected' : ''}>v4.1.1</option>
+                                    <option value="3.6.13" ${selVer === '3.6.13' ? 'selected' : ''}>v3.6 LTS</option>
+                                </select>
+                                <button class="btn-install" style="padding: 1px 6px; font-size: 10.5px; height: 22px; background: #6a11cb; border: none; color: white; border-radius: 4px; cursor: pointer;" onclick="triggerBlenderInstall('${worker.workerId}')" title="Update or switch installed Blender version">Update</button>
+                            </div>
+                        </div>
+                    `;
                 }
 
                 const osLabel = worker.osName || 'macOS';

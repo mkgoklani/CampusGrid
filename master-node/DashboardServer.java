@@ -609,6 +609,7 @@ public class DashboardServer {
 
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             String targetWorkerId = extractJsonString(body, "workerId", "");
+            String requestedVersion = extractJsonString(body, "version", "5.2.1");
 
             int sentCount = 0;
 
@@ -629,7 +630,7 @@ public class DashboardServer {
 
                         // Determine Master IP relative to the connected worker
                         String masterIp = getReachableMasterIp(w, exchange);
-                        String downloadUrl = "http://" + masterIp + ":" + httpPort + "/download/blender?os=" + osType + "&arch=" + arch;
+                        String downloadUrl = "http://" + masterIp + ":" + httpPort + "/download/blender?os=" + osType + "&arch=" + arch + "&version=" + requestedVersion;
 
                         GridMessage installMsg = new GridMessage(MessageType.INSTALL_BLENDER, "MASTER", downloadUrl);
 
