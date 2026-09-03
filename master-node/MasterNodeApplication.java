@@ -344,7 +344,9 @@ public class MasterNodeApplication {
             if ("RENDERING".equalsIgnoreCase(state) || "BUSY".equalsIgnoreCase(state)) {
                 workerRegistry.updateStatus(workerId, WorkerStatus.BUSY);
             } else if ("READY".equalsIgnoreCase(state) || "IDLE".equalsIgnoreCase(state)) {
-                workerRegistry.updateStatus(workerId, WorkerStatus.IDLE);
+                if (worker.getCurrentJobId() == null) {
+                    workerRegistry.updateStatus(workerId, WorkerStatus.IDLE);
+                }
             }
         } catch (Exception e) {
             System.err.printf("[STATUS-ERR] Failed parsing BlenderStatusReport from [%s]: %s%n", workerId, e.getMessage());
