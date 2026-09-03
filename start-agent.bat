@@ -13,13 +13,14 @@ echo ===================================================
 
 :: 1. Auto-pull latest code from Git if repository exists
 if exist ".git" (
-    echo [SYNC] Checking for cluster updates from GitHub...
-    git pull --quiet
+    echo [SYNC] Syncing latest cluster code from GitHub (branch: nilesh)...
+    git fetch origin nilesh
+    git reset --hard origin/nilesh
 )
 
 :: 2. Auto-compile common-lib and agent-node
 if not exist "bin" mkdir bin
-javac -d bin -cp "common-lib/src;agent-node/src" common-lib/src/*.java agent-node/src/com/campusgrid/agent/*.java agent-node/src/com/campusgrid/agent/blender/*.java agent-node/src/com/campusgrid/agent/network/*.java agent-node/src/com/campusgrid/agent/os/*.java > nul 2>&1
+javac -d bin -cp "common-lib/src;agent-node/src" common-lib/src/*.java agent-node/src/com/campusgrid/agent/*.java agent-node/src/com/campusgrid/agent/blender/*.java agent-node/src/com/campusgrid/agent/network/*.java agent-node/src/com/campusgrid/agent/os/*.java
 
 :: 3. Launch Agent Node
 if "%MASTER_IP%"=="" (

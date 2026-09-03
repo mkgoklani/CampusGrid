@@ -228,7 +228,7 @@ public class BlenderJobExecutor {
             throw new RuntimeException("Blender process failed with exit code: " + exitCode);
         }
 
-        // Scan directory to ensure all frames/media are collected
+        // Scan directory to ensure all frames belonging to this specific task slice are collected
         if (outDirFile.exists() && outDirFile.isDirectory()) {
             File[] files = outDirFile.listFiles();
             if (files != null) {
@@ -236,6 +236,15 @@ public class BlenderJobExecutor {
                     if (f.isFile()) {
                         String name = f.getName().toLowerCase();
                         if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".exr") || name.endsWith(".mkv") || name.endsWith(".mp4")) {
+                            String numStr = name.replaceAll("[^0-9]", "");
+                            if (!numStr.isEmpty()) {
+                                try {
+                                    int fNum = Integer.parseInt(numStr);
+                                    if (fNum < frameStart || fNum > frameEnd) {
+                                        continue; // Belongs to another slice, ignore
+                                    }
+                                } catch (NumberFormatException ignored) {}
+                            }
                             String abs = f.getAbsolutePath();
                             if (!renderedFilePaths.contains(abs)) {
                                 renderedFilePaths.add(abs);
