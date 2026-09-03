@@ -181,7 +181,7 @@ public class Job implements Serializable {
      * Marks a sub-task completed and checks if the entire job is done.
      *
      * @param taskId Unique identifier of the sub-task.
-     * @return true if all sub-tasks in this job are now complete, false otherwise.
+     * @return true if all sub-tasks or all frame ranges in this job are now complete, false otherwise.
      */
     public boolean markSubTaskCompleted(String taskId) {
         SubTask task = subTasks.get(taskId);
@@ -189,7 +189,7 @@ public class Job implements Serializable {
             task.setStatus(SubTaskStatus.COMPLETED);
             task.setCompletionTimestamp(System.currentTimeMillis());
             int completed = completedTaskCount.incrementAndGet();
-            if (completed >= subTasks.size() && !subTasks.isEmpty()) {
+            if ((completed >= subTasks.size() && !subTasks.isEmpty()) || isAllFramesCovered()) {
                 this.status = JobStatus.COMPLETED;
                 if (this.completionTimestamp == 0) {
                     this.completionTimestamp = System.currentTimeMillis();
@@ -201,16 +201,54 @@ public class Job implements Serializable {
     }
 
     /**
-     * Checks if all sub-tasks have finished.
+     * Checks if all frames 1 through totalFrames have been completed by finished sub-tasks.
      */
-    public boolean isAllCompleted() {
-        return !subTasks.isEmpty() && completedTaskCount.get() >= subTasks.size();
+    public boolean isAllFramesCovered() {
+        if (totalFrames <= 0) return false;
+        boolean[] covered = new boolean[totalFrames + 1];
+        int count = 0;
+        for (SubTask st : subTasks.values()) {
+            if (st.getStatus() == SubTaskStatus.COMPLETED) {
+                for (int f = Math.max(1, st.getStartFrame()); f <= Math.min(totalFrames, st.getEndFrame()); f++) {
+                    if (!covered[f]) {
+                        covered[f] = true;
+                        count++;
+                    }
+                }
+            }
+        }
+        return count >= totalFrames;
     }
 
     /**
-     * Computes the job progress percentage (0.0% to 100.0%).
+     * Checks if all sub-tasks or all frames have finished.
+     */
+    public boolean isAllCompleted() {
+        if (status == JobStatus.COMPLETED) return true;
+        if (!subTasks.isEmpty() && completedTaskCount.get() >= subTasks.size()) return true;
+        return isAllFramesCovered();
+    }
+
+    /**
+     * Computes the job progress percentage (0.0% to 100.0%) based on completed frame coverage.
      */
     public double getProgressPercentage() {
+        if (status == JobStatus.COMPLETED) return 100.0;
+        if (totalFrames > 0) {
+            int count = 0;
+            boolean[] covered = new boolean[totalFrames + 1];
+            for (SubTask st : subTasks.values()) {
+                if (st.getStatus() == SubTaskStatus.COMPLETED) {
+                    for (int f = Math.max(1, st.getStartFrame()); f <= Math.min(totalFrames, st.getEndFrame()); f++) {
+                        if (!covered[f]) {
+                            covered[f] = true;
+                            count++;
+                        }
+                    }
+                }
+            }
+            return Math.min(100.0, ((double) count / totalFrames) * 100.0);
+        }
         if (subTasks.isEmpty()) return 0.0;
         return ((double) completedTaskCount.get() / subTasks.size()) * 100.0;
     }
