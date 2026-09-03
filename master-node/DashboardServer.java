@@ -1162,16 +1162,22 @@ public class DashboardServer {
             String filename = "blender-archive";
             
             if ("linux".equals(os)) {
-                archiveFile = findArchiveFile("blender_archives/linux", "blender-4.2.0-linux-x64.tar.xz");
+                archiveFile = findArchiveFile("blender_archives/linux", "blender-5.2.1-linux-x64.tar.xz");
+                if (archiveFile == null) archiveFile = findArchiveFile("blender_archives/linux", "blender-4.2.0-linux-x64.tar.xz");
+                if (archiveFile == null) archiveFile = findArchiveFile("blender_archives/linux", null);
                 contentType = "application/x-xz";
             } else if ("windows".equals(os)) {
-                archiveFile = findArchiveFile("blender_archives/windows", "blender-4.2.0-windows-x64.zip");
+                archiveFile = findArchiveFile("blender_archives/windows", "blender-5.2.1-windows-x64.zip");
+                if (archiveFile == null) archiveFile = findArchiveFile("blender_archives/windows", "blender-4.2.0-windows-x64.zip");
+                if (archiveFile == null) archiveFile = findArchiveFile("blender_archives/windows", null);
                 contentType = "application/zip";
             } else if ("macos".equals(os)) {
                 if (arch.contains("arm") || arch.contains("aarch64")) {
-                    archiveFile = findArchiveFile("blender_archives/macos", "blender-4.2.0-macos-arm64.dmg");
+                    archiveFile = findArchiveFile("blender_archives/macos", "blender-5.2.1-macos-arm64.dmg");
+                    if (archiveFile == null) archiveFile = findArchiveFile("blender_archives/macos", "blender-4.2.0-macos-arm64.dmg");
                 } else if (arch.contains("x64") || arch.contains("amd64") || arch.contains("intel")) {
-                    archiveFile = findArchiveFile("blender_archives/macos", "blender-4.2.0-macos-x64.dmg");
+                    archiveFile = findArchiveFile("blender_archives/macos", "blender-5.2.1-macos-x64.dmg");
+                    if (archiveFile == null) archiveFile = findArchiveFile("blender_archives/macos", "blender-4.2.0-macos-x64.dmg");
                 }
                 if (archiveFile == null || !archiveFile.exists()) {
                     archiveFile = findArchiveFile("blender_archives/macos", null);

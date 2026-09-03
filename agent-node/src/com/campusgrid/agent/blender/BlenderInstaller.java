@@ -9,6 +9,8 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Handles detection, verification, and automated standalone installation of Blender 3D.
@@ -233,28 +235,49 @@ public class BlenderInstaller {
 
             boolean isArm = System.getProperty("os.arch").toLowerCase().contains("aarch64") 
                          || System.getProperty("os.arch").toLowerCase().contains("arm");
-            String url = (downloadUrl != null && !downloadUrl.trim().isEmpty())
-                ? (downloadUrl.contains("?") ? downloadUrl + "&arch=" + (isArm ? "arm64" : "x64") : downloadUrl + "?arch=" + (isArm ? "arm64" : "x64"))
-                : (isArm 
-                    ? "https://download.blender.org/release/Blender4.2/blender-4.2.0-macos-arm64.dmg"
-                    : "https://download.blender.org/release/Blender4.2/blender-4.2.0-macos-x64.dmg");
+
+            List<String> urlsToTry = new ArrayList<>();
+            if (downloadUrl != null && !downloadUrl.trim().isEmpty()) {
+                String fullUrl = downloadUrl.contains("?") 
+                    ? downloadUrl + "&arch=" + (isArm ? "arm64" : "x64") 
+                    : downloadUrl + "?arch=" + (isArm ? "arm64" : "x64");
+                urlsToTry.add(fullUrl);
+            }
+
+            if (isArm) {
+                urlsToTry.add("https://download.blender.org/release/Blender5.2/blender-5.2.1-macos-arm64.dmg");
+                urlsToTry.add("https://download.blender.org/release/Blender5.2/blender-5.2.0-macos-arm64.dmg");
+                urlsToTry.add("https://download.blender.org/release/Blender4.2/blender-4.2.0-macos-arm64.dmg");
+            } else {
+                urlsToTry.add("https://download.blender.org/release/Blender5.2/blender-5.2.1-macos-x64.dmg");
+                urlsToTry.add("https://download.blender.org/release/Blender5.2/blender-5.2.0-macos-x64.dmg");
+                urlsToTry.add("https://download.blender.org/release/Blender4.2/blender-4.2.0-macos-x64.dmg");
+            }
 
             boolean downloaded = false;
             String whichCurl = BlenderUtils.executeCommand("which", "curl");
-            if (whichCurl != null && !whichCurl.trim().isEmpty()) {
-                if (callback != null) callback.onProgress(20.0, "Downloading Blender 4.2 official DMG (~300MB)...");
-                System.out.println("[INSTALLER] Downloading Blender DMG via curl: " + url);
-                BlenderUtils.executeCommandWithTimeout(300, whichCurl.trim(), "-L", "-f", "-o", dmgFile.getAbsolutePath(), url);
-                downloaded = dmgFile.exists() && dmgFile.length() > 20_000_000;
+
+            for (String url : urlsToTry) {
+                System.out.println("[INSTALLER] Attempting Blender DMG download from: " + url);
+                if (whichCurl != null && !whichCurl.trim().isEmpty()) {
+                    if (callback != null) callback.onProgress(20.0, "Downloading latest Blender DMG...");
+                    BlenderUtils.executeCommandWithTimeout(300, whichCurl.trim(), "-L", "-f", "-o", dmgFile.getAbsolutePath(), url);
+                    downloaded = dmgFile.exists() && dmgFile.length() > 20_000_000;
+                }
+
+                if (!downloaded) {
+                    if (callback != null) callback.onProgress(20.0, "Downloading Blender DMG via streaming...");
+                    downloaded = downloadFileWithProgress(url, dmgFile, callback, 20.0, 75.0);
+                }
+
+                if (downloaded) {
+                    System.out.println("[INSTALLER] ✓ Successfully fetched Blender DMG from: " + url);
+                    break;
+                }
             }
 
             if (!downloaded) {
-                if (callback != null) callback.onProgress(20.0, "Downloading Blender DMG via Java HTTP streaming...");
-                downloaded = downloadFileWithProgress(url, dmgFile, callback, 20.0, 75.0);
-            }
-
-            if (!downloaded) {
-                System.err.println("[INSTALLER-ERR] Failed downloading Blender DMG from: " + url);
+                System.err.println("[INSTALLER-ERR] Failed downloading Blender DMG from all candidate mirrors.");
                 return false;
             }
 
@@ -349,10 +372,20 @@ public class BlenderInstaller {
 
         // Stage 2: Fallback to official Blender CDN
         if (!downloaded) {
-            String cdnUrl = "https://download.blender.org/release/Blender4.2/blender-4.2.0-linux-x64.tar.xz";
-            System.out.println("[INSTALLER] Linux Stage 2: Downloading from Blender official CDN: " + cdnUrl);
-            if (callback != null) callback.onProgress(15.0, "Downloading standalone Blender archive from CDN...");
-            downloaded = downloadFileWithProgress(cdnUrl, tarFile, callback, 15.0, 65.0);
+            String[] linuxCdnUrls = {
+                "https://download.blender.org/release/Blender5.2/blender-5.2.1-linux-x64.tar.xz",
+                "https://download.blender.org/release/Blender5.2/blender-5.2.0-linux-x64.tar.xz",
+                "https://download.blender.org/release/Blender4.2/blender-4.2.0-linux-x64.tar.xz"
+            };
+            for (String cdnUrl : linuxCdnUrls) {
+                System.out.println("[INSTALLER] Linux Stage 2: Downloading from Blender official CDN: " + cdnUrl);
+                if (callback != null) callback.onProgress(15.0, "Downloading standalone Blender archive from CDN...");
+                downloaded = downloadFileWithProgress(cdnUrl, tarFile, callback, 15.0, 65.0);
+                if (downloaded) {
+                    System.out.println("[INSTALLER] ✓ Successfully fetched Blender Linux archive from: " + cdnUrl);
+                    break;
+                }
+            }
         }
 
         // Extraction
@@ -430,10 +463,20 @@ public class BlenderInstaller {
 
         // Stage 2: Fallback to official Blender CDN
         if (!downloaded) {
-            String cdnUrl = "https://download.blender.org/release/Blender4.2/blender-4.2.0-windows-x64.zip";
-            System.out.println("[INSTALLER] Windows Stage 2: Downloading from Blender official CDN: " + cdnUrl);
-            if (callback != null) callback.onProgress(15.0, "Downloading portable Blender ZIP from CDN...");
-            downloaded = downloadFileWithProgress(cdnUrl, zipFile, callback, 15.0, 75.0);
+            String[] winCdnUrls = {
+                "https://download.blender.org/release/Blender5.2/blender-5.2.1-windows-x64.zip",
+                "https://download.blender.org/release/Blender5.2/blender-5.2.0-windows-x64.zip",
+                "https://download.blender.org/release/Blender4.2/blender-4.2.0-windows-x64.zip"
+            };
+            for (String cdnUrl : winCdnUrls) {
+                System.out.println("[INSTALLER] Windows Stage 2: Downloading from Blender official CDN: " + cdnUrl);
+                if (callback != null) callback.onProgress(15.0, "Downloading portable Blender ZIP from CDN...");
+                downloaded = downloadFileWithProgress(cdnUrl, zipFile, callback, 15.0, 75.0);
+                if (downloaded) {
+                    System.out.println("[INSTALLER] ✓ Successfully fetched Blender Windows archive from: " + cdnUrl);
+                    break;
+                }
+            }
         }
 
         if (downloaded && zipFile.exists() && zipFile.length() > 10_000_000) {
