@@ -122,7 +122,7 @@ public class BlenderJobExecutor {
         List<String> command = new ArrayList<>();
         command.add(blenderPath);
         command.add("-b"); // headless mode
-        command.add(blendFile.getAbsolutePath());
+        command.add(blendFile.getAbsolutePath().replace('\\', '/'));
 
         String engine = (renderEngine != null && !renderEngine.trim().isEmpty()) ? renderEngine.trim() : "CYCLES";
         if ("BLENDER_EEVEE".equalsIgnoreCase(engine)) {
@@ -137,15 +137,23 @@ public class BlenderJobExecutor {
             System.out.println("[EXECUTOR] Activating GPU Acceleration backend (METAL / CUDA / OPTIX / HIP / ONEAPI)...");
             String pyGpu = String.format(
                 "import bpy; " +
+                "try: " +
                 "s = bpy.context.scene; " +
                 "(s and setattr(s.render, 'engine', '%s')); " +
                 "prefs = bpy.context.preferences.addons.get('cycles'); " +
-                "cprefs = prefs.preferences if prefs else None; " +
-                "(cprefs and cprefs.get_devices()); " +
-                "[(setattr(d,'use',True) if d.type in ('OPTIX','CUDA','HIP','METAL','ONEAPI') else None) for d in (cprefs.devices if cprefs else [])]; " +
-                "best_type = next((t for t in ('OPTIX','CUDA','HIP','METAL','ONEAPI') if any(d.type==t for d in (cprefs.devices if cprefs else []))), None); " +
-                "(best_type and setattr(cprefs,'compute_device_type',best_type)); " +
-                "(best_type and getattr(s, 'cycles', None) and setattr(s.cycles, 'device', 'GPU'))",
+                "cprefs = getattr(prefs, 'preferences', None) if prefs else None; " +
+                "if cprefs: " +
+                "cprefs.get_devices(); " +
+                "devs = getattr(cprefs, 'devices', []); " +
+                "has_gpu = False; " +
+                "[(setattr(d, 'use', True) if d.type in ('OPTIX','CUDA','HIP','METAL','ONEAPI') else setattr(d, 'use', False)) for d in devs]; " +
+                "has_gpu = any(d.type in ('OPTIX','CUDA','HIP','METAL','ONEAPI') for d in devs); " +
+                "best_type = next((t for t in ('OPTIX','CUDA','HIP','METAL','ONEAPI') if any(d.type==t for d in devs)), None); " +
+                "(best_type and setattr(cprefs, 'compute_device_type', best_type)); " +
+                "(has_gpu and s and hasattr(s, 'cycles') and setattr(s.cycles, 'device', 'GPU')); " +
+                "(not has_gpu and s and hasattr(s, 'cycles') and setattr(s.cycles, 'device', 'CPU')); " +
+                "except Exception as e: " +
+                "print('[BLENDER-PY-WARN]', e)",
                 engine
             );
             command.add("--python-expr");
@@ -154,12 +162,15 @@ public class BlenderJobExecutor {
             System.out.println("[EXECUTOR] Disabling GPU Acceleration — using standard multi-core CPU compute...");
             String pyCpu = String.format(
                 "import bpy; " +
+                "try: " +
                 "s = bpy.context.scene; " +
                 "(s and setattr(s.render, 'engine', '%s')); " +
-                "(getattr(s, 'cycles', None) and setattr(s.cycles, 'device', 'CPU')); " +
+                "(s and hasattr(s, 'cycles') and setattr(s.cycles, 'device', 'CPU')); " +
                 "prefs = bpy.context.preferences.addons.get('cycles'); " +
-                "cprefs = prefs.preferences if prefs else None; " +
-                "(cprefs and setattr(cprefs,'compute_device_type','NONE'))",
+                "cprefs = getattr(prefs, 'preferences', None) if prefs else None; " +
+                "(cprefs and setattr(cprefs, 'compute_device_type', 'NONE')); " +
+                "except Exception as e: " +
+                "print('[BLENDER-PY-WARN]', e)",
                 engine
             );
             command.add("--python-expr");
@@ -170,7 +181,7 @@ public class BlenderJobExecutor {
         if (!outDirFile.exists()) {
             outDirFile.mkdirs();
         }
-        String outPattern = new File(outDirFile, "frame_####").getAbsolutePath();
+        String outPattern = new File(outDirFile, "frame_####").getAbsolutePath().replace('\\', '/');
         command.add("-o");
         command.add(outPattern);
 
@@ -270,8 +281,23 @@ public class BlenderJobExecutor {
             throw new InterruptedException("Render job " + jobId + " was cancelled");
         }
 
+        // Scan directory to catch all rendered frames
+        File[] foundFrames = outDirFile.listFiles();
+        if (foundFrames != null) {
+            for (File f : foundFrames) {
+                if (f.isFile() && f.getName().startsWith("frame_") && 
+                    (f.getName().endsWith(".png") || f.getName().endsWith(".jpg") || f.getName().endsWith(".exr") || f.getName().endsWith(".webp"))) {
+                    if (!renderedFilePaths.contains(f.getAbsolutePath())) {
+                        renderedFilePaths.add(f.getAbsolutePath());
+                    }
+                }
+            }
+        }
+
         if (exitCode != 0) {
-            if (useGpu) {
+            if (renderedFilePaths.size() >= totalFrames) {
+                System.out.println("[EXECUTOR] Process exited with code (" + exitCode + "), but all " + renderedFilePaths.size() + " frames were successfully rendered.");
+            } else if (useGpu) {
                 System.out.printf("[EXECUTOR-RETRY] ⚠ GPU compute execution failed with exit code %d (e.g. Device OOM or Driver issue). Retrying on CPU compute mode...\n", exitCode);
                 return executeJob(jobId, blendFilePath, frameStart, frameEnd, outputDir, renderEngine, false, reporter);
             } else {

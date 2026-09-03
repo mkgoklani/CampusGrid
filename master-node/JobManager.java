@@ -172,11 +172,20 @@ public class JobManager {
                 }, "FrameStitcher-" + jobId).start();
             }
         } else {
-            // Task failed - requeue for retry
+            // Task failed - requeue for retry up to 3 times
             for (Job.SubTask task : job.getSubTasks()) {
                 if (task.getTaskId().equals(taskId)) {
-                    System.out.println("[JOB-MANAGER-WARN] Task [" + taskId + "] failed. Re-queuing for retry...");
-                    job.requeueSubTask(task);
+                    task.incrementRetryCount();
+                    if (task.getRetryCount() <= 3) {
+                        System.out.printf("[JOB-MANAGER-WARN] Task [%s] failed (Attempt %d/3). Re-queuing for retry...\n",
+                            taskId, task.getRetryCount());
+                        job.requeueSubTask(task);
+                    } else {
+                        System.out.printf("[JOB-MANAGER-ERR] ❌ Task [%s] failed permanently after %d retries. Halting job.\n",
+                            taskId, task.getRetryCount());
+                        task.setStatus(Job.SubTaskStatus.FAILED);
+                        job.setStatus(JobStatus.FAILED);
+                    }
                     break;
                 }
             }
