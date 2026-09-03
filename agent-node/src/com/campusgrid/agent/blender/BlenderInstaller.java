@@ -106,15 +106,25 @@ public class BlenderInstaller {
         }
 
         Status current = getInstallationStatus();
+        String reqVer = extractVersionParam(downloadUrl);
         if (current.isInstalled()) {
-            System.out.println("[INSTALLER] Blender is already installed: " + current.getVersion());
-            if (callback != null) callback.onProgress(100.0, "Blender is already installed (" + current.getVersion() + ")");
-            return true;
+            if (reqVer != null && !reqVer.isEmpty() && !current.getVersion().startsWith(reqVer)) {
+                System.out.printf("[INSTALLER] Target Blender version v%s requested (current is v%s). Proceeding with upgrade/version switch...\n",
+                    reqVer, current.getVersion());
+            } else if (reqVer == null || reqVer.isEmpty()) {
+                System.out.println("[INSTALLER] Blender is already installed: " + current.getVersion());
+                if (callback != null) callback.onProgress(100.0, "Blender is already installed (" + current.getVersion() + ")");
+                return true;
+            } else {
+                System.out.println("[INSTALLER] Blender is already on target version: " + current.getVersion());
+                if (callback != null) callback.onProgress(100.0, "Blender is already on target version (" + current.getVersion() + ")");
+                return true;
+            }
         }
 
         isInstalling = true;
         currentInstallProgress = 5.0;
-        if (callback != null) callback.onProgress(5.0, "Initiating Blender automated installation pipeline...");
+        if (callback != null) callback.onProgress(5.0, "Initiating Blender automated installation pipeline" + (reqVer != null ? " (v" + reqVer + ")" : "") + "...");
 
         String os = System.getProperty("os.name").toLowerCase();
         try {
@@ -129,6 +139,14 @@ public class BlenderInstaller {
             isInstalling = false;
             currentInstallProgress = -1.0;
         }
+    }
+
+    private static String extractVersionParam(String url) {
+        if (url == null || !url.contains("version=")) return null;
+        int idx = url.indexOf("version=");
+        int end = url.indexOf("&", idx);
+        if (end == -1) end = url.length();
+        return url.substring(idx + 8, end).trim();
     }
 
 
@@ -242,6 +260,13 @@ public class BlenderInstaller {
                     ? downloadUrl + "&arch=" + (isArm ? "arm64" : "x64") 
                     : downloadUrl + "?arch=" + (isArm ? "arm64" : "x64");
                 urlsToTry.add(fullUrl);
+            }
+
+            String reqVer = extractVersionParam(downloadUrl);
+            if (reqVer != null && !reqVer.isEmpty()) {
+                int secondDot = reqVer.indexOf('.', reqVer.indexOf('.') + 1);
+                String majorMinor = (secondDot != -1) ? reqVer.substring(0, secondDot) : reqVer;
+                urlsToTry.add("https://download.blender.org/release/Blender" + majorMinor + "/blender-" + reqVer + "-macos-" + (isArm ? "arm64" : "x64") + ".dmg");
             }
 
             if (isArm) {
@@ -372,11 +397,17 @@ public class BlenderInstaller {
 
         // Stage 2: Fallback to official Blender CDN
         if (!downloaded) {
-            String[] linuxCdnUrls = {
-                "https://download.blender.org/release/Blender5.2/blender-5.2.1-linux-x64.tar.xz",
-                "https://download.blender.org/release/Blender5.2/blender-5.2.0-linux-x64.tar.xz",
-                "https://download.blender.org/release/Blender4.2/blender-4.2.0-linux-x64.tar.xz"
-            };
+            List<String> linuxCdnUrls = new ArrayList<>();
+            String reqVer = extractVersionParam(downloadUrl);
+            if (reqVer != null && !reqVer.isEmpty()) {
+                int secondDot = reqVer.indexOf('.', reqVer.indexOf('.') + 1);
+                String majorMinor = (secondDot != -1) ? reqVer.substring(0, secondDot) : reqVer;
+                linuxCdnUrls.add("https://download.blender.org/release/Blender" + majorMinor + "/blender-" + reqVer + "-linux-x64.tar.xz");
+            }
+            linuxCdnUrls.add("https://download.blender.org/release/Blender5.2/blender-5.2.1-linux-x64.tar.xz");
+            linuxCdnUrls.add("https://download.blender.org/release/Blender5.2/blender-5.2.0-linux-x64.tar.xz");
+            linuxCdnUrls.add("https://download.blender.org/release/Blender4.2/blender-4.2.0-linux-x64.tar.xz");
+
             for (String cdnUrl : linuxCdnUrls) {
                 System.out.println("[INSTALLER] Linux Stage 2: Downloading from Blender official CDN: " + cdnUrl);
                 if (callback != null) callback.onProgress(15.0, "Downloading standalone Blender archive from CDN...");
@@ -415,8 +446,9 @@ public class BlenderInstaller {
 
         // Stage 3: Fallback to snap or apt
         System.out.println("[INSTALLER] Linux Stage 3: Attempting package manager (snap/apt)...");
-        if (callback != null) callback.onProgress(75.0, "Attempting Snap package installation...");
+        if (callback != null) callback.onProgress(75.0, "Attempting Snap package installation/refresh...");
         try {
+            BlenderUtils.executeCommandWithTimeout(180, "sudo", "snap", "refresh", "blender");
             BlenderUtils.executeCommandWithTimeout(180, "sudo", "snap", "install", "blender", "--classic");
             Status verified = getInstallationStatus();
             if (verified.isInstalled()) {
@@ -463,11 +495,17 @@ public class BlenderInstaller {
 
         // Stage 2: Fallback to official Blender CDN
         if (!downloaded) {
-            String[] winCdnUrls = {
-                "https://download.blender.org/release/Blender5.2/blender-5.2.1-windows-x64.zip",
-                "https://download.blender.org/release/Blender5.2/blender-5.2.0-windows-x64.zip",
-                "https://download.blender.org/release/Blender4.2/blender-4.2.0-windows-x64.zip"
-            };
+            List<String> winCdnUrls = new ArrayList<>();
+            String reqVer = extractVersionParam(downloadUrl);
+            if (reqVer != null && !reqVer.isEmpty()) {
+                int secondDot = reqVer.indexOf('.', reqVer.indexOf('.') + 1);
+                String majorMinor = (secondDot != -1) ? reqVer.substring(0, secondDot) : reqVer;
+                winCdnUrls.add("https://download.blender.org/release/Blender" + majorMinor + "/blender-" + reqVer + "-windows-x64.zip");
+            }
+            winCdnUrls.add("https://download.blender.org/release/Blender5.2/blender-5.2.1-windows-x64.zip");
+            winCdnUrls.add("https://download.blender.org/release/Blender5.2/blender-5.2.0-windows-x64.zip");
+            winCdnUrls.add("https://download.blender.org/release/Blender4.2/blender-4.2.0-windows-x64.zip");
+
             for (String cdnUrl : winCdnUrls) {
                 System.out.println("[INSTALLER] Windows Stage 2: Downloading from Blender official CDN: " + cdnUrl);
                 if (callback != null) callback.onProgress(15.0, "Downloading portable Blender ZIP from CDN...");
@@ -510,7 +548,8 @@ public class BlenderInstaller {
             String whichWinget = BlenderUtils.executeCommand("where", "winget");
             if (whichWinget != null && !whichWinget.isEmpty()) {
                 if (callback != null) callback.onProgress(85.0, "Invoking Windows Package Manager (winget)...");
-                BlenderUtils.executeCommand("winget", "install", "--id", "BlenderFoundation.Blender", "-e", "--silent");
+                BlenderUtils.executeCommand("winget", "install", "--id", "BlenderFoundation.Blender", "-e", "--silent", "--accept-source-agreements", "--accept-package-agreements");
+                BlenderUtils.executeCommand("winget", "upgrade", "--id", "BlenderFoundation.Blender", "-e", "--silent", "--accept-source-agreements", "--accept-package-agreements");
                 Thread.sleep(2000);
                 Status verified = getInstallationStatus();
                 if (verified.isInstalled()) {
