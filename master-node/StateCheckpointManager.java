@@ -262,7 +262,7 @@ public class StateCheckpointManager implements Runnable {
                 Path outputDir = Paths.get("./output", jobId);
                 Set<Integer> completedFrames = new HashSet<>();
                 if (Files.exists(outputDir) && Files.isDirectory(outputDir)) {
-                    try (var stream = Files.list(outputDir)) {
+                    try (java.util.stream.Stream<Path> stream = Files.list(outputDir)) {
                         stream.filter(p -> p.getFileName().toString().toLowerCase().endsWith(".png"))
                               .forEach(p -> {
                                   String name = p.getFileName().toString();

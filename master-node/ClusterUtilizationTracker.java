@@ -109,7 +109,7 @@ public class ClusterUtilizationTracker implements Runnable {
      * Records a single telemetry snapshot of current cluster utilization.
      */
     public void recordSample() {
-        var allWorkers = workerRegistry.getAllWorkers();
+        java.util.Collection<WorkerState> allWorkers = workerRegistry.getAllWorkers();
         int total = 0;
         int busy = 0;
         int idle = 0;

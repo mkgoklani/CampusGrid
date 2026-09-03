@@ -220,7 +220,7 @@ public class ResultCollector {
     private void syncWorkerReliability(String workerId) {
         WorkerState worker = workerRegistry.getWorker(workerId);
         if (worker != null && reliabilityTracker != null) {
-            var metrics = reliabilityTracker.getMetrics(workerId);
+            WorkerReliabilityTracker.WorkerMetrics metrics = reliabilityTracker.getMetrics(workerId);
             synchronized (worker) {
                 worker.setReliabilityScore(metrics.getReliabilityScore());
                 worker.setTasksCompleted(metrics.getTasksCompleted());

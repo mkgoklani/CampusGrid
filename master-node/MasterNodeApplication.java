@@ -181,14 +181,14 @@ public class MasterNodeApplication {
                     break;
                 }
 
-                if (obj instanceof GridMessage message) {
-                    handleProtocolEnvelope(worker, message);
+                if (obj instanceof GridMessage) {
+                    handleProtocolEnvelope(worker, (GridMessage) obj);
                 } else if (obj != null && obj.getClass().getName().contains("RenderResult")) {
                     handleRenderResultPacket(worker, obj);
                 } else if (obj != null && obj.getClass().getName().contains("BlenderStatusReport")) {
                     handleBlenderStatusPacket(worker, obj);
-                } else if (obj instanceof String rawString) {
-                    handleLegacyStringPacket(worker, rawString);
+                } else if (obj instanceof String) {
+                    handleLegacyStringPacket(worker, (String) obj);
                 } else {
                     System.out.println("[RECEIVER-WARN] Unrecognized packet received from [" + workerId + "]: " + obj.getClass());
                 }
@@ -219,33 +219,38 @@ public class MasterNodeApplication {
         Object payload = message.getPayload();
 
         switch (type) {
-            case HEARTBEAT -> {
-                if (payload instanceof HeartbeatPayload hb) {
+            case HEARTBEAT:
+                if (payload instanceof HeartbeatPayload) {
+                    HeartbeatPayload hb = (HeartbeatPayload) payload;
                     workerRegistry.updateTelemetry(workerId, hb.getCpuTemperature(), hb.getRamUsagePercent());
                     if (hb.getStatus() != null && worker.getStatus() != WorkerStatus.BUSY) {
                         workerRegistry.updateStatus(workerId, hb.getStatus());
                     }
                 }
-            }
-            case TASK_PROGRESS -> {
-                if (payload instanceof TaskProgressPayload prog) {
+                break;
+            case TASK_PROGRESS:
+                if (payload instanceof TaskProgressPayload) {
+                    TaskProgressPayload prog = (TaskProgressPayload) payload;
                     System.out.printf("[RECEIVER] Progress from [%s] on Task [%s]: %.1f%% (%s)\n",
                         workerId, prog.getTaskId(), prog.getProgressPercentage(), prog.getStatusMessage());
                 }
-            }
-            case TASK_COMPLETE -> {
-                if (payload instanceof TaskResultPayload result) {
+                break;
+            case TASK_COMPLETE:
+                if (payload instanceof TaskResultPayload) {
+                    TaskResultPayload result = (TaskResultPayload) payload;
                     System.out.printf("[RECEIVER] Result received for Task [%s] from Worker [%s]\n",
                         result.getTaskId(), workerId);
                     resultCollector.handleTaskResult(workerId, result);
                 }
-            }
-            case EVICTED -> {
+                break;
+            case EVICTED:
                 System.out.println("[RECEIVER-WARN] ⚠ Eviction notification from Worker [" + workerId + "]");
                 workerRegistry.handleWorkerFailure(workerId, jobManager);
                 workerRegistry.updateStatus(workerId, WorkerStatus.EVICTED);
-            }
-            default -> System.out.println("[RECEIVER] Message type " + type + " received from [" + workerId + "]");
+                break;
+            default:
+                System.out.println("[RECEIVER] Message type " + type + " received from [" + workerId + "]");
+                break;
         }
     }
 

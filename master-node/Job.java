@@ -80,8 +80,8 @@ public class Job implements Serializable {
 
             SubTask subTask = new SubTask(taskId, jobId, start, end, frameRange, workloadType);
             subTask.setTaskData(blendBytes != null ? blendBytes : blendPath);
-            if (blendBytes instanceof byte[] b) {
-                subTask.setTaskPayloadBytes(b);
+            if (blendBytes instanceof byte[]) {
+                subTask.setTaskPayloadBytes((byte[]) blendBytes);
             }
             subTasks.put(taskId, subTask);
             pendingSubTasks.add(subTask);
@@ -127,8 +127,8 @@ public class Job implements Serializable {
 
             SubTask subTask = new SubTask(taskId, jobId, currentStart, currentEnd, frameRange, workloadType);
             subTask.setTaskData(blendBytes != null ? blendBytes : blendPath);
-            if (blendBytes instanceof byte[] b) {
-                subTask.setTaskPayloadBytes(b);
+            if (blendBytes instanceof byte[]) {
+                subTask.setTaskPayloadBytes((byte[]) blendBytes);
             }
             subTasks.put(taskId, subTask);
             pendingSubTasks.add(subTask);

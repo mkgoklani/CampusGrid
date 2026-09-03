@@ -26,7 +26,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo [3/4] Compiling Master Node and Web Services...
-javac -encoding UTF-8 -d bin -cp "master-node/lib/*;bin;common-lib/src" master-node/*.java master-node/src/com/campusgrid/master/*.java
+javac -encoding UTF-8 -d bin -cp "master-node/lib/*;bin" master-node/*.java master-node/src/com/campusgrid/master/*.java
 
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Master Node compilation failed!
@@ -35,7 +35,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo [4/5] Compiling Integration Test Suites...
-javac -encoding UTF-8 -d bin -cp "master-node/lib/*;bin;common-lib/src;master-node" test/*.java
+javac -encoding UTF-8 -d bin -cp "master-node/lib/*;bin;master-node" test/*.java
 
 echo [5/5] Packaging Standalone Runnable agent.jar...
 jar cvfe bin/agent.jar com.campusgrid.agent.Agent -C bin . > nul 2>&1

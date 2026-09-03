@@ -304,11 +304,11 @@ public class JobManager {
         int queued = 0, running = 0, completed = 0, cancelled = 0, failed = 0;
         for (Job j : jobRegistry.values()) {
             switch (j.getStatus()) {
-                case QUEUED -> queued++;
-                case RUNNING -> running++;
-                case COMPLETED -> completed++;
-                case CANCELLED -> cancelled++;
-                case FAILED -> failed++;
+                case QUEUED: queued++; break;
+                case RUNNING: running++; break;
+                case COMPLETED: completed++; break;
+                case CANCELLED: cancelled++; break;
+                case FAILED: failed++; break;
             }
         }
         return String.format("JobSummary[Total=%d, Queued=%d, Running=%d, Completed=%d, Cancelled=%d, Failed=%d]",
