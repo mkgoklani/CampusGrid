@@ -356,6 +356,7 @@ public class PayloadListener implements Runnable {
             reporter.reportStatus(task.getJobId(), task.getFrameStart(), totalFramesToRender, 0.0, -1.0, "RENDERING", blenderVer, true);
 
             try {
+                com.campusgrid.agent.os.LinuxTelemetry.isExecutingTask = true;
                 rawFiles = com.campusgrid.agent.blender.BlenderJobExecutor.executeJob(
                     task.getJobId(),
                     task.getBlendFilePath(),

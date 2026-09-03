@@ -270,18 +270,16 @@ public class HardwareCollector {
                 }
 
             } else if (os.contains("win")) {
-                // Windows: Query all Win32_VideoController adapters with VRAM
+                // Windows: Query Win32_VideoController adapters cleanly
                 String psGpu = executeCommand("powershell", "-NoProfile", "-Command",
-                    "Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM | ForEach-Object { \"$($_.Name)|$([math]::Round($_.AdapterRAM/1GB, 1))GB\" }");
+                    "Get-CimInstance Win32_VideoController | ForEach-Object { $_.Name }");
                 
                 if (psGpu != null && !psGpu.trim().isEmpty()) {
                     for (String line : psGpu.split("\n")) {
                         String trimmed = line.trim();
-                        if (!trimmed.isEmpty() && !trimmed.startsWith("null")) {
-                            String[] parts = trimmed.split("\\|");
-                            String name = parts[0].trim();
-                            String vram = (parts.length > 1 && !parts[1].equals("0GB")) ? (" (" + parts[1].trim() + " VRAM)") : "";
-                            detectedGpus.add(name + vram);
+                        if (!trimmed.isEmpty() && !trimmed.toLowerCase().startsWith("null")
+                            && !trimmed.toLowerCase().contains("at line:") && !trimmed.toLowerCase().contains("char:")) {
+                            detectedGpus.add(trimmed);
                         }
                     }
                 }
@@ -293,7 +291,9 @@ public class HardwareCollector {
                             String trimmed = line.trim();
                             if (trimmed.startsWith("Name=")) {
                                 String candidate = trimmed.substring(5).trim();
-                                if (!candidate.isEmpty()) detectedGpus.add(candidate);
+                                if (!candidate.isEmpty() && !candidate.toLowerCase().contains("char:")) {
+                                    detectedGpus.add(candidate);
+                                }
                             }
                         }
                     }
@@ -301,13 +301,14 @@ public class HardwareCollector {
             }
         } catch (Exception ignored) {}
 
-        // Filter out virtual display drivers
+        // Filter out virtual display drivers and error artifacts
         List<String> validGpus = new ArrayList<>();
         for (String g : detectedGpus) {
             String lower = g.toLowerCase();
             if (!lower.contains("microsoft basic") && !lower.contains("remote desktop") && 
                 !lower.contains("virtualbox") && !lower.contains("vmware") && !lower.contains("citrix") &&
-                !lower.contains("spacedesk") && !lower.contains("parsec")) {
+                !lower.contains("spacedesk") && !lower.contains("parsec") &&
+                !lower.contains("at line:") && !lower.contains("char:") && !lower.contains("syntaxerror")) {
                 validGpus.add(g.replaceAll("\\s+", " ").trim());
             }
         }
