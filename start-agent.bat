@@ -24,10 +24,10 @@ javac -d bin -cp "common-lib/src;agent-node/src" common-lib/src/*.java agent-nod
 :: 3. Launch Agent Node
 if "%MASTER_IP%"=="" (
     echo [NETWORK] Mode: Zero-Config LAN Auto-Discovery (UDP Broadcast)
-    java -cp "bin" com.campusgrid.agent.Agent
+    java -Xmx1024m -cp "bin" com.campusgrid.agent.Agent
 ) else (
     echo [NETWORK] Mode: Direct Master Connection to: %MASTER_IP%
-    java -cp "bin" com.campusgrid.agent.Agent %MASTER_IP%
+    java -Xmx1024m -cp "bin" com.campusgrid.agent.Agent %MASTER_IP%
 )
 
 echo.

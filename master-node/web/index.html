@@ -1400,11 +1400,29 @@
 
         function previewVideo(url, title) {
             document.getElementById('video-modal-title').innerText = title || "Compiled Animation Video";
-            const source = document.getElementById('video-source');
-            source.src = url;
             const player = document.getElementById('video-player');
+            const source = document.getElementById('video-source');
+            
+            // Append cache-buster timestamp to ensure browser fetches the newly compiled video
+            const cacheBustUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+            
+            player.pause();
+            player.src = cacheBustUrl;
+            if (source) source.src = cacheBustUrl;
             player.load();
+            player.play().catch(() => {});
+            
             document.getElementById('video-modal').style.display = 'flex';
+        }
+
+        function closeVideoModal() {
+            const player = document.getElementById('video-player');
+            if (player) {
+                player.pause();
+                player.removeAttribute('src');
+                player.load();
+            }
+            document.getElementById('video-modal').style.display = 'none';
         }
 
         async function openFrameGallery(jobId, jobName, totalFrames) {

@@ -367,39 +367,71 @@ public class PayloadListener implements Runnable {
 
             long duration = System.currentTimeMillis() - startTime;
 
-            // Read all rendered PNG frame bytes into memory map for TCP transfer
-            java.util.Map<String, byte[]> frameBytesMap = new java.util.HashMap<>();
+            // Stream rendered PNG frame bytes in memory-safe batches (max 10 frames per chunk)
+            // Prevents JVM heap exhaustion (OutOfMemoryError) and socket disconnection on large slices (90-180 frames)
+            final int BATCH_SIZE = 10;
+            java.util.List<String> validFiles = new java.util.ArrayList<>();
             for (String filePath : renderedFiles) {
                 java.io.File f = new java.io.File(filePath);
                 if (f.exists() && f.isFile() && f.length() > 0) {
-                    try {
-                        byte[] bytes = java.nio.file.Files.readAllBytes(f.toPath());
-                        frameBytesMap.put(f.getName(), bytes);
-                    } catch (Exception e) {
-                        System.err.println("[TASK] Failed reading frame file " + filePath + ": " + e.getMessage());
-                    }
+                    validFiles.add(filePath);
                 }
             }
 
-            System.out.printf("[TASK] Bundled %d frame(s) (%s) for transmission to Master.\n",
-                frameBytesMap.size(), task.getJobId());
+            int totalValid = validFiles.size();
+            System.out.printf("[TASK] Bundling %d frame(s) (%s) for streaming transmission to Master...\n",
+                totalValid, task.getJobId());
 
-            com.campusgrid.agent.blender.RenderResult result = new com.campusgrid.agent.blender.RenderResult(
-                task.getJobId(),
-                reporter.getWorkerId(),
-                renderedFiles,
-                frameBytesMap,
-                duration,
-                status
-            );
+            if (totalValid == 0) {
+                com.campusgrid.agent.blender.RenderResult result = new com.campusgrid.agent.blender.RenderResult(
+                    task.getJobId(),
+                    reporter.getWorkerId(),
+                    renderedFiles,
+                    java.util.Collections.emptyMap(),
+                    duration,
+                    status
+                );
+                try {
+                    connection.sendObject(result);
+                } catch (IOException e) {
+                    System.err.println("[TASK] Failed to send empty render result: " + e.getMessage());
+                }
+            } else {
+                for (int i = 0; i < totalValid; i += BATCH_SIZE) {
+                    int end = Math.min(i + BATCH_SIZE, totalValid);
+                    boolean isLastBatch = (end >= totalValid);
+                    java.util.List<String> batchSlice = validFiles.subList(i, end);
 
-            try {
-                // Send RenderResult with embedded frame binaries
-                connection.sendObject(result);
-                System.out.printf("[TASK] Render result sent to Master: %s (%d frames, %dms)\n", 
-                    status, frameBytesMap.size(), duration);
-            } catch (IOException e) {
-                System.err.println("[TASK] Failed to send render result: " + e.getMessage());
+                    java.util.Map<String, byte[]> batchMap = new java.util.HashMap<>();
+                    for (String p : batchSlice) {
+                        java.io.File f = new java.io.File(p);
+                        try {
+                            batchMap.put(f.getName(), java.nio.file.Files.readAllBytes(f.toPath()));
+                        } catch (Exception e) {
+                            System.err.println("[TASK] Failed reading frame file " + p + ": " + e.getMessage());
+                        }
+                    }
+
+                    String batchStatus = isLastBatch ? status : "CHUNK";
+                    com.campusgrid.agent.blender.RenderResult chunk = new com.campusgrid.agent.blender.RenderResult(
+                        task.getJobId(),
+                        reporter.getWorkerId(),
+                        batchSlice,
+                        batchMap,
+                        duration,
+                        batchStatus
+                    );
+
+                    try {
+                        connection.sendObject(chunk);
+                        System.out.printf("[TASK] Transmitted frame batch %d-%d/%d (%s) to Master\n",
+                            i + 1, end, totalValid, batchStatus);
+                        Thread.sleep(30);
+                    } catch (Exception e) {
+                        System.err.println("[TASK] Failed transmitting batch: " + e.getMessage());
+                    }
+                    batchMap.clear();
+                }
             }
 
             // Restore READY status after execution

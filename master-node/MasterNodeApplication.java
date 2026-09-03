@@ -271,7 +271,15 @@ public class MasterNodeApplication {
 
             String taskId = worker.getCurrentTaskId() != null ? worker.getCurrentTaskId() : (jobId + "_T001");
             int frameCount = frameBytesMap != null ? frameBytesMap.size() : 0;
-            System.out.printf("[RECEIVER] RenderResult for Job [%s] Task [%s] from [%s]: %s (%d frame binaries, %dms)\n",
+
+            if ("CHUNK".equalsIgnoreCase(status)) {
+                System.out.printf("[RECEIVER] Stream Chunk for Job [%s] Task [%s] from [%s]: %d frames written to disk\n",
+                    jobId, taskId, workerId, frameCount);
+                resultCollector.saveFrameBinaries(jobId, frameBytesMap);
+                return; // Intermediate batch saved, wait for completion packet
+            }
+
+            System.out.printf("[RECEIVER] Final RenderResult for Job [%s] Task [%s] from [%s]: %s (%d frame binaries, %dms)\n",
                 jobId, taskId, workerId, status, frameCount, duration);
 
             TaskResultPayload resultPayload = new TaskResultPayload(

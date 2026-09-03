@@ -63,6 +63,27 @@ public class ResultCollector {
     }
 
     /**
+     * Incrementally writes a chunk of rendered PNG frame binaries directly to disk.
+     * Prevents heap memory accumulation during large multi-frame renders.
+     */
+    public void saveFrameBinaries(String jobId, Map<String, byte[]> frames) {
+        if (frames == null || frames.isEmpty()) return;
+        Path jobDir = baseOutputDir.resolve(jobId);
+        try {
+            Files.createDirectories(jobDir);
+            for (Map.Entry<String, byte[]> entry : frames.entrySet()) {
+                String frameName = entry.getKey();
+                byte[] frameBytes = entry.getValue();
+                if (frameBytes != null && frameBytes.length > 0) {
+                    Files.write(jobDir.resolve(frameName), frameBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[RESULT-COLLECTOR-ERR] Failed saving frame chunk: " + e.getMessage());
+        }
+    }
+
+    /**
      * Processes a TaskResultPayload received from a worker.
      * 
      * @param workerId The identifier of the transmitting worker node.
