@@ -213,6 +213,9 @@ public class BlenderJobExecutor {
                 Matcher savedMatcher = SAVED_PATTERN.matcher(line);
                 if (savedMatcher.find()) {
                     String savedPath = savedMatcher.group(1).trim();
+                    try {
+                        savedPath = new File(savedPath).getCanonicalPath();
+                    } catch (Exception ignored) {}
                     if (!renderedFilePaths.contains(savedPath)) {
                         renderedFilePaths.add(savedPath);
                     }
@@ -258,7 +261,12 @@ public class BlenderJobExecutor {
                                     }
                                 } catch (NumberFormatException ignored) {}
                             }
-                            String abs = f.getAbsolutePath();
+                            String abs;
+                            try {
+                                abs = f.getCanonicalPath();
+                            } catch (Exception e) {
+                                abs = f.getAbsolutePath();
+                            }
                             if (!renderedFilePaths.contains(abs)) {
                                 renderedFilePaths.add(abs);
                             }
