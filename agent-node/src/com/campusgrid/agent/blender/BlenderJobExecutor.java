@@ -38,7 +38,7 @@ public class BlenderJobExecutor {
         if (jobId == null) {
             return false;
         }
-        Process process = activeProcesses.get(jobId);
+        Process process = activeProcesses.remove(jobId);
         if (process != null) {
             System.out.println("[EXECUTOR] Cancelling Blender process for job: " + jobId);
             process.destroyForcibly();
@@ -106,6 +106,19 @@ public class BlenderJobExecutor {
         File outDirFile = new File((outputDir != null && !outputDir.trim().isEmpty()) ? outputDir.trim() : "./output/" + jobId);
         if (!outDirFile.exists()) {
             outDirFile.mkdirs();
+        } else {
+            // Purge pre-existing frames in this task directory to avoid stale frame contamination
+            File[] existing = outDirFile.listFiles();
+            if (existing != null) {
+                for (File f : existing) {
+                    if (f.isFile()) {
+                        String name = f.getName().toLowerCase();
+                        if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".exr")) {
+                            f.delete();
+                        }
+                    }
+                }
+            }
         }
 
         // Build command with standardized zero-padded frame prefix: frame_####

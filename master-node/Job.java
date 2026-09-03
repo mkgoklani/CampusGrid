@@ -47,6 +47,24 @@ public class Job implements Serializable {
         this.parameters = parameters != null ? new ConcurrentHashMap<>(parameters) : new ConcurrentHashMap<>();
     }
 
+    private synchronized byte[] getOrLoadBlendBytes(String blendPath) {
+        if (parameters != null && parameters.containsKey("blendFileBytes")) {
+            Object obj = parameters.get("blendFileBytes");
+            if (obj instanceof byte[] b) return b;
+        }
+        if (blendPath != null && !blendPath.trim().isEmpty()) {
+            File f = new File(blendPath);
+            if (f.exists() && f.isFile()) {
+                try {
+                    byte[] bytes = java.nio.file.Files.readAllBytes(f.toPath());
+                    if (parameters != null) parameters.put("blendFileBytes", bytes);
+                    return bytes;
+                } catch (Exception ignored) {}
+            }
+        }
+        return null;
+    }
+
     /**
      * Slices the job into discrete frame-range sub-tasks.
      *
@@ -64,14 +82,7 @@ public class Job implements Serializable {
 
         String blendPath = (parameters != null && parameters.containsKey("blendFilePath")) 
             ? parameters.get("blendFilePath").toString() : "scene.blend";
-        Object blendBytes = (parameters != null) ? parameters.get("blendFileBytes") : null;
-
-        if (blendBytes == null && blendPath != null && new File(blendPath).exists()) {
-            try {
-                blendBytes = java.nio.file.Files.readAllBytes(new File(blendPath).toPath());
-                if (parameters != null) parameters.put("blendFileBytes", blendBytes);
-            } catch (Exception ignored) {}
-        }
+        byte[] blendBytes = getOrLoadBlendBytes(blendPath);
 
         for (int start = 1; start <= totalFrames; start += chunkSize) {
             int end = Math.min(start + chunkSize - 1, totalFrames);
@@ -80,9 +91,6 @@ public class Job implements Serializable {
 
             SubTask subTask = new SubTask(taskId, jobId, start, end, frameRange, workloadType);
             subTask.setTaskData(blendBytes != null ? blendBytes : blendPath);
-            if (blendBytes instanceof byte[] b) {
-                subTask.setTaskPayloadBytes(b);
-            }
             subTasks.put(taskId, subTask);
             pendingSubTasks.add(subTask);
             generated.add(subTask);
@@ -97,7 +105,7 @@ public class Job implements Serializable {
      * @param sliceSizes List of frame counts for each slice.
      * @return Generated list of SubTasks.
      */
-    public List<SubTask> sliceIntoCustomRanges(List<Integer> sliceSizes) {
+    public synchronized List<SubTask> sliceIntoCustomRanges(List<Integer> sliceSizes) {
         subTasks.clear();
         pendingSubTasks.clear();
         List<SubTask> generated = new ArrayList<>();
@@ -105,14 +113,7 @@ public class Job implements Serializable {
 
         String blendPath = (parameters != null && parameters.containsKey("blendFilePath")) 
             ? parameters.get("blendFilePath").toString() : "scene.blend";
-        Object blendBytes = (parameters != null) ? parameters.get("blendFileBytes") : null;
-
-        if (blendBytes == null && blendPath != null && new File(blendPath).exists()) {
-            try {
-                blendBytes = java.nio.file.Files.readAllBytes(new File(blendPath).toPath());
-                if (parameters != null) parameters.put("blendFileBytes", blendBytes);
-            } catch (Exception ignored) {}
-        }
+        byte[] blendBytes = getOrLoadBlendBytes(blendPath);
 
         int currentStart = 1;
         for (int i = 0; i < sliceSizes.size(); i++) {
@@ -127,9 +128,6 @@ public class Job implements Serializable {
 
             SubTask subTask = new SubTask(taskId, jobId, currentStart, currentEnd, frameRange, workloadType);
             subTask.setTaskData(blendBytes != null ? blendBytes : blendPath);
-            if (blendBytes instanceof byte[] b) {
-                subTask.setTaskPayloadBytes(b);
-            }
             subTasks.put(taskId, subTask);
             pendingSubTasks.add(subTask);
             generated.add(subTask);
@@ -258,15 +256,38 @@ public class Job implements Serializable {
     }
 
     /**
-     * Checks if all frames from 1 to totalFrames exist as rendered PNGs on disk.
-     * Allows early completion without waiting for redundant speculative stolen tasks.
+     * Checks if all frames from 1 to totalFrames exist as valid, non-empty rendered images on disk.
+     * Guarantees sequence completeness and allows early completion without waiting for redundant speculative stolen tasks.
      */
     public boolean isAllFramesCovered() {
         if (totalFrames <= 0) return true;
         java.io.File outDir = new java.io.File("./output/" + jobId);
         if (!outDir.exists() || !outDir.isDirectory()) return false;
-        String[] pngs = outDir.list((dir, name) -> name.toLowerCase().endsWith(".png"));
-        return pngs != null && pngs.length >= totalFrames;
+
+        java.io.File[] files = outDir.listFiles((dir, name) -> {
+            String lower = name.toLowerCase();
+            return lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg");
+        });
+        if (files == null || files.length < totalFrames) return false;
+
+        java.util.BitSet covered = new java.util.BitSet(totalFrames + 1);
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("(?i)(?:frame_?|task_.*_)?(\\d+)");
+
+        for (java.io.File file : files) {
+            if (file.isFile() && file.length() > 0) {
+                java.util.regex.Matcher m = pattern.matcher(file.getName());
+                if (m.find()) {
+                    try {
+                        int frameNum = Integer.parseInt(m.group(1));
+                        if (frameNum >= 1 && frameNum <= totalFrames) {
+                            covered.set(frameNum);
+                        }
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+
+        return covered.cardinality() >= totalFrames;
     }
 
     public Collection<SubTask> getSubTasks() {
@@ -343,7 +364,11 @@ public class Job implements Serializable {
         public int getRetryCount() { return retryCount; }
         public void incrementRetryCount() { this.retryCount++; }
 
-        public byte[] getTaskPayloadBytes() { return taskPayloadBytes; }
+        public byte[] getTaskPayloadBytes() { 
+            if (taskPayloadBytes != null) return taskPayloadBytes;
+            if (taskData instanceof byte[] b) return b;
+            return null;
+        }
         public void setTaskPayloadBytes(byte[] taskPayloadBytes) { this.taskPayloadBytes = taskPayloadBytes; }
 
         public Object getTaskData() { return taskData; }

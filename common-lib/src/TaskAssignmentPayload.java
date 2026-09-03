@@ -1,5 +1,11 @@
 import java.io.Serializable;
 
+/**
+ * CAMPUS GRID - TASK ASSIGNMENT PAYLOAD DTO
+ * 
+ * Transmitted inside a GridMessage(MessageType.SUBMIT_TASK) from Master to Worker
+ * to dispatch a discrete computational slice or rendering chunk.
+ */
 public class TaskAssignmentPayload implements Serializable {
 
     private static final long serialVersionUID = 1L;

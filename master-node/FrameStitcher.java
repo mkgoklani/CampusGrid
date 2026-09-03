@@ -179,42 +179,44 @@ public class FrameStitcher {
         }));
 
         List<Path> tempFiles = new ArrayList<>();
-        for (int i = 0; i < frames.size(); i++) {
-            Path src = frames.get(i);
-            Path dest = jobDir.resolve(String.format("temp_frame_%04d.png", i + 1));
-            try {
-                Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
-                tempFiles.add(dest);
-            } catch (IOException ignored) {}
-        }
-
-        String videoFileName = String.format("%s_animation.mp4", jobId);
-        Path videoPath = jobDir.resolve(videoFileName);
-        
         boolean compiled = false;
-        if (isFFmpegInstalled() && !tempFiles.isEmpty()) {
-            List<String> command = List.of(
-                "ffmpeg", "-y", "-framerate", String.valueOf(fps),
-                "-i", "temp_frame_%04d.png", "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                videoFileName
-            );
-            ProcessBuilder pb = new ProcessBuilder(command);
-            pb.directory(jobDir.toFile());
-            pb.redirectErrorStream(true);
-            try {
-                Process process = pb.start();
-                process.getInputStream().transferTo(OutputStream.nullOutputStream());
-                compiled = process.waitFor() == 0;
-            } catch (Exception ignored) {}
-        }
+        try {
+            for (int i = 0; i < frames.size(); i++) {
+                Path src = frames.get(i);
+                Path dest = jobDir.resolve(String.format("temp_frame_%04d.png", i + 1));
+                try {
+                    Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
+                    tempFiles.add(dest);
+                } catch (IOException ignored) {}
+            }
 
-        for (Path temp : tempFiles) {
-            try {
-                Files.deleteIfExists(temp);
-            } catch (IOException ignored) {}
+            String videoFileName = String.format("%s_animation.mp4", jobId);
+            Path videoPath = jobDir.resolve(videoFileName);
+            
+            if (isFFmpegInstalled() && !tempFiles.isEmpty()) {
+                List<String> command = List.of(
+                    getFFmpegExecutable(), "-y", "-framerate", String.valueOf(fps),
+                    "-start_number", "1",
+                    "-i", "temp_frame_%04d.png", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                    videoFileName
+                );
+                ProcessBuilder pb = new ProcessBuilder(command);
+                pb.directory(jobDir.toFile());
+                pb.redirectErrorStream(true);
+                try {
+                    Process process = pb.start();
+                    process.getInputStream().transferTo(OutputStream.nullOutputStream());
+                    compiled = process.waitFor() == 0;
+                } catch (Exception ignored) {}
+            }
+            return compiled ? videoPath : null;
+        } finally {
+            for (Path temp : tempFiles) {
+                try {
+                    Files.deleteIfExists(temp);
+                } catch (IOException ignored) {}
+            }
         }
-
-        return compiled ? videoPath : null;
     }
 
     private void deleteRawFrames(Path jobDir, String preserveVideoName, String preserveZipName) {
@@ -315,28 +317,85 @@ public class FrameStitcher {
             return false;
         }
 
-        System.out.printf("[FRAME-STITCHER] Invoking FFmpeg (Framerate: %d FPS)...\n", fps);
+        // Find all frames matching frame_(\d+).png
+        List<Path> frames = new ArrayList<>();
+        int minFrame = Integer.MAX_VALUE;
+        int maxFrame = Integer.MIN_VALUE;
 
-        List<String> command = List.of(
-            "ffmpeg",
-            "-y",                               // Overwrite output if exists
-            "-framerate", String.valueOf(fps),  // Frame rate
-            "-i", "frame_%04d.png",             // Input pattern
-            "-c:v", "libx264",                  // H.264 video codec
-            "-pix_fmt", "yuv420p",              // High compatibility pixel format
-            outputVideoPath.getFileName().toString()
-        );
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(jobDir)) {
+            Pattern p = Pattern.compile("frame_(\\d+)\\.png");
+            for (Path entry : stream) {
+                Matcher m = p.matcher(entry.getFileName().toString());
+                if (m.matches()) {
+                    frames.add(entry);
+                    int num = Integer.parseInt(m.group(1));
+                    if (num < minFrame) minFrame = num;
+                    if (num > maxFrame) maxFrame = num;
+                }
+            }
+        } catch (IOException ignored) {}
 
-        ProcessBuilder pb = new ProcessBuilder(command);
-        pb.directory(jobDir.toFile());
-        pb.redirectErrorStream(true);
+        if (frames.isEmpty()) {
+            System.err.println("[FRAME-STITCHER-WARN] No PNG frames found in " + jobDir);
+            return false;
+        }
+
+        frames.sort(Comparator.comparingInt(f -> {
+            String name = f.getFileName().toString();
+            return Integer.parseInt(name.replaceAll("[^0-9]", ""));
+        }));
+
+        System.out.printf("[FRAME-STITCHER] Invoking FFmpeg for %d frame(s) (Range: %d-%d, Framerate: %d FPS)...\n",
+            frames.size(), minFrame, maxFrame, fps);
+
+        boolean hasGaps = (maxFrame - minFrame + 1) != frames.size();
+        List<Path> tempFiles = new ArrayList<>();
 
         try {
+            List<String> command = new ArrayList<>();
+            command.add(getFFmpegExecutable());
+            command.add("-y");
+            command.add("-framerate");
+            command.add(String.valueOf(fps));
+
+            if (!hasGaps) {
+                // Continuous sequence: specify -start_number directly
+                command.add("-start_number");
+                command.add(String.valueOf(minFrame));
+                command.add("-i");
+                command.add("frame_%04d.png");
+            } else {
+                // Sequence has gaps: create temporary contiguous aliases so FFmpeg encodes all available frames without stopping
+                System.out.printf("[FRAME-STITCHER] Gaps detected in sequence (%d files across range %d-%d). Normalizing indices...\n",
+                    frames.size(), minFrame, maxFrame);
+                for (int i = 0; i < frames.size(); i++) {
+                    Path src = frames.get(i);
+                    Path dest = jobDir.resolve(String.format("temp_stitch_%04d.png", i + 1));
+                    try {
+                        Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
+                        tempFiles.add(dest);
+                    } catch (IOException ignored) {}
+                }
+                command.add("-start_number");
+                command.add("1");
+                command.add("-i");
+                command.add("temp_stitch_%04d.png");
+            }
+
+            command.add("-c:v");
+            command.add("libx264");
+            command.add("-pix_fmt");
+            command.add("yuv420p");
+            command.add(outputVideoPath.getFileName().toString());
+
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.directory(jobDir.toFile());
+            pb.redirectErrorStream(true);
+
             Process process = pb.start();
 
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
+                while (reader.readLine() != null) {
                     // Drain stdout
                 }
             }
@@ -347,15 +406,30 @@ public class FrameStitcher {
         } catch (Exception e) {
             System.err.println("[FRAME-STITCHER-ERR] FFmpeg compilation failed: " + e.getMessage());
             return false;
+        } finally {
+            for (Path temp : tempFiles) {
+                try {
+                    Files.deleteIfExists(temp);
+                } catch (IOException ignored) {}
+            }
         }
     }
 
     /**
-     * Checks if FFmpeg binary is available on the system PATH.
+     * Resolves the FFmpeg binary path using FFmpegLocator or system PATH.
+     */
+    public static String getFFmpegExecutable() {
+        String located = FFmpegLocator.findExecutable();
+        return (located != null && !located.trim().isEmpty()) ? located : "ffmpeg";
+    }
+
+    /**
+     * Checks if FFmpeg binary is available on the system PATH or candidate directories.
      */
     public static boolean isFFmpegInstalled() {
         try {
-            Process process = new ProcessBuilder("ffmpeg", "-version").start();
+            String exe = getFFmpegExecutable();
+            Process process = new ProcessBuilder(exe, "-version").start();
             return process.waitFor() == 0;
         } catch (Exception e) {
             return false;
@@ -375,7 +449,7 @@ public class FrameStitcher {
                     if (!hasPng) {
                         System.out.printf("[FRAME-STITCHER] Extracting discrete PNG frames from container %s...\n", file.getFileName());
                         List<String> command = List.of(
-                            "ffmpeg", "-y", "-i", file.getFileName().toString(), "-start_number", "1", "frame_%04d.png"
+                            getFFmpegExecutable(), "-y", "-i", file.getFileName().toString(), "-start_number", "1", "frame_%04d.png"
                         );
                         ProcessBuilder pb = new ProcessBuilder(command);
                         pb.directory(jobDir.toFile());

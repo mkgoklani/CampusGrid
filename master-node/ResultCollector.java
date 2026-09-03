@@ -190,15 +190,20 @@ public class ResultCollector {
                         etaEstimator.initJob(jobId, parentJob.getTotalFrames());
                     }
 
-                    int frameCount = (frames != null && !frames.isEmpty()) ? frames.size() : 1;
-                    if (duration <= 0) {
-                        // Fallback: estimate from sub-task dispatch→completion delta
-                        for (Job.SubTask st : parentJob.getSubTasks()) {
-                            if (st.getTaskId().equals(taskId)) {
-                                duration = st.getDurationMs();
-                                break;
-                            }
+                    int frameCount = 0;
+                    Job.SubTask matchedTask = null;
+                    for (Job.SubTask st : parentJob.getSubTasks()) {
+                        if (st.getTaskId().equals(taskId)) {
+                            matchedTask = st;
+                            frameCount = st.getEndFrame() - st.getStartFrame() + 1;
+                            break;
                         }
+                    }
+                    if (frameCount <= 0) {
+                        frameCount = (frames != null && !frames.isEmpty()) ? frames.size() : 1;
+                    }
+                    if (duration <= 0 && matchedTask != null) {
+                        duration = matchedTask.getDurationMs();
                     }
                     etaEstimator.recordFrameCompletion(jobId, frameCount, duration);
 
@@ -257,7 +262,7 @@ public class ResultCollector {
         WorkerState worker = workerRegistry.getWorker(workerId);
         if (worker != null) {
             synchronized (worker) {
-                if (worker.getStatus() == WorkerStatus.BUSY) {
+                if (worker.getStatus() != WorkerStatus.OFFLINE && worker.getStatus() != WorkerStatus.EVICTED) {
                     worker.setStatus(WorkerStatus.IDLE);
                 }
                 worker.setCurrentJobId(null);

@@ -278,8 +278,9 @@ public class PayloadListener implements Runnable {
             System.out.printf("[TASK] Received Task [%s] for Job [%s] (Frames: %d-%d, Engine: %s, Samples: %d, Denoise: %b, Res: %d%%, Blend: %s)\n",
                 taskId, jobId, start, end, renderEngine, renderSamples, useDenoising, resolutionPercentage, blendPath);
 
+            String taskOutputDir = "./output/" + jobId + "/" + taskId;
             com.campusgrid.agent.blender.BlenderRenderTask renderTask = new com.campusgrid.agent.blender.BlenderRenderTask(
-                jobId, blendPath, start, end, "./output/" + jobId, renderEngine, renderSamples, useDenoising, resolutionPercentage
+                jobId, blendPath, start, end, taskOutputDir, renderEngine, renderSamples, useDenoising, resolutionPercentage
             );
             handleAsyncRender(renderTask, taskId);
         } catch (Exception e) {
@@ -327,30 +328,118 @@ public class PayloadListener implements Runnable {
             
             com.campusgrid.agent.os.LinuxTelemetry.isExecutingTask = true;
             try {
-                renderedFiles = com.campusgrid.agent.blender.BlenderJobExecutor.executeJob(
-                    task.getJobId(),
-                    task.getBlendFilePath(),
-                    task.getFrameStart(),
-                    task.getFrameEnd(),
-                    task.getOutputDir(),
-                    task.getRenderEngine(),
-                    task.getRenderSamples(),
-                    task.isUseDenoising(),
-                    task.getResolutionPercentage(),
-                    reporter
-                );
-            } catch (InterruptedException e) {
-                status = "CANCELLED";
-                stateReport = "CANCELLED";
-                System.out.println("[TASK] Blender render cancelled: " + e.getMessage());
-            } catch (Exception e) {
-                status = "FAILED";
-                stateReport = "FAILED";
-                System.err.println("[TASK] Blender render failed: " + e.getMessage());
-                e.printStackTrace();
+                try {
+                    renderedFiles = com.campusgrid.agent.blender.BlenderJobExecutor.executeJob(
+                        task.getJobId(),
+                        task.getBlendFilePath(),
+                        task.getFrameStart(),
+                        task.getFrameEnd(),
+                        task.getOutputDir(),
+                        task.getRenderEngine(),
+                        task.getRenderSamples(),
+                        task.isUseDenoising(),
+                        task.getResolutionPercentage(),
+                        reporter
+                    );
+                } catch (InterruptedException e) {
+                    status = "CANCELLED";
+                    stateReport = "CANCELLED";
+                    System.out.println("[TASK] Blender render cancelled: " + e.getMessage());
+                } catch (Exception e) {
+                    status = "FAILED";
+                    stateReport = "FAILED";
+                    System.err.println("[TASK] Blender render failed: " + e.getMessage());
+                    e.printStackTrace();
+                }
+
+                // Report final state (COMPLETED, FAILED, or CANCELLED)
+                int total = Math.max(1, task.getFrameEnd() - task.getFrameStart() + 1);
+                int current = "COMPLETED".equals(stateReport) ? task.getFrameEnd() : task.getFrameStart();
+                double pct = "COMPLETED".equals(stateReport) ? 100.0 : 0.0;
+                reporter.reportStatus(task.getJobId(), current, total, pct, -1.0, stateReport, blenderVer, true);
+
+                long duration = System.currentTimeMillis() - startTime;
+
+                // Stream rendered PNG frame bytes in memory-safe batches (max 10 frames per chunk)
+                // Prevents JVM heap exhaustion (OutOfMemoryError) and socket disconnection on large slices (90-180 frames)
+                final int BATCH_SIZE = 10;
+                java.util.List<String> validFiles = new java.util.ArrayList<>();
+                for (String filePath : renderedFiles) {
+                    java.io.File f = new java.io.File(filePath);
+                    if (f.exists() && f.isFile() && f.length() > 0) {
+                        validFiles.add(filePath);
+                    }
+                }
+
+                int totalValid = validFiles.size();
+                System.out.printf("[TASK] Bundling %d frame(s) (%s) for streaming transmission to Master...\n",
+                    totalValid, task.getJobId());
+
+                if (totalValid == 0) {
+                    com.campusgrid.agent.blender.RenderResult result = new com.campusgrid.agent.blender.RenderResult(
+                        task.getJobId(),
+                        reporter.getWorkerId(),
+                        renderedFiles,
+                        java.util.Collections.emptyMap(),
+                        duration,
+                        status
+                    );
+                    try {
+                        connection.sendObject(result);
+                    } catch (IOException e) {
+                        System.err.println("[TASK] Failed to send empty render result: " + e.getMessage());
+                        connection.disconnect();
+                        stop();
+                        return;
+                    }
+                } else {
+                    for (int i = 0; i < totalValid; i += BATCH_SIZE) {
+                        int end = Math.min(i + BATCH_SIZE, totalValid);
+                        boolean isLastBatch = (end >= totalValid);
+                        java.util.List<String> batchSlice = new java.util.ArrayList<>(validFiles.subList(i, end));
+
+                        java.util.Map<String, byte[]> batchMap = new java.util.HashMap<>();
+                        for (String p : batchSlice) {
+                            java.io.File f = new java.io.File(p);
+                            try {
+                                batchMap.put(f.getName(), java.nio.file.Files.readAllBytes(f.toPath()));
+                            } catch (Exception e) {
+                                System.err.println("[TASK] Failed reading frame file " + p + ": " + e.getMessage());
+                            }
+                        }
+
+                        String batchStatus = isLastBatch ? status : "CHUNK";
+                        com.campusgrid.agent.blender.RenderResult chunk = new com.campusgrid.agent.blender.RenderResult(
+                            task.getJobId(),
+                            reporter.getWorkerId(),
+                            batchSlice,
+                            batchMap,
+                            duration,
+                            batchStatus
+                        );
+
+                        try {
+                            connection.sendObject(chunk);
+                            System.out.printf("[TASK] Transmitted frame batch %d-%d/%d (%s) to Master\n",
+                                i + 1, end, totalValid, batchStatus);
+                            Thread.sleep(30);
+                        } catch (Exception e) {
+                            System.err.println("[TASK] Failed transmitting batch: " + e.getMessage());
+                            connection.disconnect();
+                            stop();
+                            return;
+                        }
+                        batchMap.clear();
+                    }
+                }
             } finally {
                 com.campusgrid.agent.os.LinuxTelemetry.isExecutingTask = false;
-                
+
+                // Restore READY status only after all frame transmission is completely done
+                try {
+                    reporter.reportStatus("N/A", 0, 0, 0.0, -1.0, "READY", blenderVer, true);
+                } catch (Exception ignored) {}
+
                 synchronized (PayloadListener.this) {
                     if (Thread.currentThread() == currentRenderThread) {
                         currentRenderThread = null;
@@ -358,86 +447,6 @@ public class PayloadListener implements Runnable {
                     }
                 }
             }
-
-            // Report final state (COMPLETED, FAILED, or CANCELLED)
-            int total = Math.max(1, task.getFrameEnd() - task.getFrameStart() + 1);
-            int current = "COMPLETED".equals(stateReport) ? task.getFrameEnd() : task.getFrameStart();
-            double pct = "COMPLETED".equals(stateReport) ? 100.0 : 0.0;
-            reporter.reportStatus(task.getJobId(), current, total, pct, -1.0, stateReport, blenderVer, true);
-
-            long duration = System.currentTimeMillis() - startTime;
-
-            // Stream rendered PNG frame bytes in memory-safe batches (max 10 frames per chunk)
-            // Prevents JVM heap exhaustion (OutOfMemoryError) and socket disconnection on large slices (90-180 frames)
-            final int BATCH_SIZE = 10;
-            java.util.List<String> validFiles = new java.util.ArrayList<>();
-            for (String filePath : renderedFiles) {
-                java.io.File f = new java.io.File(filePath);
-                if (f.exists() && f.isFile() && f.length() > 0) {
-                    validFiles.add(filePath);
-                }
-            }
-
-            int totalValid = validFiles.size();
-            System.out.printf("[TASK] Bundling %d frame(s) (%s) for streaming transmission to Master...\n",
-                totalValid, task.getJobId());
-
-            if (totalValid == 0) {
-                com.campusgrid.agent.blender.RenderResult result = new com.campusgrid.agent.blender.RenderResult(
-                    task.getJobId(),
-                    reporter.getWorkerId(),
-                    renderedFiles,
-                    java.util.Collections.emptyMap(),
-                    duration,
-                    status
-                );
-                try {
-                    connection.sendObject(result);
-                } catch (IOException e) {
-                    System.err.println("[TASK] Failed to send empty render result: " + e.getMessage());
-                }
-            } else {
-                for (int i = 0; i < totalValid; i += BATCH_SIZE) {
-                    int end = Math.min(i + BATCH_SIZE, totalValid);
-                    boolean isLastBatch = (end >= totalValid);
-                    java.util.List<String> batchSlice = new java.util.ArrayList<>(validFiles.subList(i, end));
-
-                    java.util.Map<String, byte[]> batchMap = new java.util.HashMap<>();
-                    for (String p : batchSlice) {
-                        java.io.File f = new java.io.File(p);
-                        try {
-                            batchMap.put(f.getName(), java.nio.file.Files.readAllBytes(f.toPath()));
-                        } catch (Exception e) {
-                            System.err.println("[TASK] Failed reading frame file " + p + ": " + e.getMessage());
-                        }
-                    }
-
-                    String batchStatus = isLastBatch ? status : "CHUNK";
-                    com.campusgrid.agent.blender.RenderResult chunk = new com.campusgrid.agent.blender.RenderResult(
-                        task.getJobId(),
-                        reporter.getWorkerId(),
-                        batchSlice,
-                        batchMap,
-                        duration,
-                        batchStatus
-                    );
-
-                    try {
-                        connection.sendObject(chunk);
-                        System.out.printf("[TASK] Transmitted frame batch %d-%d/%d (%s) to Master\n",
-                            i + 1, end, totalValid, batchStatus);
-                        Thread.sleep(30);
-                    } catch (Exception e) {
-                        System.err.println("[TASK] Failed transmitting batch: " + e.getMessage());
-                    }
-                    batchMap.clear();
-                }
-            }
-
-            // Restore READY status after execution
-            try {
-                reporter.reportStatus("N/A", 0, 0, 0.0, -1.0, "READY", blenderVer, true);
-            } catch (Exception ignored) {}
         }, "BlenderRenderThread");
 
         currentRenderThread.start();

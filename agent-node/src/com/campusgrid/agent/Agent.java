@@ -62,7 +62,9 @@ public class Agent {
             connection.connect();
 
             // Monitor connection liveness
-            while (connection.isConnected()) {
+            while (connection.isConnected() 
+                   && connection.getPayloadListener() != null && connection.getPayloadListener().isRunning()
+                   && (connection.getHeartbeatService() == null || connection.getHeartbeatService().isRunning())) {
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException e) {

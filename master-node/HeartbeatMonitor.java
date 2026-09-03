@@ -12,8 +12,8 @@
  */
 public class HeartbeatMonitor implements Runnable {
 
-    private static final long DEFAULT_TIMEOUT_THRESHOLD_MS = 30000; // 30 seconds
-    private static final long DEFAULT_CHECK_INTERVAL_MS = 5000;      // 5 seconds
+    private static final long DEFAULT_TIMEOUT_THRESHOLD_MS = 45000; // 45 seconds tolerance
+    private static final long DEFAULT_CHECK_INTERVAL_MS = 5000;      // 5 seconds audit interval
 
     private final WorkerRegistry workerRegistry;
     private final JobManager jobManager;

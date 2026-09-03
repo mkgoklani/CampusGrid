@@ -34,7 +34,8 @@ public class JobManager {
         if (job == null) return;
 
         if (job.getSubTaskCount() == 0) {
-            job.sliceIntoFrameRanges(framesPerTask);
+            int chunk = framesPerTask > 0 ? framesPerTask : 25;
+            job.sliceIntoFrameRanges(chunk);
         }
 
         job.setStatus(JobStatus.QUEUED);
@@ -52,8 +53,11 @@ public class JobManager {
     public synchronized Job.SubTask getNextPendingTask() {
         // 1. Check current active job for pending tasks
         if (currentActiveJob != null && currentActiveJob.getStatus() == JobStatus.RUNNING) {
-            Job.SubTask task = currentActiveJob.pollPendingSubTask();
-            if (task != null) {
+            Job.SubTask task;
+            while ((task = currentActiveJob.pollPendingSubTask()) != null) {
+                if (task.getStatus() == Job.SubTaskStatus.COMPLETED) {
+                    continue; // Skip already completed subtasks (e.g. from crash recovery)
+                }
                 task.setStatus(Job.SubTaskStatus.DISPATCHED);
                 return task;
             }
@@ -62,8 +66,11 @@ public class JobManager {
         // 2. Check all other running jobs for re-queued/pending tasks (fault tolerance recovery)
         for (Job job : jobRegistry.values()) {
             if (job.getStatus() == JobStatus.RUNNING && (currentActiveJob == null || !job.getJobId().equals(currentActiveJob.getJobId()))) {
-                Job.SubTask task = job.pollPendingSubTask();
-                if (task != null) {
+                Job.SubTask task;
+                while ((task = job.pollPendingSubTask()) != null) {
+                    if (task.getStatus() == Job.SubTaskStatus.COMPLETED) {
+                        continue; // Skip already completed subtasks
+                    }
                     task.setStatus(Job.SubTaskStatus.DISPATCHED);
                     return task;
                 }
@@ -78,8 +85,11 @@ public class JobManager {
                 currentActiveJob = nextJob;
                 System.out.println("[JOB-MANAGER] Switched active job to [" + nextJob.getJobId() + "]");
 
-                Job.SubTask task = currentActiveJob.pollPendingSubTask();
-                if (task != null) {
+                Job.SubTask task;
+                while ((task = currentActiveJob.pollPendingSubTask()) != null) {
+                    if (task.getStatus() == Job.SubTaskStatus.COMPLETED) {
+                        continue;
+                    }
                     task.setStatus(Job.SubTaskStatus.DISPATCHED);
                     return task;
                 }

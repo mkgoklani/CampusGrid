@@ -25,6 +25,8 @@ public class MasterConnection {
     private ObjectOutputStream objectOutputStream;
     private HeartbeatService heartbeatService;
     private PayloadListener payloadListener;
+    private final Object writeLock = new Object();
+    private final java.util.concurrent.atomic.AtomicBoolean disconnecting = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     /**
      * Constructs a MasterConnection with the specified Master IP address and default port 8080.
@@ -107,52 +109,61 @@ public class MasterConnection {
      * @param obj the object to send
      * @throws IOException if a network error occurs
      */
-    public synchronized void sendObject(Object obj) throws IOException {
-        if (isConnected() && objectOutputStream != null) {
-            objectOutputStream.writeObject(obj);
-            objectOutputStream.flush();
-            objectOutputStream.reset();
-        } else {
-            throw new IOException("Cannot send object: not connected to Master.");
+    public void sendObject(Object obj) throws IOException {
+        synchronized (writeLock) {
+            if (isConnected() && objectOutputStream != null) {
+                objectOutputStream.writeObject(obj);
+                objectOutputStream.flush();
+                objectOutputStream.reset();
+            } else {
+                throw new IOException("Cannot send object: not connected to Master.");
+            }
         }
     }
 
     /**
      * Safely disconnects the socket and streams from the Master node.
-     * Closes the streams and active socket connection, handling any IOExceptions internally.
-     * Also stops the heartbeat service and payload listener.
+     * Closes the socket immediately to unblock pending I/O, then stops services
+     * without holding monitor locks to prevent deadlocks.
      */
     public void disconnect() {
-        if (heartbeatService != null) {
-            heartbeatService.stop();
+        if (!disconnecting.compareAndSet(false, true)) {
+            return;
         }
-        if (payloadListener != null) {
-            payloadListener.stop();
-        }
-        if (objectInputStream != null) {
-            try {
-                objectInputStream.close();
-            } catch (IOException e) {
-                // Ignore close error
+        try {
+            // 1. Close socket first so any thread blocked on reading or writing unblocks immediately
+            if (socket != null && !socket.isClosed()) {
+                try {
+                    socket.close();
+                } catch (IOException ignored) {}
             }
-            objectInputStream = null;
-        }
-        if (objectOutputStream != null) {
-            try {
-                objectOutputStream.close();
-            } catch (IOException e) {
-                // Ignore close error
+            socket = null;
+
+            // 2. Stop services without holding MasterConnection monitor lock
+            if (heartbeatService != null) {
+                heartbeatService.stop();
             }
-            objectOutputStream = null;
-        }
-        if (socket != null && !socket.isClosed()) {
-            try {
-                socket.close();
-            } catch (IOException e) {
-                // Catch IOException internally to avoid crashing the Agent
+            if (payloadListener != null) {
+                payloadListener.stop();
             }
+
+            // 3. Clean up streams
+            if (objectInputStream != null) {
+                try {
+                    objectInputStream.close();
+                } catch (IOException ignored) {}
+                objectInputStream = null;
+            }
+            if (objectOutputStream != null) {
+                try {
+                    objectOutputStream.close();
+                } catch (IOException ignored) {}
+                objectOutputStream = null;
+            }
+            System.out.println("[NETWORK] Disconnected from Master.");
+        } finally {
+            disconnecting.set(false);
         }
-        System.out.println("[NETWORK] Disconnected from Master.");
     }
 
     /**

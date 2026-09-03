@@ -80,6 +80,7 @@ public class HeartbeatService implements Runnable {
             if (!connection.isConnected()) {
                 System.out.println("[HEARTBEAT] Connection lost");
                 stop();
+                connection.disconnect();
                 break;
             }
 
@@ -139,6 +140,7 @@ public class HeartbeatService implements Runnable {
             } catch (IOException e) {
                 System.out.println("[HEARTBEAT] Connection lost: " + e.getMessage());
                 stop();
+                connection.disconnect();
                 break;
             }
 

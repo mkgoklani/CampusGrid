@@ -77,7 +77,9 @@ public class WorkerRegistry {
         if (state != null) {
             synchronized (state) {
                 state.setCpuTemperature(cpuTemp);
-                state.setCpuUsagePercent(cpuUsage);
+                if (cpuUsage > 0.0 || state.getCpuUsagePercent() == 0.0) {
+                    state.setCpuUsagePercent(cpuUsage);
+                }
                 state.setRamUsagePercent(ramUsage);
                 state.setLastHeartbeatTimestamp(System.currentTimeMillis());
             }
@@ -85,7 +87,14 @@ public class WorkerRegistry {
     }
 
     public void updateTelemetry(String workerId, int cpuTemp, double ramUsage) {
-        updateTelemetry(workerId, cpuTemp, 0.0, ramUsage);
+        WorkerState state = registry.get(workerId);
+        if (state != null) {
+            synchronized (state) {
+                state.setCpuTemperature(cpuTemp);
+                state.setRamUsagePercent(ramUsage);
+                state.setLastHeartbeatTimestamp(System.currentTimeMillis());
+            }
+        }
     }
 
     public void updateEnvironment(String workerId, String osName, boolean blenderInstalled, String blenderVersion, double installProgress) {
@@ -226,8 +235,34 @@ public class WorkerRegistry {
         if (jobManager != null) {
             for (Job job : jobManager.getAllJobs().values()) {
                 if (job.getStatus() == JobStatus.RUNNING || job.getStatus() == JobStatus.QUEUED) {
+                    // If all frames are already covered on disk or job finished, skip re-queuing
+                    if (job.isAllFramesCovered() || job.getStatus() == JobStatus.COMPLETED) {
+                        continue;
+                    }
+
                     for (Job.SubTask st : job.getSubTasks()) {
                         if (workerId.equals(st.getAssignedWorkerId()) && st.getStatus() != Job.SubTaskStatus.COMPLETED) {
+                            // If this was a speculative stolen task, check if original task covers it
+                            if (st.isStolen()) {
+                                if (job.isAllFramesCovered()) {
+                                    continue;
+                                }
+                                boolean coveredByOriginal = false;
+                                for (Job.SubTask orig : job.getSubTasks()) {
+                                    if (!orig.isStolen() && orig.getStartFrame() <= st.getStartFrame() && orig.getEndFrame() >= st.getEndFrame()) {
+                                        if (orig.getStatus() == Job.SubTaskStatus.COMPLETED || orig.getStatus() == Job.SubTaskStatus.DISPATCHED) {
+                                            coveredByOriginal = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (coveredByOriginal) {
+                                    System.out.printf("[FAULT-TOLERANCE] Skipping re-queue of speculative stolen Task [%s] (Frames: %s) because original task is still active/completed.\n",
+                                        st.getTaskId(), st.getFrameRange());
+                                    continue;
+                                }
+                            }
+
                             System.out.printf("[FAULT-TOLERANCE] ⚡ Auto-rescheduling Task [%s] (Frames: %s) from dead Worker [%s] back to queue (Retry #%d)\n",
                                 st.getTaskId(), st.getFrameRange(), workerId, st.getRetryCount() + 1);
                             job.requeueSubTask(st);

@@ -67,7 +67,7 @@ public class MasterNodeApplication {
         // 3. Initialize Schedulers, Watchdogs, and LAN Discovery
         this.scheduler = new BasicScheduler(jobManager, workerRegistry, 500);
         this.scheduler.setReliabilityTracker(reliabilityTracker);
-        this.heartbeatMonitor = new HeartbeatMonitor(workerRegistry, jobManager, 15000, 5000);
+        this.heartbeatMonitor = new HeartbeatMonitor(workerRegistry, jobManager, 45000, 5000);
         this.lanDiscovery = new LanDiscoveryResponder(agentTcpPort);
 
         // 4. Initialize Embedded Web Dashboard Server
