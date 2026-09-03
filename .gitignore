@@ -34,7 +34,7 @@ uploads/
 output/
 render_output/
 out/
-agent.jar
+!agent.jar
 *.blend
 *.blend1
 blender_archives/
