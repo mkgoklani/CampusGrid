@@ -90,6 +90,7 @@ public class DashboardServer {
         httpServer.createContext("/api/benchmarks/comparison", new BenchmarkComparisonHandler());
         httpServer.createContext("/api/benchmarks/history", new BenchmarkHistoryHandler());
         httpServer.createContext("/download/agent.jar", new AgentJarDownloadHandler());
+        httpServer.createContext("/download/agent.bat", new AgentBatDownloadHandler());
         httpServer.createContext("/download/blender", new BlenderDownloadHandler());
         httpServer.createContext("/output", new OutputFileHandler());
         httpServer.createContext("/", new StaticWebHandler());
@@ -789,6 +790,36 @@ public class DashboardServer {
                 }
             } else {
                 sendJsonResponse(exchange, 404, "{\"error\":\"Agent JAR file could not be generated on Master Node.\"}");
+            }
+        }
+    }
+
+    private class AgentBatDownloadHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 204, "");
+                return;
+            }
+            File batFile = new File("agent.bat");
+            if (!batFile.exists() || batFile.length() < 512) {
+                File jarFile = new File("agent.jar");
+                if (!jarFile.exists() || jarFile.length() < 512) {
+                    versionManager.packageAgentJar(jarFile);
+                }
+                versionManager.generateStandaloneAgentBat(jarFile, batFile);
+            }
+
+            if (batFile.exists() && batFile.isFile()) {
+                exchange.getResponseHeaders().set("Content-Type", "application/x-bat");
+                exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"agent.bat\"");
+                exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+                exchange.sendResponseHeaders(200, batFile.length());
+                try (OutputStream os = exchange.getResponseBody(); InputStream is = new FileInputStream(batFile)) {
+                    is.transferTo(os);
+                }
+            } else {
+                sendJsonResponse(exchange, 404, "{\"error\":\"Agent BAT file could not be generated on Master Node.\"}");
             }
         }
     }

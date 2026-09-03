@@ -189,10 +189,138 @@ public class AgentVersionManager {
 
             System.out.printf("[VERSION-MANAGER] ✓ Packaged executable %s (v%s, Build %d, Size: %d bytes)\n",
                 targetJarFile.getName(), currentVersion, currentBuild, targetJarFile.length());
+
+            // Generate standalone agent.bat with embedded binary payload
+            generateStandaloneAgentBat(targetJarFile, new File("agent.bat"));
             return true;
 
         } catch (Exception e) {
             System.err.println("[VERSION-MANAGER-ERR] Failed creating agent.jar: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Generates a single standalone Windows agent.bat script embedding the JAR payload
+     * and auto-download logic, so Windows users only need agent.bat without needing agent.jar.
+     */
+    public boolean generateStandaloneAgentBat(File sourceJarFile, File targetBatFile) {
+        if (!sourceJarFile.exists()) return false;
+        try {
+            byte[] jarBytes = Files.readAllBytes(sourceJarFile.toPath());
+            String base64 = java.util.Base64.getEncoder().encodeToString(jarBytes);
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("@echo off\r\n");
+            sb.append("setlocal enabledelayedexpansion\r\n\r\n");
+            sb.append("title CampusGrid Agent Node (v").append(this.currentVersion).append(")\r\n");
+            sb.append("cd /d \"%~dp0\"\r\n\r\n");
+            sb.append("echo ================================================================\r\n");
+            sb.append("echo           CAMPUSGRID DISTRIBUTED COMPUTE AGENT NODE             \r\n");
+            sb.append("echo                   Version: v").append(this.currentVersion).append(" (Build ").append(this.currentBuild).append(")\r\n");
+            sb.append("echo ================================================================\r\n");
+            sb.append("echo.\r\n\r\n");
+
+            sb.append(":: 1. Check if Java 17+ is installed\r\n");
+            sb.append("where java >nul 2>nul\r\n");
+            sb.append("if %errorlevel% neq 0 (\r\n");
+            sb.append("    echo [WARNING] Java command not found in system PATH.\r\n");
+            sb.append("    echo Checking standard installation directories...\r\n");
+            sb.append("    set \"FOUND_JAVA=\"\r\n");
+            sb.append("    for /d %%D in (\"C:\\Program Files\\Eclipse Adoptium\\jdk-*\" \"C:\\Program Files\\Eclipse Adoptium\\jre-*\" \"C:\\Program Files\\Java\\jdk-*\" \"C:\\Program Files\\Microsoft\\jdk-*\") do (\r\n");
+            sb.append("        if exist \"%%D\\bin\\java.exe\" set \"FOUND_JAVA=%%D\\bin\\java.exe\"\r\n");
+            sb.append("    )\r\n");
+            sb.append("    if defined FOUND_JAVA (\r\n");
+            sb.append("        echo [OK] Found Java at: !FOUND_JAVA!\r\n");
+            sb.append("        set \"JAVA_CMD=!FOUND_JAVA!\"\r\n");
+            sb.append("    ) else (\r\n");
+            sb.append("        echo.\r\n");
+            sb.append("        echo [ERROR] Java (Version 17+) is required to run CampusGrid Agent.\r\n");
+            sb.append("        echo.\r\n");
+            sb.append("        echo Would you like to automatically install Java 17 using Winget? (Y/N)\r\n");
+            sb.append("        set /p \"INSTALL_CHOICE=Choice [Y/N]: \"\r\n");
+            sb.append("        if /i \"!INSTALL_CHOICE!\"==\"Y\" (\r\n");
+            sb.append("            echo.\r\n");
+            sb.append("            echo [INSTALL] Installing Eclipse Adoptium OpenJDK 17...\r\n");
+            sb.append("            winget install EclipseAdoptium.Temurin.17.JRE\r\n");
+            sb.append("            echo.\r\n");
+            sb.append("            echo [NOTE] Java installed! Please re-run agent.bat.\r\n");
+            sb.append("            pause\r\n");
+            sb.append("            exit /b 0\r\n");
+            sb.append("        ) else (\r\n");
+            sb.append("            echo Please manually install Java 17 from: https://adoptium.net\r\n");
+            sb.append("            pause\r\n");
+            sb.append("            exit /b 1\r\n");
+            sb.append("        )\r\n");
+            sb.append("    )\r\n");
+            sb.append(") else (\r\n");
+            sb.append("    set \"JAVA_CMD=java\"\r\n");
+            sb.append(")\r\n\r\n");
+
+            sb.append(":: 2. Resolve Master Node Address\r\n");
+            sb.append("set \"CONFIG_FILE=%~dp0master_node.txt\"\r\n");
+            sb.append("set \"DEFAULT_IP=100.66.175.104:8080\"\r\n\r\n");
+            sb.append("if not \"%~1\"==\"\" (\r\n");
+            sb.append("    set \"MASTER_ADDR=%~1\"\r\n");
+            sb.append(") else (\r\n");
+            sb.append("    if exist \"%CONFIG_FILE%\" (\r\n");
+            sb.append("        set /p SAVED_IP=<\"%CONFIG_FILE%\"\r\n");
+            sb.append("        if not \"!SAVED_IP!\"==\"\" set \"DEFAULT_IP=!SAVED_IP!\"\r\n");
+            sb.append("    )\r\n");
+            sb.append("    echo ----------------------------------------------------------------\r\n");
+            sb.append("    echo Enter the Master Node IP:Port (Tailscale or Network IP)\r\n");
+            sb.append("    echo Default: [!DEFAULT_IP!]\r\n");
+            sb.append("    echo ----------------------------------------------------------------\r\n");
+            sb.append("    set /p \"USER_INPUT=Master Address (Press Enter for default): \"\r\n");
+            sb.append("    if \"!USER_INPUT!\"==\"\" (\r\n");
+            sb.append("        set \"MASTER_ADDR=!DEFAULT_IP!\"\r\n");
+            sb.append("    ) else (\r\n");
+            sb.append("        set \"MASTER_ADDR=!USER_INPUT!\"\r\n");
+            sb.append("    )\r\n");
+            sb.append("    echo !MASTER_ADDR!>\"%CONFIG_FILE%\"\r\n");
+            sb.append(")\r\n\r\n");
+
+            sb.append("echo !MASTER_ADDR! | findstr /c:\":\" >nul\r\n");
+            sb.append("if %errorlevel% neq 0 set \"MASTER_ADDR=!MASTER_ADDR!:8080\"\r\n\r\n");
+
+            sb.append("for /f \"tokens=1,2 delims=:\" %%A in (\"!MASTER_ADDR!\") do (\r\n");
+            sb.append("    set \"MASTER_HOST=%%A\"\r\n");
+            sb.append("    set \"MASTER_PORT=%%B\"\r\n");
+            sb.append(")\r\n\r\n");
+
+            sb.append(":: 3. Prepare standalone agent.jar runtime\r\n");
+            sb.append("set \"TARGET_JAR=%~dp0agent.jar\"\r\n\r\n");
+            sb.append(":: Extract embedded binary payload if local agent.jar is not found\r\n");
+            sb.append("if not exist \"%TARGET_JAR%\" (\r\n");
+            sb.append("    echo [EXTRACT] Extracting embedded CampusGrid Agent binaries...\r\n");
+            sb.append("    powershell -NoProfile -Command \"$lines = Get-Content -LiteralPath '%~f0'; $start = $false; $b64 = ''; foreach($line in $lines){ if($line -match '^::==START_B64_PAYLOAD==$'){ $start = $true; continue }; if($start){ $b64 += $line } }; if($b64.Length -gt 0){ [IO.File]::WriteAllBytes('%TARGET_JAR%', [Convert]::FromBase64String($b64)); exit 0 } else { exit 1 }\"\r\n");
+            sb.append(")\r\n\r\n");
+
+            sb.append("echo.\r\n");
+            sb.append("echo ================================================================\r\n");
+            sb.append("echo Starting CampusGrid Agent Node connecting to: !MASTER_ADDR!\r\n");
+            sb.append("echo ================================================================\r\n");
+            sb.append("echo.\r\n\r\n");
+
+            sb.append("\"!JAVA_CMD!\" -jar \"%TARGET_JAR%\" !MASTER_ADDR!\r\n\r\n");
+            sb.append("echo.\r\n");
+            sb.append("echo [AGENT] Process exited.\r\n");
+            sb.append("pause\r\n");
+            sb.append("exit /b 0\r\n\r\n");
+
+            sb.append("::==START_B64_PAYLOAD==\r\n");
+            // Break base64 into lines of 120 chars for Windows batch safety
+            int len = base64.length();
+            for (int i = 0; i < len; i += 120) {
+                sb.append(base64, i, Math.min(i + 120, len)).append("\r\n");
+            }
+
+            Files.writeString(targetBatFile.toPath(), sb.toString(), java.nio.charset.StandardCharsets.UTF_8);
+            System.out.printf("[VERSION-MANAGER] ✓ Packaged standalone %s (Size: %d bytes)\n",
+                targetBatFile.getName(), targetBatFile.length());
+            return true;
+        } catch (Exception e) {
+            System.err.println("[VERSION-MANAGER-ERR] Failed generating standalone agent.bat: " + e.getMessage());
             return false;
         }
     }
@@ -246,12 +374,12 @@ public class AgentVersionManager {
         AgentVersionManager manager = new AgentVersionManager();
         if (args != null && args.length > 0 && "increment".equalsIgnoreCase(args[0])) {
             String newVer = manager.incrementAndPackageAgent();
-            System.out.printf("[CLI] Successfully incremented and packaged agent.jar: v%s (Build %d)\n",
+            System.out.printf("[CLI] Successfully incremented and packaged agent.jar & agent.bat: v%s (Build %d)\n",
                 newVer, manager.getCurrentBuild());
         } else {
             File target = new File("agent.jar");
             manager.packageAgentJar(target);
-            System.out.printf("[CLI] Successfully packaged %s (v%s, Build %d, Size: %d bytes)\n",
+            System.out.printf("[CLI] Successfully packaged %s & agent.bat (v%s, Build %d, Size: %d bytes)\n",
                 target.getName(), manager.getCurrentVersion(), manager.getCurrentBuild(), target.length());
         }
     }
