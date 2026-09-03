@@ -1,12 +1,8 @@
 package com.campusgrid.agent.blender;
 
-import java.awt.Color;
-import java.awt.Font;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.image.BufferedImage;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -15,7 +11,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.imageio.ImageIO;
 
 /**
  * Executes a Blender render job in headless mode using ProcessBuilder.
@@ -108,17 +103,17 @@ public class BlenderJobExecutor {
     ) throws Exception {
 
         String blenderPath = BlenderUtils.findExecutablePath();
-        File blendFile = (blendFilePath != null) ? new File(blendFilePath) : new File("test.blend");
+        if (blenderPath == null) {
+            throw new IllegalStateException("Blender 3D executable not found on host. Please install Blender on this worker node.");
+        }
+
+        File blendFile = (blendFilePath != null) ? new File(blendFilePath) : new File("scene.blend");
+        if (!blendFile.exists()) {
+            throw new FileNotFoundException("Blend file not found on host: " + blendFile.getAbsolutePath() + ". Please upload or specify a valid .blend file.");
+        }
 
         // Calculate total frames
         int totalFrames = Math.max(1, frameEnd - frameStart + 1);
-
-        // If Blender or blend file is missing, execute authentic software frame pipeline simulation
-        if (blenderPath == null || !blendFile.exists()) {
-            System.out.printf("[EXECUTOR-FALLBACK] Blender executable (%s) or blend file (%s) not present. Running software rendering pipeline for [%s]...\n",
-                blenderPath != null ? blenderPath : "NOT_FOUND", blendFile.exists() ? blendFile.getAbsolutePath() : "NOT_FOUND", blendFile.getName());
-            return executeSoftwareRender(jobId, blendFile.getName(), frameStart, frameEnd, outputDir, reporter);
-        }
 
         System.out.printf("[EXECUTOR] Running Blender Headless Render on File: %s (Size: %d bytes, GPU Acceleration: %b)\n",
             blendFile.getAbsolutePath(), blendFile.length(), useGpu);
@@ -277,11 +272,10 @@ public class BlenderJobExecutor {
 
         if (exitCode != 0) {
             if (useGpu) {
-                System.out.printf("[EXECUTOR-FALLBACK] ⚠ GPU compute execution failed with exit code %d (e.g. Device OOM or Driver issue). Falling back to CPU compute mode...\n", exitCode);
+                System.out.printf("[EXECUTOR-RETRY] ⚠ GPU compute execution failed with exit code %d (e.g. Device OOM or Driver issue). Retrying on CPU compute mode...\n", exitCode);
                 return executeJob(jobId, blendFilePath, frameStart, frameEnd, outputDir, renderEngine, false, reporter);
             } else {
-                System.out.printf("[EXECUTOR-FALLBACK] ⚠ Native Blender execution failed with exit code %d. Falling back to Software Rendering Pipeline...\n", exitCode);
-                return executeSoftwareRender(jobId, blendFile.getName(), frameStart, frameEnd, outputDir, reporter);
+                throw new RuntimeException("Blender rendering failed with exit code " + exitCode + " for job [" + jobId + "]. Check scene configuration or Blender logs.");
             }
         }
 
@@ -294,63 +288,5 @@ public class BlenderJobExecutor {
         }
 
         return renderedFilePaths;
-    }
-
-    /**
-     * Executes authentic software frame rendering when Blender binary is not installed on host.
-     * Generates valid PNG animation frames (frame_XXXX.png) with live progress reporting.
-     */
-    private static List<String> executeSoftwareRender(
-            String jobId, String blendFileName, int frameStart, int frameEnd, String outputDir, ProgressReporter reporter
-    ) throws Exception {
-        File dir = new File((outputDir != null && !outputDir.isEmpty()) ? outputDir : "./output");
-        if (!dir.exists()) dir.mkdirs();
-
-        List<String> rendered = new ArrayList<>();
-        int total = Math.max(1, frameEnd - frameStart + 1);
-
-        for (int f = frameStart; f <= frameEnd; f++) {
-            if (Thread.currentThread().isInterrupted()) {
-                throw new InterruptedException("Render interrupted");
-            }
-
-            // Create 1280x720 simulated render frame
-            BufferedImage img = new BufferedImage(1280, 720, BufferedImage.TYPE_INT_RGB);
-            Graphics2D g2 = img.createGraphics();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-            // Dark background with gradient
-            g2.setColor(new Color(24, 28, 36));
-            g2.fillRect(0, 0, 1280, 720);
-
-            // Draw frame visualization
-            g2.setColor(new Color(79, 140, 255));
-            g2.drawOval(400 + (f % 50) * 8, 200, 150, 150);
-
-            g2.setColor(Color.WHITE);
-            g2.setFont(new Font("SansSerif", Font.BOLD, 36));
-            g2.drawString("CampusGrid Render Pipeline", 380, 150);
-
-            g2.setFont(new Font("SansSerif", Font.PLAIN, 22));
-            g2.setColor(new Color(180, 190, 210));
-            g2.drawString(String.format("Scene: %s  |  Job: %s  |  Frame: %d / %d", 
-                blendFileName != null ? blendFileName : "Scene.blend", jobId, f, frameEnd), 360, 480);
-            g2.dispose();
-
-            File outFile = new File(dir, String.format("frame_%04d.png", f));
-            ImageIO.write(img, "png", outFile);
-            rendered.add(outFile.getAbsolutePath());
-
-            int completed = f - frameStart + 1;
-            double pct = (double) completed / total * 100.0;
-            if (reporter != null) {
-                reporter.reportStatus(jobId, f, total, pct, 24.0, "RENDERING", "SoftwareEngine-1.0", true);
-            }
-
-            // Simulate realistic compute render time per frame (~150ms)
-            Thread.sleep(150);
-        }
-
-        return rendered;
     }
 }

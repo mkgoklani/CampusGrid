@@ -117,33 +117,26 @@ public class SystemResilienceAndEdgeCasesTest {
         assert failoverSubTask.getAssignedWorkerId() == null : "Assigned worker should be cleared";
         System.out.println("[TEST] Step 4 PASSED: Disconnect failover and task re-queueing verified.");
 
-        // 5. Test Multi-Tier Compute Fallback (Software Frame Generator)
-        System.out.println("\n--- Step 5: Pure Java Software Frame Generator Fallback ---");
-        Path testDir = Paths.get("render_output/resilience_frames");
-        Files.createDirectories(testDir);
-
-        List<String> softwareFrames = BlenderJobExecutor.executeJob(
-            "JOB_RESILIENCE_FALLBACK",
-            "nonexistent_missing.blend",
-            1, 2,
-            testDir.toString(),
-            "CYCLES",
-            true, // useGpu = true with missing Blender triggers software renderer
-            null
-        );
-
-        assert softwareFrames != null && softwareFrames.size() == 2 : "Software fallback should generate 2 frames";
-        for (String fPath : softwareFrames) {
-            File f = new File(fPath);
-            assert f.exists() && f.length() > 500 : "Generated software frame is missing or empty";
+        // 5. Test Pure Blender Pipeline (Fails with FileNotFoundException on missing file, no fallback)
+        System.out.println("\n--- Step 5: Pure Blender Engine Validation (No Fallback) ---");
+        boolean threwExpectedException = false;
+        try {
+            BlenderJobExecutor.executeJob(
+                "JOB_RESILIENCE_FALLBACK",
+                "nonexistent_missing.blend",
+                1, 2,
+                "render_output/resilience_frames",
+                "CYCLES",
+                true,
+                null
+            );
+        } catch (FileNotFoundException | IllegalStateException e) {
+            threwExpectedException = true;
+            System.out.println("[TEST] Expected Exception caught: " + e.getMessage());
         }
-        System.out.println("[TEST] Step 5 PASSED: Multi-tier compute fallback verified.");
 
-        // Clean up test frames
-        for (String fPath : softwareFrames) {
-            new File(fPath).delete();
-        }
-        testDir.toFile().delete();
+        assert threwExpectedException : "Missing blend file should throw FileNotFoundException (software fallback removed)";
+        System.out.println("[TEST] Step 5 PASSED: Strict Blender execution verified (fallback disabled).");
 
         System.out.println("\n=======================================================");
         System.out.println(">>> ALL SYSTEM RESILIENCE & EDGE-CASE TESTS PASSED <<<");

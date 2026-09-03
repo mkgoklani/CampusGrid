@@ -130,18 +130,30 @@ public class HardwareDetailsAndGpuToggleTest {
             server.stop();
         }
 
-        // 4. Test Blender Job Executor with useGpu = true and useGpu = false
-        System.out.println("\n--- Step 4: Blender Job Executor with GPU / CPU compute modes ---");
-        List<String> filesGpu = BlenderJobExecutor.executeJob(
-            "JOB_TEST_GPU", "nonexistent_fast.blend", 1, 2, "./render_output/test_gpu", "CYCLES", true, null
-        );
-        assert filesGpu != null && filesGpu.size() == 2 : "Expected 2 rendered frames with useGpu=true";
+        // 4. Test Blender Job Executor validation (Missing file throws FileNotFoundException)
+        System.out.println("\n--- Step 4: Blender Job Executor Validation (Strict Mode) ---");
+        boolean caughtMissingGpu = false;
+        try {
+            BlenderJobExecutor.executeJob(
+                "JOB_TEST_GPU", "nonexistent_fast.blend", 1, 2, "./render_output/test_gpu", "CYCLES", true, null
+            );
+        } catch (FileNotFoundException | IllegalStateException e) {
+            caughtMissingGpu = true;
+            System.out.println("[TEST] Expected exception caught on missing file: " + e.getMessage());
+        }
+        assert caughtMissingGpu : "Expected FileNotFoundException or IllegalStateException on missing blend file";
 
-        List<String> filesCpu = BlenderJobExecutor.executeJob(
-            "JOB_TEST_CPU", "nonexistent_fast.blend", 1, 2, "./render_output/test_cpu", "CYCLES", false, null
-        );
-        assert filesCpu != null && filesCpu.size() == 2 : "Expected 2 rendered frames with useGpu=false";
-        System.out.println("[TEST] Step 4 PASSED: BlenderJobExecutor GPU/CPU execution verified.");
+        boolean caughtMissingCpu = false;
+        try {
+            BlenderJobExecutor.executeJob(
+                "JOB_TEST_CPU", "nonexistent_fast.blend", 1, 2, "./render_output/test_cpu", "CYCLES", false, null
+            );
+        } catch (FileNotFoundException | IllegalStateException e) {
+            caughtMissingCpu = true;
+            System.out.println("[TEST] Expected exception caught on missing file: " + e.getMessage());
+        }
+        assert caughtMissingCpu : "Expected FileNotFoundException or IllegalStateException on missing blend file";
+        System.out.println("[TEST] Step 4 PASSED: BlenderJobExecutor validation verified.");
 
         System.out.println("\n=======================================================");
         System.out.println(">>> ALL HARDWARE TELEMETRY & GPU TOGGLE TESTS PASSED <<<");
