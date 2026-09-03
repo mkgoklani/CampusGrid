@@ -400,7 +400,7 @@ public class PayloadListener implements Runnable {
                 for (int i = 0; i < totalValid; i += BATCH_SIZE) {
                     int end = Math.min(i + BATCH_SIZE, totalValid);
                     boolean isLastBatch = (end >= totalValid);
-                    java.util.List<String> batchSlice = validFiles.subList(i, end);
+                    java.util.List<String> batchSlice = new java.util.ArrayList<>(validFiles.subList(i, end));
 
                     java.util.Map<String, byte[]> batchMap = new java.util.HashMap<>();
                     for (String p : batchSlice) {
