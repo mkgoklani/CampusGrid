@@ -96,16 +96,20 @@ public class JobManager {
      * @param taskId The sub-task identifier.
      * @param completed true if task completed successfully, false if failed.
      */
-    public void updateJobProgress(String jobId, String taskId, boolean completed) {
+    public void updateJobProgress(String jobId, String taskId, boolean success) {
         Job job = jobRegistry.get(jobId);
         if (job == null) return;
 
-        if (completed) {
-            boolean allDone = job.markSubTaskCompleted(taskId);
-            System.out.printf("[JOB-MANAGER] Job [%s] task [%s] COMPLETED (Progress: %.1f%%)\n",
-                jobId, taskId, job.getProgressPercentage());
+        if (success) {
+            boolean subTasksDone = job.markSubTaskCompleted(taskId);
+            boolean framesCovered = job.isAllFramesCovered();
+            boolean allDone = subTasksDone || framesCovered;
 
-            if (allDone) {
+            System.out.printf("[JOB-MANAGER] Job [%s] task [%s] COMPLETED (Progress: %.1f%%, Frames Covered: %b)\n",
+                jobId, taskId, job.getProgressPercentage(), framesCovered);
+
+            if (allDone && job.getStatus() != JobStatus.COMPLETED) {
+                job.setStatus(JobStatus.COMPLETED);
                 System.out.println("[JOB-MANAGER] ★★★ Job [" + jobId + "] FULLY COMPLETED ★★★");
                 if (currentActiveJob != null && currentActiveJob.getJobId().equals(jobId)) {
                     currentActiveJob = null;
@@ -122,6 +126,16 @@ public class JobManager {
                 }, "FrameStitcher-" + jobId).start();
             }
         } else {
+            // If all frames are already rendered on disk, ignore speculative failures
+            if (job.isAllFramesCovered()) {
+                System.out.printf("[JOB-MANAGER] SubTask [%s] reported failure, but all %d frames are covered on disk. Job remains complete.\n",
+                    taskId, job.getTotalFrames());
+                if (job.getStatus() != JobStatus.COMPLETED) {
+                    job.setStatus(JobStatus.COMPLETED);
+                }
+                return;
+            }
+
             // Task failed - requeue for retry up to 3 times
             for (Job.SubTask task : job.getSubTasks()) {
                 if (task.getTaskId().equals(taskId)) {

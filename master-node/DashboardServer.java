@@ -531,6 +531,8 @@ public class DashboardServer {
             params.put("renderEngine", renderEngine);
             params.put("renderSamples", renderSamples);
             params.put("useDenoising", useDenoising);
+            boolean enableWorkStealing = body.contains("\"enableWorkStealing\":true");
+            params.put("enableWorkStealing", enableWorkStealing);
             params.put("resolutionPercentage", resolutionPercentage);
             if (blendFileBytes != null) {
                 params.put("blendFileBytes", blendFileBytes);

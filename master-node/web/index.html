@@ -1087,6 +1087,12 @@
                         <span>⚡ Spec-Weighted Slicing (GPU vs CPU)</span>
                     </label>
                 </div>
+                <div style="margin-bottom: 6px;">
+                    <label class="checkbox-label" style="margin: 0; font-size: 11.5px; color: #b45309; font-weight: 600;">
+                        <input type="checkbox" id="modal-work-stealing">
+                        <span>🛡️ Speculative Dynamic Work-Stealing (Off by default for maximum efficiency)</span>
+                    </label>
+                </div>
                 <div class="auto-calc-box" id="auto-calc-notice" style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px;">
                     <div id="auto-calc-summary">⚡ <strong>Hardware-Aware Spec Allocation:</strong></div>
                     <div id="spec-partition-breakdown" style="font-size: 11.5px; line-height: 1.4; color: #0d47a1; width: 100%;">
@@ -1685,6 +1691,8 @@
 
             const totalFrames = Math.max(1, endFrame - startFrame + 1);
 
+            const enableWorkStealing = document.getElementById('modal-work-stealing') ? document.getElementById('modal-work-stealing').checked : false;
+
             const payload = {
                 jobName: jobName,
                 workloadType: "BLENDER",
@@ -1694,6 +1702,7 @@
                 totalFrames: totalFrames,
                 framesPerTask: framesPerTask,
                 weightedSlicing: weightedSlicing,
+                enableWorkStealing: enableWorkStealing,
                 targetNodes: targetNodes,
                 cleanUpFrames: cleanUp,
                 renderEngine: selectedEngine,

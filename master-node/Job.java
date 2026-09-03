@@ -249,6 +249,26 @@ public class Job implements Serializable {
         }
     }
 
+    public boolean isWorkStealingEnabled() {
+        if (parameters == null) return false;
+        Object val = parameters.get("enableWorkStealing");
+        if (val instanceof Boolean) return (Boolean) val;
+        if (val != null) return Boolean.parseBoolean(val.toString());
+        return false; // Disabled by default to prevent cluster clutter
+    }
+
+    /**
+     * Checks if all frames from 1 to totalFrames exist as rendered PNGs on disk.
+     * Allows early completion without waiting for redundant speculative stolen tasks.
+     */
+    public boolean isAllFramesCovered() {
+        if (totalFrames <= 0) return true;
+        java.io.File outDir = new java.io.File("./output/" + jobId);
+        if (!outDir.exists() || !outDir.isDirectory()) return false;
+        String[] pngs = outDir.list((dir, name) -> name.toLowerCase().endsWith(".png"));
+        return pngs != null && pngs.length >= totalFrames;
+    }
+
     public Collection<SubTask> getSubTasks() {
         return Collections.unmodifiableCollection(subTasks.values());
     }
