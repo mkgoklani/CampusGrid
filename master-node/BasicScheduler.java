@@ -245,12 +245,22 @@ public class BasicScheduler implements Runnable {
         String taskId = task.getTaskId();
         String frameRange = task.getFrameRange();
 
+        Object taskData = task.getTaskPayloadBytes() != null ? task.getTaskPayloadBytes() : task.getTaskData();
+        if (taskData instanceof String pathStr) {
+            java.io.File f = new java.io.File(pathStr);
+            if (f.exists() && f.isFile()) {
+                try {
+                    taskData = java.nio.file.Files.readAllBytes(f.toPath());
+                } catch (Exception ignored) {}
+            }
+        }
+
         // Build protocol envelope
         TaskAssignmentPayload payload = new TaskAssignmentPayload(
             jobId,
             taskId,
             task.getWorkloadType(),
-            task.getTaskData() != null ? task.getTaskData() : task.getTaskPayloadBytes(),
+            taskData,
             frameRange,
             task.getRenderEngine()
         );

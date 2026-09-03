@@ -48,8 +48,28 @@ public class BlenderUtils {
      * @return the absolute path to the Blender executable, or null if it cannot be found.
      */
     public static String findExecutablePath() {
+        String workDir;
+        try {
+            workDir = new File(".").getCanonicalPath();
+        } catch (Exception e) {
+            workDir = System.getProperty("user.dir");
+        }
+
         if (isWindows()) {
-            // 1. Try 'where' command on Windows for blender.exe and blender
+            // 1. Check local portable directory ./blender_bin first (allows custom version switches)
+            String[] localWinPaths = {
+                workDir + "\\blender_bin\\blender.exe",
+                workDir + "\\..\\blender_bin\\blender.exe",
+                "C:\\blender_bin\\blender.exe"
+            };
+            for (String p : localWinPaths) {
+                File f = new File(p);
+                if (f.exists() && f.isFile()) {
+                    return f.getAbsolutePath();
+                }
+            }
+
+            // 2. Try 'where' command on Windows for blender.exe and blender
             String pathFromWhere = executeCommandSilently("where", "blender.exe");
             if (pathFromWhere == null || pathFromWhere.isEmpty()) {
                 pathFromWhere = executeCommandSilently("where", "blender");
@@ -61,13 +81,6 @@ public class BlenderUtils {
                         return f.getAbsolutePath();
                     }
                 }
-            }
-            
-            String workDir;
-            try {
-                workDir = new File(".").getCanonicalPath();
-            } catch (Exception e) {
-                workDir = System.getProperty("user.dir");
             }
             
             String userHome = System.getProperty("user.home", "C:\\Users\\Default");
@@ -149,7 +162,21 @@ public class BlenderUtils {
             }
         } else {
             // Linux/Ubuntu / macOS
-            // 1. Try 'which' command
+            // 1. Check local portable directory ./blender_bin first (allows custom version switches)
+            String[] localUnixPaths = {
+                workDir + "/blender_bin/blender",
+                workDir + "/blender_bin/Blender.app/Contents/MacOS/Blender",
+                workDir + "/blender_bin/Blender.app/Contents/MacOS/blender",
+                workDir + "/../blender_bin/blender"
+            };
+            for (String p : localUnixPaths) {
+                File f = new File(p);
+                if (f.exists() && f.canExecute()) {
+                    return f.getAbsolutePath();
+                }
+            }
+
+            // 2. Try 'which' command
             String pathFromWhich = executeCommandSilently("which", "blender");
             if (pathFromWhich != null && !pathFromWhich.isEmpty()) {
                 String trimmedPath = pathFromWhich.trim();
@@ -158,14 +185,8 @@ public class BlenderUtils {
                 }
             }
             
-            // 2. Try common installation paths on macOS & Linux
+            // 3. Try common installation paths on macOS & Linux
             String userHome = System.getProperty("user.home");
-            String workDir;
-            try {
-                workDir = new File(".").getCanonicalPath();
-            } catch (Exception e) {
-                workDir = System.getProperty("user.dir");
-            }
             String[] commonUnixPaths = {
                 "/Applications/Blender.app/Contents/MacOS/Blender",
                 "/Applications/Blender.app/Contents/MacOS/blender",
