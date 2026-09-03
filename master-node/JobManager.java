@@ -271,6 +271,90 @@ public class JobManager {
     }
 
     /**
+     * Registers a job in the registry for tracking without automatically queueing it.
+     */
+    public void registerJob(Job job) {
+        if (job != null) {
+            jobRegistry.put(job.getJobId(), job);
+        }
+    }
+
+    /**
+     * Resumes execution of a CANCELLED or FAILED job by re-queuing all uncompleted sub-tasks.
+     */
+    public synchronized boolean resumeJob(String jobId) {
+        Job job = jobRegistry.get(jobId);
+        if (job == null) return false;
+
+        // If all frames are covered or job is already finished, nothing to do
+        if (job.isAllCompleted() || job.isAllFramesCovered()) {
+            job.setStatus(JobStatus.COMPLETED);
+            return false;
+        }
+
+        // Re-queue non-completed sub-tasks
+        for (Job.SubTask st : job.getSubTasks()) {
+            if (st.getStatus() != Job.SubTaskStatus.COMPLETED) {
+                st.setStatus(Job.SubTaskStatus.PENDING);
+                st.setAssignedWorkerId(null);
+                job.requeueSubTask(st);
+            }
+        }
+
+        job.setStatus(JobStatus.QUEUED);
+        if (!pendingJobQueue.contains(job)) {
+            pendingJobQueue.add(job);
+        }
+        System.out.printf("[JOB-MANAGER] ▶ Job [%s] RESUMED by operator (%d sub-tasks queued).\n",
+            jobId, job.getSubTaskCount());
+        return true;
+    }
+
+    /**
+     * Permanently deletes a job from tracking and optionally removes its disk output directory.
+     */
+    public synchronized boolean deleteJob(String jobId, WorkerRegistry workerRegistry, boolean deleteFiles) {
+        Job job = jobRegistry.remove(jobId);
+        if (job == null) return false;
+
+        // Cancel if active
+        if (job.getStatus() == JobStatus.RUNNING || job.getStatus() == JobStatus.QUEUED) {
+            cancelJob(jobId, workerRegistry);
+        }
+        pendingJobQueue.remove(job);
+        if (currentActiveJob != null && currentActiveJob.getJobId().equals(jobId)) {
+            currentActiveJob = null;
+        }
+
+        // Optionally delete output files on disk
+        if (deleteFiles) {
+            try {
+                java.io.File outDir = new java.io.File("./output/" + jobId);
+                if (outDir.exists() && outDir.isDirectory()) {
+                    deleteRecursively(outDir);
+                }
+            } catch (Exception e) {
+                System.err.printf("[JOB-MANAGER-WARN] Failed deleting output directory for [%s]: %s\n", jobId, e.getMessage());
+            }
+        }
+
+        System.out.printf("[JOB-MANAGER] 🗑 Job [%s] DELETED by operator (deleteFiles=%b).\n", jobId, deleteFiles);
+        return true;
+    }
+
+    private static void deleteRecursively(java.io.File file) {
+        if (file.isDirectory()) {
+            java.io.File[] children = file.listFiles();
+            if (children != null) {
+                for (java.io.File child : children) {
+                    deleteRecursively(child);
+                }
+            }
+        }
+        file.delete();
+    }
+
+    /**
      * Returns cluster job statistics.
      */
     public String getJobSummary() {

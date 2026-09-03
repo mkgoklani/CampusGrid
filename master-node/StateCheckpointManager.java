@@ -303,10 +303,16 @@ public class StateCheckpointManager implements Runnable {
                 }
 
                 // Determine restored job status
-                if (restoredJob.isAllCompleted()) {
+                if (restoredJob.isAllCompleted() || restoredJob.isAllFramesCovered()) {
                     restoredJob.setStatus(JobStatus.COMPLETED);
-                    System.out.printf("[CHECKPOINT] Job [%s] was already complete (%d frames on disk). Skipping.%n",
+                    jobManager.registerJob(restoredJob);
+                    System.out.printf("[CHECKPOINT] Job [%s] was already complete (%d frames on disk).%n",
                         jobId, completedFrames.size());
+                } else if ("CANCELLED".equalsIgnoreCase(statusStr)) {
+                    restoredJob.setStatus(JobStatus.CANCELLED);
+                    jobManager.registerJob(restoredJob);
+                    System.out.printf("[CHECKPOINT] Restored Cancelled Job [%s] \"%s\": %d/%d frames completed (Paused/Cancelled, awaiting manual Resume).%n",
+                        jobId, jobName, completedFrames.size(), totalFrames);
                 } else {
                     restoredJob.setStatus(JobStatus.QUEUED);
                     jobManager.submitJob(restoredJob, framesPerTask);

@@ -75,6 +75,7 @@ public class MasterNodeApplication {
         this.dashboardServer.setETAEstimator(etaEstimator);
         this.dashboardServer.setReliabilityTracker(reliabilityTracker);
         this.dashboardServer.setUtilizationTracker(utilizationTracker);
+        this.dashboardServer.setCheckpointManager(checkpointManager);
     }
 
     /**

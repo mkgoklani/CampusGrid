@@ -173,7 +173,9 @@ public class Job implements Serializable {
             subTask.setStatus(SubTaskStatus.PENDING);
             subTask.setAssignedWorkerId(null);
             subTask.incrementRetryCount();
-            pendingSubTasks.add(subTask);
+            if (!pendingSubTasks.contains(subTask)) {
+                pendingSubTasks.add(subTask);
+            }
         }
     }
 

@@ -76,6 +76,15 @@ public class DashboardServer {
         this.utilizationTracker = tracker;
     }
 
+    private StateCheckpointManager checkpointManager;
+
+    /**
+     * Sets the optional StateCheckpointManager for persisting state upon deletion and resumption.
+     */
+    public void setCheckpointManager(StateCheckpointManager manager) {
+        this.checkpointManager = manager;
+    }
+
     /**
      * Starts the HTTP REST server and WebSocket broadcaster daemon.
      */
@@ -89,6 +98,8 @@ public class DashboardServer {
         httpServer.createContext("/api/jobs", new JobsHandler());
         httpServer.createContext("/api/jobs/submit", new SubmitJobHandler());
         httpServer.createContext("/api/jobs/cancel", new CancelJobHandler());
+        httpServer.createContext("/api/jobs/resume", new ResumeJobHandler());
+        httpServer.createContext("/api/jobs/delete", new DeleteJobHandler());
         httpServer.createContext("/api/nodes/install-blender", new InstallBlenderHandler());
         httpServer.createContext("/output", new OutputFileHandler());
         httpServer.createContext("/download/agent.jar", new DownloadAgentJarHandler());
@@ -618,7 +629,77 @@ public class DashboardServer {
 
             if (!jobId.isEmpty()) {
                 jobManager.cancelJob(jobId, workerRegistry);
+                if (checkpointManager != null) {
+                    checkpointManager.saveCheckpoint();
+                }
                 sendJsonResponse(exchange, 200, "{\"success\":true,\"message\":\"Job cancelled\"}");
+            } else {
+                sendJsonResponse(exchange, 400, "{\"error\":\"Missing jobId parameter\"}");
+            }
+        }
+    }
+
+    private class ResumeJobHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 204, "");
+                return;
+            }
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
+                return;
+            }
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String jobId = extractJsonString(body, "jobId", "");
+
+            if (jobId.isEmpty() && exchange.getRequestURI().getQuery() != null) {
+                for (String param : exchange.getRequestURI().getQuery().split("&")) {
+                    if (param.startsWith("jobId=")) jobId = param.substring(6);
+                }
+            }
+
+            if (!jobId.isEmpty()) {
+                boolean resumed = jobManager.resumeJob(jobId);
+                if (checkpointManager != null) {
+                    checkpointManager.saveCheckpoint();
+                }
+                sendJsonResponse(exchange, 200, "{\"success\":" + resumed + ",\"message\":\"Job resumed\"}");
+            } else {
+                sendJsonResponse(exchange, 400, "{\"error\":\"Missing jobId parameter\"}");
+            }
+        }
+    }
+
+    private class DeleteJobHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 204, "");
+                return;
+            }
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
+                return;
+            }
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String jobId = extractJsonString(body, "jobId", "");
+            boolean deleteFiles = !body.contains("\"deleteFiles\":false");
+
+            if (jobId.isEmpty() && exchange.getRequestURI().getQuery() != null) {
+                for (String param : exchange.getRequestURI().getQuery().split("&")) {
+                    if (param.startsWith("jobId=")) jobId = param.substring(6);
+                }
+            }
+
+            if (!jobId.isEmpty()) {
+                boolean deleted = jobManager.deleteJob(jobId, workerRegistry, deleteFiles);
+                if (checkpointManager != null) {
+                    checkpointManager.saveCheckpoint();
+                }
+                sendJsonResponse(exchange, 200, "{\"success\":" + deleted + ",\"message\":\"Job deleted\"}");
             } else {
                 sendJsonResponse(exchange, 400, "{\"error\":\"Missing jobId parameter\"}");
             }
