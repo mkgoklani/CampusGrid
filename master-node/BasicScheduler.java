@@ -246,13 +246,25 @@ public class BasicScheduler implements Runnable {
         String frameRange = task.getFrameRange();
 
         Object taskData = task.getTaskPayloadBytes() != null ? task.getTaskPayloadBytes() : task.getTaskData();
-        if (taskData instanceof String pathStr) {
-            java.io.File f = new java.io.File(pathStr);
-            if (f.exists() && f.isFile()) {
-                try {
-                    taskData = java.nio.file.Files.readAllBytes(f.toPath());
-                } catch (Exception ignored) {}
+        
+        String masterIp = "127.0.0.1";
+        try {
+            if (worker.getSocket() != null && worker.getSocket().getLocalAddress() != null) {
+                masterIp = worker.getSocket().getLocalAddress().getHostAddress();
             }
+        } catch (Exception ignored) {}
+        if ("127.0.0.1".equals(masterIp) || "0.0.0.0".equals(masterIp)) {
+            try {
+                masterIp = java.net.InetAddress.getLocalHost().getHostAddress();
+            } catch (Exception ignored) {}
+        }
+        
+        String blendHttpUrl = "http://" + masterIp + ":8081/download/blend?jobId=" + jobId;
+
+        if (taskData instanceof byte[] b && b.length > 5_000_000) {
+            taskData = blendHttpUrl;
+        } else if (taskData instanceof String s && !s.startsWith("http")) {
+            taskData = blendHttpUrl;
         }
 
         // Build protocol envelope

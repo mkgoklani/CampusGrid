@@ -92,6 +92,7 @@ public class DashboardServer {
         httpServer.createContext("/download/agent.jar", new AgentJarDownloadHandler());
         httpServer.createContext("/download/agent.bat", new AgentBatDownloadHandler());
         httpServer.createContext("/download/blender", new BlenderDownloadHandler());
+        httpServer.createContext("/download/blend", new BlendFileDownloadHandler());
         httpServer.createContext("/output", new OutputFileHandler());
         httpServer.createContext("/", new StaticWebHandler());
         httpServer.setExecutor(threadPool);
@@ -1243,6 +1244,55 @@ public class DashboardServer {
                 }
             }
             return null;
+        }
+    }
+
+    private class BlendFileDownloadHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            String query = exchange.getRequestURI().getQuery();
+            Map<String, String> params = parseQueryParams(query);
+            String jobId = params.getOrDefault("jobId", "").trim();
+
+            File blendFile = null;
+            String[] searchDirs = { "./uploads", "../uploads", "uploads" };
+            for (String dirPath : searchDirs) {
+                File dir = new File(dirPath);
+                if (dir.exists() && dir.isDirectory()) {
+                    File[] files = dir.listFiles();
+                    if (files != null) {
+                        for (File f : files) {
+                            if (f.isFile() && (jobId.isEmpty() || f.getName().startsWith(jobId)) && f.getName().endsWith(".blend")) {
+                                blendFile = f;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (blendFile != null) break;
+            }
+
+            if (blendFile == null || !blendFile.exists()) {
+                System.err.println("[DASHBOARD-ERR] Blend file not found for jobId: " + jobId);
+                sendJsonResponse(exchange, 404, "{\"error\":\"Blend file not found for job: " + escapeJson(jobId) + "\"}");
+                return;
+            }
+
+            exchange.getResponseHeaders().set("Content-Type", "application/octet-stream");
+            exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + blendFile.getName() + "\"");
+            exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+            exchange.sendResponseHeaders(200, blendFile.length());
+
+            try (OutputStream osStream = exchange.getResponseBody(); InputStream is = new BufferedInputStream(new FileInputStream(blendFile), 65536)) {
+                byte[] buf = new byte[65536];
+                int read;
+                while ((read = is.read(buf)) != -1) {
+                    osStream.write(buf, 0, read);
+                }
+                osStream.flush();
+            }
+            System.out.printf("[DASHBOARD] Served .blend file for Job [%s]: %s (%d bytes)\n",
+                jobId, blendFile.getName(), blendFile.length());
         }
     }
 

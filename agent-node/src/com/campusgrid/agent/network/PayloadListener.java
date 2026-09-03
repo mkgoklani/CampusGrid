@@ -280,8 +280,19 @@ public class PayloadListener implements Runnable {
             }
 
             String blendPath = "test.blend";
-            if (taskData instanceof String s && !s.trim().isEmpty()) {
-                blendPath = s.trim();
+            if (taskData instanceof String s && (s.startsWith("http://") || s.startsWith("https://"))) {
+                java.io.File cacheDir = new java.io.File("./cache/" + jobId).getCanonicalFile();
+                if (!cacheDir.exists()) cacheDir.mkdirs();
+                java.io.File cachedFile = new java.io.File(cacheDir, "scene.blend");
+                if (!cachedFile.exists() || cachedFile.length() < 1000) {
+                    System.out.printf("[TASK] Streaming .blend file from Master (%s)...\n", s);
+                    boolean dlSuccess = com.campusgrid.agent.blender.BlenderInstaller.downloadFileWithProgress(s, cachedFile, null, 0.0, 100.0);
+                    if (!dlSuccess) {
+                        System.err.println("[TASK-ERR] Failed streaming .blend file from: " + s);
+                    }
+                }
+                blendPath = cachedFile.getAbsolutePath();
+                System.out.printf("[TASK] Blend file verified at: %s (%d bytes)\n", blendPath, cachedFile.length());
             } else if (taskData instanceof byte[] bytes && bytes.length > 0) {
                 // Use absolute path so snap-sandboxed Blender on Linux can find it
                 java.io.File cacheDir = new java.io.File("./cache/" + jobId).getCanonicalFile();
@@ -290,6 +301,8 @@ public class PayloadListener implements Runnable {
                 java.nio.file.Files.write(cachedFile.toPath(), bytes);
                 blendPath = cachedFile.getAbsolutePath();
                 System.out.printf("[TASK] Unpacked binary blend file (%d bytes) to: %s\n", bytes.length, blendPath);
+            } else if (taskData instanceof String s && !s.trim().isEmpty()) {
+                blendPath = s.trim();
             }
 
             System.out.printf("[TASK] Received Task [%s] for Job [%s] (Frames: %d-%d, Blend: %s)\n",
