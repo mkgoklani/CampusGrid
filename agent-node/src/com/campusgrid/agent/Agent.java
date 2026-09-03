@@ -11,8 +11,8 @@ import com.campusgrid.agent.network.MasterConnection;
  */
 public class Agent {
 
-    public static volatile String CURRENT_VERSION = "1.0.2";
-    public static volatile int CURRENT_BUILD = 102;
+    public static volatile String CURRENT_VERSION = "1.0.12";
+    public static volatile int CURRENT_BUILD = 112;
 
     static {
         // 1. Check System Properties (-Dagent.version / -Dagent.build)
