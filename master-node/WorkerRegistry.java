@@ -35,10 +35,14 @@ public class WorkerRegistry {
      * @param state The WorkerState representing the worker node.
      */
     public void registerWorker(WorkerState state) {
-        // Automatically purge any stale or previous sessions from the same IP address
+        // Automatically purge any stale or previous sessions from the same IP address (except loopback testing)
+        boolean isLoopback = state.getIpAddress().startsWith("127.") || "localhost".equalsIgnoreCase(state.getIpAddress()) || "0:0:0:0:0:0:0:1".equals(state.getIpAddress());
+        
         List<String> staleIds = new ArrayList<>();
         for (WorkerState existing : registry.values()) {
-            if (existing.getIpAddress().equals(state.getIpAddress()) && !existing.getWorkerId().equals(state.getWorkerId())) {
+            if (!isLoopback && existing.getIpAddress().equals(state.getIpAddress()) && !existing.getWorkerId().equals(state.getWorkerId())) {
+                staleIds.add(existing.getWorkerId());
+            } else if (isLoopback && existing.getStatus() == WorkerStatus.OFFLINE && !existing.getWorkerId().equals(state.getWorkerId())) {
                 staleIds.add(existing.getWorkerId());
             }
         }
@@ -114,7 +118,9 @@ public class WorkerRegistry {
     public void updateStatus(String workerId, WorkerStatus status) {
         WorkerState state = registry.get(workerId);
         if (state != null) {
-            state.setStatus(status);
+            synchronized (state) {
+                state.setStatus(status);
+            }
         }
     }
 
@@ -194,31 +200,37 @@ public class WorkerRegistry {
      */
     public void handleWorkerFailure(String workerId, JobManager jobManager) {
         WorkerState state = registry.get(workerId);
-        if (state != null) {
-            synchronized (state) {
-                state.setStatus(WorkerStatus.OFFLINE);
-                state.setCurrentJobId(null);
-                state.setCurrentTaskId(null);
-                state.setAssignedFrameRange(null);
+        if (state == null) return;
 
-                // Safely close the dead socket
-                try {
-                    if (state.getSocket() != null && !state.getSocket().isClosed()) {
-                        state.getSocket().close();
-                    }
-                } catch (Exception ignored) {}
+        // Idempotency guard: prevent duplicate re-queuing when multiple threads
+        // detect the same failure (HeartbeatMonitor, receiver loop, scheduler I/O error)
+        synchronized (state) {
+            if (state.getStatus() == WorkerStatus.OFFLINE) {
+                return; // Already handled by another thread
             }
+            state.setStatus(WorkerStatus.OFFLINE);
+            state.setCurrentJobId(null);
+            state.setCurrentTaskId(null);
+            state.setAssignedFrameRange(null);
 
-            // Automatic Task Re-queuing across all active jobs for complete fault tolerance
-            if (jobManager != null) {
-                for (Job job : jobManager.getAllJobs().values()) {
-                    if (job.getStatus() == JobStatus.RUNNING || job.getStatus() == JobStatus.QUEUED) {
-                        for (Job.SubTask st : job.getSubTasks()) {
-                            if (workerId.equals(st.getAssignedWorkerId()) && st.getStatus() != Job.SubTaskStatus.COMPLETED) {
-                                System.out.printf("[FAULT-TOLERANCE] ⚡ Auto-rescheduling Task [%s] (Frames: %s) from dead Worker [%s] back to queue (Retry #%d)\n",
-                                    st.getTaskId(), st.getFrameRange(), workerId, st.getRetryCount() + 1);
-                                job.requeueSubTask(st);
-                            }
+            // Safely close the dead socket
+            try {
+                if (state.getSocket() != null && !state.getSocket().isClosed()) {
+                    state.getSocket().close();
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Automatic Task Re-queuing across all active jobs for complete fault tolerance
+        // (Safe outside the lock since status is already OFFLINE — no other thread will enter)
+        if (jobManager != null) {
+            for (Job job : jobManager.getAllJobs().values()) {
+                if (job.getStatus() == JobStatus.RUNNING || job.getStatus() == JobStatus.QUEUED) {
+                    for (Job.SubTask st : job.getSubTasks()) {
+                        if (workerId.equals(st.getAssignedWorkerId()) && st.getStatus() != Job.SubTaskStatus.COMPLETED) {
+                            System.out.printf("[FAULT-TOLERANCE] ⚡ Auto-rescheduling Task [%s] (Frames: %s) from dead Worker [%s] back to queue (Retry #%d)\n",
+                                st.getTaskId(), st.getFrameRange(), workerId, st.getRetryCount() + 1);
+                            job.requeueSubTask(st);
                         }
                     }
                 }

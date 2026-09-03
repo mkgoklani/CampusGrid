@@ -28,6 +28,10 @@ public class MasterNodeApplication {
     private final HeartbeatMonitor heartbeatMonitor;
     private final DashboardServer dashboardServer;
     private final LanDiscoveryResponder lanDiscovery;
+    private final StateCheckpointManager checkpointManager;
+    private final RenderETAEstimator etaEstimator;
+    private final WorkerReliabilityTracker reliabilityTracker;
+    private final ClusterUtilizationTracker utilizationTracker;
 
     private final int agentTcpPort;
     private final int dashboardHttpPort;
@@ -51,13 +55,26 @@ public class MasterNodeApplication {
         this.jobManager = new JobManager();
         this.resultCollector = new ResultCollector(jobManager, workerRegistry, Paths.get("./output"));
 
-        // 2. Initialize Schedulers, Watchdogs, and LAN Discovery
+        // 2. Initialize Analytics, Reliability & ETA Estimator
+        this.reliabilityTracker = new WorkerReliabilityTracker();
+        this.etaEstimator = new RenderETAEstimator();
+        this.utilizationTracker = new ClusterUtilizationTracker(workerRegistry, jobManager, 3000);
+
+        this.resultCollector.setETAEstimator(etaEstimator);
+        this.resultCollector.setReliabilityTracker(reliabilityTracker);
+        this.checkpointManager = new StateCheckpointManager(jobManager);
+
+        // 3. Initialize Schedulers, Watchdogs, and LAN Discovery
         this.scheduler = new BasicScheduler(jobManager, workerRegistry, 500);
+        this.scheduler.setReliabilityTracker(reliabilityTracker);
         this.heartbeatMonitor = new HeartbeatMonitor(workerRegistry, jobManager, 15000, 5000);
         this.lanDiscovery = new LanDiscoveryResponder(agentTcpPort);
 
-        // 3. Initialize Embedded Web Dashboard Server
+        // 4. Initialize Embedded Web Dashboard Server
         this.dashboardServer = new DashboardServer(jobManager, workerRegistry, dashboardHttpPort, dashboardWsPort);
+        this.dashboardServer.setETAEstimator(etaEstimator);
+        this.dashboardServer.setReliabilityTracker(reliabilityTracker);
+        this.dashboardServer.setUtilizationTracker(utilizationTracker);
     }
 
     /**
@@ -75,26 +92,34 @@ public class MasterNodeApplication {
         System.out.println("╚════════════════════════════════════════════════════════════╝");
         System.out.println();
 
-        // 1. Start Dashboard REST & WebSocket Services
+        // 1. Attempt Crash Recovery from previous checkpoint
+        int restored = checkpointManager.restoreFromCheckpoint();
+        if (restored > 0) {
+            System.out.printf("[BOOTSTRAP] ★ Crash Recovery: %d job(s) restored from previous session!%n", restored);
+        }
+
+        // 2. Start Dashboard REST & WebSocket Services
         dashboardServer.start();
 
-        // 2. Start Non-Blocking Scheduler Daemon
+        // 3. Start Non-Blocking Scheduler Daemon
         scheduler.start();
 
-        // 3. Start Heartbeat Watchdog Daemon & LAN Discovery Responder
+        // 4. Start Watchdogs, Analytics, LAN Discovery, & State Checkpoint
         heartbeatMonitor.start();
         lanDiscovery.start();
+        checkpointManager.start();
+        utilizationTracker.start();
 
-        // 4. Start TCP ServerSocket Listener for Agent Nodes
+        // 5. Start TCP ServerSocket Listener for Agent Nodes
         agentServerSocket = new ServerSocket(agentTcpPort);
         Thread acceptThread = new Thread(this::runAgentAcceptLoop, "Master-Agent-Accept");
         acceptThread.setDaemon(false);
         acceptThread.start();
 
-        // 5. Register JVM Shutdown Hook for Graceful Teardown
+        // 6. Register JVM Shutdown Hook for Graceful Teardown
         Runtime.getRuntime().addShutdownHook(new Thread(this::stop, "Master-ShutdownHook"));
 
-        System.out.println("[BOOTSTRAP] All Master Node modules & LAN Discovery initialized and running successfully.");
+        System.out.println("[BOOTSTRAP] All Master Node modules, Analytics & State Persistence initialized and running successfully.");
         System.out.println();
     }
 
@@ -109,6 +134,10 @@ public class MasterNodeApplication {
                 Socket socket = agentServerSocket.accept();
                 String workerId = socket.getInetAddress().getHostAddress() + ":" + socket.getPort();
                 System.out.println("[REGISTRY] Inbound worker connection accepted: " + workerId);
+
+                // Set socket read timeout to prevent indefinitely blocked receiver threads
+                // when a worker process is killed without graceful TCP close (half-open state)
+                socket.setSoTimeout(60_000); // 60-second read timeout
 
                 // Initialize Object Streams: Flush output header immediately to prevent stream lock deadlock
                 ObjectOutputStream outStream = new ObjectOutputStream(socket.getOutputStream());
@@ -164,13 +193,19 @@ public class MasterNodeApplication {
                     System.out.println("[RECEIVER-WARN] Unrecognized packet received from [" + workerId + "]: " + obj.getClass());
                 }
             }
+        } catch (java.net.SocketTimeoutException ste) {
+            // Socket read timeout: worker is unresponsive (half-open TCP)
+            System.out.println("[NETWORK] Worker [" + workerId + "] timed out (60s read timeout).");
         } catch (EOFException | SocketException e) {
             // Normal client disconnect or socket closed
             System.out.println("[NETWORK] Worker [" + workerId + "] disconnected.");
         } catch (Exception e) {
             System.err.printf("[NETWORK-ERR] Stream exception on Worker [%s]: %s\n", workerId, e.getMessage());
         } finally {
-            // Fault tolerance: Trigger cleanup and auto-requeue of active tasks
+            // Fault tolerance & Reliability: Record disconnect and trigger cleanup / auto-requeue
+            if (reliabilityTracker != null) {
+                reliabilityTracker.recordWorkerDisconnect(workerId);
+            }
             workerRegistry.handleWorkerFailure(workerId, jobManager);
         }
     }
@@ -303,7 +338,9 @@ public class MasterNodeApplication {
             } else if ("READY".equalsIgnoreCase(state) || "IDLE".equalsIgnoreCase(state)) {
                 workerRegistry.updateStatus(workerId, WorkerStatus.IDLE);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            System.err.printf("[STATUS-ERR] Failed parsing BlenderStatusReport from [%s]: %s%n", workerId, e.getMessage());
+        }
     }
 
     /**
@@ -388,6 +425,8 @@ public class MasterNodeApplication {
         if (scheduler != null) scheduler.stop();
         if (heartbeatMonitor != null) heartbeatMonitor.stop();
         if (lanDiscovery != null) lanDiscovery.stop();
+        if (checkpointManager != null) checkpointManager.stop();
+        if (utilizationTracker != null) utilizationTracker.stop();
 
         try {
             if (agentServerSocket != null && !agentServerSocket.isClosed()) {
@@ -416,6 +455,10 @@ public class MasterNodeApplication {
     public BasicScheduler getScheduler() { return scheduler; }
     public HeartbeatMonitor getHeartbeatMonitor() { return heartbeatMonitor; }
     public DashboardServer getDashboardServer() { return dashboardServer; }
+    public StateCheckpointManager getCheckpointManager() { return checkpointManager; }
+    public RenderETAEstimator getETAEstimator() { return etaEstimator; }
+    public WorkerReliabilityTracker getReliabilityTracker() { return reliabilityTracker; }
+    public ClusterUtilizationTracker getUtilizationTracker() { return utilizationTracker; }
 
     public static void main(String[] args) {
         System.setProperty("java.awt.headless", "true");

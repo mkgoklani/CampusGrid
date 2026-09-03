@@ -20,6 +20,8 @@ public class ResultCollector {
     private final JobManager jobManager;
     private final WorkerRegistry workerRegistry;
     private final Path baseOutputDir;
+    private RenderETAEstimator etaEstimator;
+    private WorkerReliabilityTracker reliabilityTracker;
 
     /**
      * Constructs a ResultCollector with default output directory (./output).
@@ -47,6 +49,20 @@ public class ResultCollector {
     }
 
     /**
+     * Sets the optional RenderETAEstimator for real-time completion time tracking.
+     */
+    public void setETAEstimator(RenderETAEstimator estimator) {
+        this.etaEstimator = estimator;
+    }
+
+    /**
+     * Sets the optional WorkerReliabilityTracker for historical performance scoring.
+     */
+    public void setReliabilityTracker(WorkerReliabilityTracker tracker) {
+        this.reliabilityTracker = tracker;
+    }
+
+    /**
      * Processes a TaskResultPayload received from a worker.
      * 
      * @param workerId The identifier of the transmitting worker node.
@@ -69,9 +85,33 @@ public class ResultCollector {
                 System.err.println("[RESULT-COLLECTOR-ERR] Failed creating directory " + jobDir + ": " + e.getMessage());
             }
 
-            // 1. Process all received rendered frame PNG binaries
+            // 1. Validate and process rendered frame PNG binaries
             Map<String, byte[]> frames = result.getRenderedFrames();
             if (frames != null && !frames.isEmpty()) {
+                // Pre-validation pass: ensure EVERY frame has valid PNG magic bytes and complete chunks
+                for (Map.Entry<String, byte[]> entry : frames.entrySet()) {
+                    String frameName = entry.getKey();
+                    byte[] frameBytes = entry.getValue();
+
+                    FrameIntegrityValidator.ValidationResult validation = FrameIntegrityValidator.validatePng(frameBytes);
+                    if (!validation.isValid) {
+                        System.err.printf("[INTEGRITY-ERR] ❌ Corrupted frame [%s] in Task [%s] from Worker [%s]: %s (%d bytes)%n",
+                            frameName, taskId, workerId, validation.errorReason, validation.fileSizeBytes);
+
+                        // Penalize worker reliability for corrupt output
+                        if (reliabilityTracker != null) {
+                            reliabilityTracker.recordTaskFailure(workerId, "Corrupted frame bytes: " + validation.errorReason);
+                            syncWorkerReliability(workerId);
+                        }
+
+                        // Re-queue the failed task for another worker to re-render
+                        jobManager.updateJobProgress(jobId, taskId, false);
+                        freeWorker(workerId);
+                        return null;
+                    }
+                }
+
+                // All frames passed integrity validation: write to disk
                 int frameSaveCount = 0;
                 for (Map.Entry<String, byte[]> entry : frames.entrySet()) {
                     String frameName = entry.getKey();
@@ -88,7 +128,7 @@ public class ResultCollector {
                         }
                     }
                 }
-                System.out.printf("[RESULT-COLLECTOR] ✓ Saved %d rendered PNG frame(s) for Task [%s] in %s\n",
+                System.out.printf("[RESULT-COLLECTOR] ✓ Saved %d verified PNG frame(s) for Task [%s] in %s\n",
                     frameSaveCount, taskId, jobDir.toString());
             }
 
@@ -110,10 +150,49 @@ public class ResultCollector {
                 }
             }
 
-            // 3. Notify JobManager of successful task completion
+            // 3. Record task success in Reliability Tracker
+            long duration = result.getDurationMs();
+            if (reliabilityTracker != null) {
+                reliabilityTracker.recordTaskSuccess(workerId, duration);
+                syncWorkerReliability(workerId);
+            }
+
+            // 4. Notify JobManager of successful task completion
             jobManager.updateJobProgress(jobId, taskId, true);
 
-            // 4. Free worker state back to IDLE
+            // 5. Feed render duration to ETA estimator for remaining-time calculation
+            if (etaEstimator != null) {
+                Job parentJob = jobManager.getJob(jobId);
+                if (parentJob != null) {
+                    // Initialize ETA tracking for this job if not already done
+                    if (etaEstimator.getETA(jobId) == null && parentJob.getStatus() == JobStatus.RUNNING) {
+                        etaEstimator.initJob(jobId, parentJob.getTotalFrames());
+                    }
+
+                    int frameCount = (frames != null && !frames.isEmpty()) ? frames.size() : 1;
+                    if (duration <= 0) {
+                        // Fallback: estimate from sub-task dispatch→completion delta
+                        for (Job.SubTask st : parentJob.getSubTasks()) {
+                            if (st.getTaskId().equals(taskId)) {
+                                duration = st.getDurationMs();
+                                break;
+                            }
+                        }
+                    }
+                    etaEstimator.recordFrameCompletion(jobId, frameCount, duration);
+
+                    // Update active worker count for accurate ETA division
+                    int busyCount = 0;
+                    for (WorkerState w : workerRegistry.getAllWorkers()) {
+                        if (w.getStatus() == WorkerStatus.BUSY && jobId.equals(w.getCurrentJobId())) {
+                            busyCount++;
+                        }
+                    }
+                    etaEstimator.updateActiveWorkers(jobId, busyCount);
+                }
+            }
+
+            // 6. Free worker state back to IDLE
             freeWorker(workerId);
 
             return savedPath;
@@ -121,6 +200,12 @@ public class ResultCollector {
         } else {
             System.err.printf("[RESULT-COLLECTOR-WARN] ⚠ Task [%s] failed on Worker [%s]: %s\n",
                 taskId, workerId, result.getErrorMessage());
+
+            // Record failure in Reliability Tracker
+            if (reliabilityTracker != null) {
+                reliabilityTracker.recordTaskFailure(workerId, result.getErrorMessage());
+                syncWorkerReliability(workerId);
+            }
 
             // Re-queue task in JobManager for another worker
             jobManager.updateJobProgress(jobId, taskId, false);
@@ -132,21 +217,31 @@ public class ResultCollector {
         }
     }
 
+    private void syncWorkerReliability(String workerId) {
+        WorkerState worker = workerRegistry.getWorker(workerId);
+        if (worker != null && reliabilityTracker != null) {
+            var metrics = reliabilityTracker.getMetrics(workerId);
+            synchronized (worker) {
+                worker.setReliabilityScore(metrics.getReliabilityScore());
+                worker.setTasksCompleted(metrics.getTasksCompleted());
+                worker.setTasksFailed(metrics.getTasksFailed());
+            }
+        }
+    }
+
     /**
      * Resets a worker node back to IDLE state so it can accept new tasks.
      */
     private void freeWorker(String workerId) {
-        for (WorkerState worker : workerRegistry.getAllWorkers()) {
-            if (worker.getWorkerId().equals(workerId)) {
-                synchronized (worker) {
-                    if (worker.getStatus() == WorkerStatus.BUSY) {
-                        worker.setStatus(WorkerStatus.IDLE);
-                    }
-                    worker.setCurrentJobId(null);
-                    worker.setCurrentTaskId(null);
-                    worker.setAssignedFrameRange(null);
+        WorkerState worker = workerRegistry.getWorker(workerId);
+        if (worker != null) {
+            synchronized (worker) {
+                if (worker.getStatus() == WorkerStatus.BUSY) {
+                    worker.setStatus(WorkerStatus.IDLE);
                 }
-                break;
+                worker.setCurrentJobId(null);
+                worker.setCurrentTaskId(null);
+                worker.setAssignedFrameRange(null);
             }
         }
     }

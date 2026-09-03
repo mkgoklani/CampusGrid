@@ -226,9 +226,37 @@ public class WorkerState {
         this.latestFps = latestFps;
     }
 
+    private double reliabilityScore = 1.0;
+    private int tasksCompleted = 0;
+    private int tasksFailed = 0;
+
+    public synchronized double getReliabilityScore() {
+        return reliabilityScore;
+    }
+
+    public synchronized void setReliabilityScore(double score) {
+        this.reliabilityScore = Math.max(0.0, Math.min(1.0, score));
+    }
+
+    public synchronized int getTasksCompleted() {
+        return tasksCompleted;
+    }
+
+    public synchronized void setTasksCompleted(int count) {
+        this.tasksCompleted = count;
+    }
+
+    public synchronized int getTasksFailed() {
+        return tasksFailed;
+    }
+
+    public synchronized void setTasksFailed(int count) {
+        this.tasksFailed = count;
+    }
+
     @Override
     public synchronized String toString() {
-        return String.format("WorkerState[ID=%s, IP=%s, OS=%s (%s), CPU=%s, GPU=%s, Blender=%s, Status=%s, Temp=%d°C, RAM=%.1f%%, Job=%s, Task=%s, Frames=%s]",
-            workerId, ipAddress, osName, osArch, cpuModel, gpuName, (blenderInstalled ? blenderVersion : "Not Installed"), status, cpuTemperature, ramUsagePercent, currentJobId, currentTaskId, assignedFrameRange);
+        return String.format("WorkerState[ID=%s, IP=%s, OS=%s (%s), CPU=%s, GPU=%s, Blender=%s, Status=%s, Temp=%d°C, RAM=%.1f%%, Rel=%.0f%%, Job=%s, Task=%s, Frames=%s]",
+            workerId, ipAddress, osName, osArch, cpuModel, gpuName, (blenderInstalled ? blenderVersion : "Not Installed"), status, cpuTemperature, ramUsagePercent, (reliabilityScore * 100.0), currentJobId, currentTaskId, assignedFrameRange);
     }
 }

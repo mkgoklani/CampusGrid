@@ -9,6 +9,8 @@ cache/
 **/cache/
 uploads/
 **/uploads/
+data/
+**/data/
 
 # ==========================================
 # Render Outputs & Temporary Test Dirs

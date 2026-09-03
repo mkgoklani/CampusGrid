@@ -51,6 +51,31 @@ public class DashboardServer {
         this.wsPort = wsPort;
     }
 
+    private RenderETAEstimator etaEstimator;
+    private WorkerReliabilityTracker reliabilityTracker;
+    private ClusterUtilizationTracker utilizationTracker;
+
+    /**
+     * Sets the optional RenderETAEstimator for injecting ETA data into API responses.
+     */
+    public void setETAEstimator(RenderETAEstimator estimator) {
+        this.etaEstimator = estimator;
+    }
+
+    /**
+     * Sets the optional WorkerReliabilityTracker for injecting reliability ratings.
+     */
+    public void setReliabilityTracker(WorkerReliabilityTracker tracker) {
+        this.reliabilityTracker = tracker;
+    }
+
+    /**
+     * Sets the optional ClusterUtilizationTracker for analytics queries.
+     */
+    public void setUtilizationTracker(ClusterUtilizationTracker tracker) {
+        this.utilizationTracker = tracker;
+    }
+
     /**
      * Starts the HTTP REST server and WebSocket broadcaster daemon.
      */
@@ -60,6 +85,7 @@ public class DashboardServer {
         httpServer.createContext("/api/cluster/status", new ClusterStatusHandler());
         httpServer.createContext("/api/cluster/capability", new ClusterCapabilityHandler());
         httpServer.createContext("/api/cluster/sync", new ClusterSyncHandler());
+        httpServer.createContext("/api/cluster/analytics", new ClusterAnalyticsHandler());
         httpServer.createContext("/api/jobs", new JobsHandler());
         httpServer.createContext("/api/jobs/submit", new SubmitJobHandler());
         httpServer.createContext("/api/jobs/cancel", new CancelJobHandler());
@@ -114,6 +140,15 @@ public class DashboardServer {
         sb.append("\"evicted\":").append(summary.evicted);
         sb.append("},");
 
+        sb.append("\"analytics\":{");
+        if (utilizationTracker != null) {
+            sb.append("\"avgUtilization\":").append(String.format(Locale.US, "%.1f", utilizationTracker.getAverageUtilization())).append(",");
+            sb.append("\"peakBusyNodes\":").append(utilizationTracker.getPeakBusyNodes());
+        } else {
+            sb.append("\"avgUtilization\":0.0,\"peakBusyNodes\":0");
+        }
+        sb.append("},");
+
         sb.append("\"workers\":[");
         Collection<WorkerState> allWorkers = workerRegistry.getAllWorkers();
         Map<String, WorkerState> uniqueByIp = new LinkedHashMap<>();
@@ -134,6 +169,10 @@ public class DashboardServer {
         int count = 0;
         for (WorkerState w : uniqueByIp.values()) {
             if (count++ > 0) sb.append(",");
+            double rel = (reliabilityTracker != null) ? reliabilityTracker.getReliabilityScore(w.getWorkerId()) : w.getReliabilityScore();
+            int completed = (reliabilityTracker != null) ? reliabilityTracker.getMetrics(w.getWorkerId()).getTasksCompleted() : w.getTasksCompleted();
+            int failed = (reliabilityTracker != null) ? reliabilityTracker.getMetrics(w.getWorkerId()).getTasksFailed() : w.getTasksFailed();
+
             sb.append("{");
             sb.append("\"workerId\":\"").append(escapeJson(w.getWorkerId())).append("\",");
             sb.append("\"ipAddress\":\"").append(escapeJson(w.getIpAddress())).append("\",");
@@ -149,6 +188,10 @@ public class DashboardServer {
             sb.append("\"cpuTemp\":").append(w.getCpuTemperature()).append(",");
             sb.append("\"cpuUsage\":").append(String.format(Locale.US, "%.1f", w.getCpuUsagePercent())).append(",");
             sb.append("\"ramUsage\":").append(String.format(Locale.US, "%.2f", w.getRamUsagePercent())).append(",");
+            sb.append("\"reliabilityScore\":").append(String.format(Locale.US, "%.2f", rel)).append(",");
+            sb.append("\"reliabilityFormatted\":\"").append(String.format(Locale.US, "%.0f%%", rel * 100.0)).append("\",");
+            sb.append("\"tasksCompleted\":").append(completed).append(",");
+            sb.append("\"tasksFailed\":").append(failed).append(",");
             sb.append("\"currentJobId\":").append(w.getCurrentJobId() != null ? "\"" + escapeJson(w.getCurrentJobId()) + "\"" : "null").append(",");
             sb.append("\"currentTaskId\":").append(w.getCurrentTaskId() != null ? "\"" + escapeJson(w.getCurrentTaskId()) + "\"" : "null").append(",");
             sb.append("\"assignedFrames\":").append(w.getAssignedFrameRange() != null ? "\"" + escapeJson(w.getAssignedFrameRange()) + "\"" : "null").append(",");
@@ -308,7 +351,22 @@ public class DashboardServer {
                 sb.append("\"stolenFrom\":").append(st.getStolenFromWorkerId() != null ? "\"" + escapeJson(st.getStolenFromWorkerId()) + "\"" : "null");
                 sb.append("}");
             }
-            sb.append("]}");
+            sb.append("],");
+
+            // ETA Estimation data (if available)
+            sb.append("\"eta\":");
+            if (etaEstimator != null) {
+                RenderETAEstimator.ETASnapshot eta = etaEstimator.getETA(job.getJobId());
+                if (eta != null && job.getStatus() == JobStatus.RUNNING) {
+                    sb.append(eta.toJson());
+                } else {
+                    sb.append("null");
+                }
+            } else {
+                sb.append("null");
+            }
+
+            sb.append("}");
         }
         sb.append("]");
         return sb.toString();
@@ -358,6 +416,21 @@ public class DashboardServer {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             sendJsonResponse(exchange, 200, generateTelemetrySnapshotJson());
+        }
+    }
+
+    private class ClusterAnalyticsHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, 204, "");
+                return;
+            }
+            if (utilizationTracker != null) {
+                sendJsonResponse(exchange, 200, utilizationTracker.generateAnalyticsJson());
+            } else {
+                sendJsonResponse(exchange, 200, "{\"avgUtilization\":0.0,\"peakBusyNodes\":0,\"samples\":[]}");
+            }
         }
     }
 

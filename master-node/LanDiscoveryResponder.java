@@ -75,7 +75,13 @@ public class LanDiscoveryResponder implements Runnable {
                     );
                     socket.send(response);
                 }
-            } catch (Exception ignored) {}
+            } catch (java.net.SocketException se) {
+                if (!running) break; // Expected on shutdown
+            } catch (Exception e) {
+                if (running) {
+                    System.err.println("[LAN-DISCOVERY-WARN] Error processing discovery packet: " + e.getMessage());
+                }
+            }
         }
     }
 
@@ -89,7 +95,14 @@ public class LanDiscoveryResponder implements Runnable {
                 );
                 socket.send(packet);
                 Thread.sleep(3000);
-            } catch (Exception ignored) {}
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                if (running) {
+                    System.err.println("[LAN-DISCOVERY-WARN] Beacon broadcast error: " + e.getMessage());
+                }
+            }
         }
     }
 }
