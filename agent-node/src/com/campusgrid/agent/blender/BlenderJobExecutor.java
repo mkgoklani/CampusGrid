@@ -213,8 +213,9 @@ public class BlenderJobExecutor {
                 Matcher savedMatcher = SAVED_PATTERN.matcher(line);
                 if (savedMatcher.find()) {
                     String savedPath = savedMatcher.group(1).trim();
+                    File savedFile = new File(savedPath);
                     try {
-                        savedPath = new File(savedPath).getCanonicalPath();
+                        savedPath = savedFile.getCanonicalPath();
                     } catch (Exception ignored) {}
                     if (!renderedFilePaths.contains(savedPath)) {
                         renderedFilePaths.add(savedPath);
@@ -229,7 +230,8 @@ public class BlenderJobExecutor {
 
                     double percentage = Math.min(100.0, ((double) completedFrames / totalFrames) * 100.0);
                     if (reporter != null) {
-                        reporter.reportStatus(jobId, lastSeenFrame, totalFrames, percentage, renderFps, "RENDERING", blenderVer, false);
+                        reporter.streamFrame(jobId, lastSeenFrame, savedFile);
+                        reporter.reportStatus(jobId, lastSeenFrame, totalFrames, percentage, renderFps, "RENDERING", blenderVer, true);
                     }
                 }
             }

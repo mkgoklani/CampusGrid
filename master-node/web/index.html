@@ -827,6 +827,14 @@
             max-width: 100%;
             overflow: hidden;
             box-sizing: border-box;
+            position: relative;
+        }
+
+        .mosaic-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+            width: 100%;
         }
 
         .mosaic-filmstrip {
@@ -834,28 +842,64 @@
             gap: 10px;
             overflow-x: auto;
             overflow-y: hidden;
-            padding: 6px 2px 10px 2px;
+            padding: 6px 4px 12px 4px;
             scroll-behavior: smooth;
             min-width: 0;
             max-width: 100%;
             width: 100%;
             box-sizing: border-box;
             scrollbar-width: thin;
-            scrollbar-color: rgba(0,0,0,0.3) rgba(0,0,0,0.06);
+            scrollbar-color: rgba(0, 0, 0, 0.35) rgba(0, 0, 0, 0.06);
+            -webkit-overflow-scrolling: touch;
         }
         .mosaic-filmstrip::-webkit-scrollbar {
-            height: 7px;
+            height: 8px;
         }
         .mosaic-filmstrip::-webkit-scrollbar-track {
             background: rgba(0, 0, 0, 0.06);
             border-radius: 10px;
+            margin: 0 4px;
         }
         .mosaic-filmstrip::-webkit-scrollbar-thumb {
-            background: rgba(0, 0, 0, 0.3);
+            background: rgba(0, 0, 0, 0.35);
             border-radius: 10px;
+            cursor: pointer;
         }
         .mosaic-filmstrip::-webkit-scrollbar-thumb:hover {
             background: var(--accent-blue);
+        }
+
+        .mosaic-nav-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-60%);
+            z-index: 20;
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid rgba(0, 0, 0, 0.15);
+            color: #333;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: bold;
+            transition: all 0.2s ease;
+        }
+        .mosaic-nav-btn:hover {
+            background: var(--accent-blue);
+            color: #fff;
+            border-color: var(--accent-blue);
+            transform: translateY(-60%) scale(1.1);
+        }
+        .mosaic-nav-btn.prev {
+            left: 2px;
+        }
+        .mosaic-nav-btn.next {
+            right: 2px;
         }
 
         .mosaic-thumb {
@@ -2064,17 +2108,23 @@
 
                 // Live Visual Mosaic Filmstrip Stream
                 let mosaicHtml = '';
-                if (job.renderedFrames && job.renderedFrames.length > 0) {
+                const hasFrames = (job.renderedFrames && job.renderedFrames.length > 0);
+                if (hasFrames || job.status === 'RUNNING') {
                     let thumbs = '';
-                    job.renderedFrames.forEach(fUrl => {
-                        const fName = fUrl.substring(fUrl.lastIndexOf('/') + 1).replace('.png', '');
-                        thumbs += `
-                            <div class="mosaic-thumb" onclick="window.open('${fUrl}', '_blank')" title="Click to preview full frame">
-                                <img src="${fUrl}" alt="${fName}" onerror="this.parentElement.style.display='none'">
-                                <div class="mosaic-thumb-tag">${fName.replace('frame_', 'Fra ')}</div>
-                            </div>
-                        `;
-                    });
+                    if (hasFrames) {
+                        job.renderedFrames.forEach(fUrl => {
+                            const fName = fUrl.substring(fUrl.lastIndexOf('/') + 1).replace('.png', '');
+                            thumbs += `
+                                <div class="mosaic-thumb" onclick="window.open('${fUrl}', '_blank')" title="Click to preview full frame">
+                                    <img src="${fUrl}" alt="${fName}" onerror="this.parentElement.style.display='none'">
+                                    <div class="mosaic-thumb-tag">${fName.replace('frame_', 'Fra ')}</div>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        thumbs = '<div style="color: var(--text-muted); font-size: 11px; padding: 14px 10px; font-family: \'JetBrains Mono\', monospace; white-space: nowrap;">⏳ Awaiting first rendered frame from worker nodes...</div>';
+                    }
+
                     mosaicHtml = `
                         <div class="mosaic-stream-container">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -2086,8 +2136,12 @@
                                     ${job.status === 'RUNNING' ? '⚡ Active Grid Stream' : '✓ Finalized Sequence'}
                                 </span>
                             </div>
-                            <div class="mosaic-filmstrip">
-                                ${thumbs}
+                            <div class="mosaic-wrapper">
+                                ${hasFrames ? `<button class="mosaic-nav-btn prev" onclick="scrollMosaic('mosaic-${job.jobId}', -280)" title="Scroll Left">&#10094;</button>` : ''}
+                                <div class="mosaic-filmstrip" id="mosaic-${job.jobId}" onwheel="if(event.deltaY!==0){this.scrollLeft+=event.deltaY*0.9;event.preventDefault();}">
+                                    ${thumbs}
+                                </div>
+                                ${hasFrames ? `<button class="mosaic-nav-btn next" onclick="scrollMosaic('mosaic-${job.jobId}', 280)" title="Scroll Right">&#10095;</button>` : ''}
                             </div>
                         </div>
                     `;
@@ -2126,6 +2180,13 @@
                 `;
                 container.appendChild(jobCard);
             });
+        }
+
+        function scrollMosaic(id, delta) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.scrollBy({ left: delta, behavior: 'smooth' });
+            }
         }
 
         function escapeHtml(str) {
@@ -2344,13 +2405,26 @@
             img.src = frameUrl + '?t=' + Date.now();
             document.getElementById('node-screen-modal').style.display = 'flex';
 
-            // Poll every 2 seconds for the finished frame while modal is open
+            // Poll every 700ms for latest streamed frame while modal is open
             if (nodeScreenPollTimer) clearInterval(nodeScreenPollTimer);
-            nodeScreenPollTimer = setInterval(() => {
+            nodeScreenPollTimer = setInterval(async () => {
                 if (document.getElementById('node-screen-modal').style.display === 'flex') {
-                    img.src = frameUrl + '?t=' + Date.now();
+                    try {
+                        const res = await fetch('/api/cluster/status');
+                        const status = await res.json();
+                        if (status.workers) {
+                            const w = status.workers.find(wk => wk.workerId === workerId);
+                            if (w && w.latestFrameUrl) {
+                                img.src = w.latestFrameUrl + '?t=' + Date.now();
+                                meta.innerText = `Rendered Frame: #${w.latestFrameNumber || frameNum} | Worker: ${ip}`;
+                                if (w.latestFps > 0) {
+                                    document.getElementById('node-screen-fps').innerText = `🚀 Throughput: ${w.latestFps.toFixed(2)} FPS`;
+                                }
+                            }
+                        }
+                    } catch (ignored) {}
                 }
-            }, 2000);
+            }, 700);
         }
 
         function closeNodeScreenModal() {

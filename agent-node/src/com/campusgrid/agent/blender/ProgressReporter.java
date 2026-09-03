@@ -1,7 +1,11 @@
 package com.campusgrid.agent.blender;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import com.campusgrid.agent.network.MasterConnection;
 
 /**
@@ -13,7 +17,7 @@ public class ProgressReporter {
     private final MasterConnection connection;
     private final String workerId;
     
-    // Track last report time to enforce a ~1 second update limit
+    // Track last report time to enforce a ~200ms update limit
     private long lastReportTime = 0;
 
     /**
@@ -35,18 +39,11 @@ public class ProgressReporter {
      */
     public ProgressReporter(MasterConnection connection, String workerId) {
         this.connection = connection;
-        this.workerId = workerId != null ? workerId : determineWorkerId(connection);
+        this.workerId = workerId;
     }
 
     /**
-     * Reports task progress to the Master node as a raw string.
-     * Formats output exactly as: jobId workerId currentFrame totalFrames percentage
-     * Writes the formatted String payload to the Master via the connection object stream.
-     *
-     * @param jobId        the ID of the current job.
-     * @param currentFrame the frame number that is currently rendering or has completed.
-     * @param totalFrames  the total number of frames in the job.
-     * @param percentage   the float percentage completion.
+     * Sends a simple progress message string: "jobId workerId currentFrame totalFrames percentage".
      */
     public void reportProgress(String jobId, int currentFrame, int totalFrames, double percentage) {
         String msg = String.format("%s %s %d %d %.2f", 
@@ -66,8 +63,38 @@ public class ProgressReporter {
     }
 
     /**
+     * Streams a newly completed rendered PNG frame to the Master node immediately.
+     * Enables live frame mosaic viewing and real-time tile updates on the dashboard.
+     */
+    public void streamFrame(String jobId, int frameNumber, File frameFile) {
+        if (connection == null || !connection.isConnected() || frameFile == null || !frameFile.exists()) {
+            return;
+        }
+        try {
+            byte[] bytes = java.nio.file.Files.readAllBytes(frameFile.toPath());
+            if (bytes.length > 0) {
+                Map<String, byte[]> map = new HashMap<>();
+                map.put(frameFile.getName(), bytes);
+                RenderResult chunk = new RenderResult(
+                    jobId,
+                    workerId,
+                    Collections.singletonList(frameFile.getAbsolutePath()),
+                    map,
+                    0,
+                    "CHUNK"
+                );
+                connection.sendObject(chunk);
+                System.out.printf("[PROGRESS] ➔ Streamed live frame #%d (%s, %d bytes) to Master\n",
+                    frameNumber, frameFile.getName(), bytes.length);
+            }
+        } catch (Exception e) {
+            System.err.println("[PROGRESS] Failed streaming frame " + frameNumber + ": " + e.getMessage());
+        }
+    }
+
+    /**
      * Sends a complete, detailed Blender status report to the Master node.
-     * Enforces rate limiting (~1 second minimum between updates) unless force is true.
+     * Enforces rate limiting (~200ms minimum between updates) unless force is true.
      *
      * @param jobId          the active render job ID.
      * @param currentFrame   the current frame index being processed or completed.
@@ -89,8 +116,8 @@ public class ProgressReporter {
             boolean force
     ) {
         long now = System.currentTimeMillis();
-        // Limit progress packets to roughly once per second unless it is a forced update
-        if (!force && (now - lastReportTime < 1000)) {
+        // Limit progress packets to roughly 200ms minimum interval
+        if (!force && (now - lastReportTime < 200)) {
             return;
         }
         lastReportTime = now;

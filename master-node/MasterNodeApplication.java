@@ -277,6 +277,24 @@ public class MasterNodeApplication {
                 System.out.printf("[RECEIVER] Stream Chunk for Job [%s] Task [%s] from [%s]: %d frames written to disk\n",
                     jobId, taskId, workerId, frameCount);
                 resultCollector.saveFrameBinaries(jobId, frameBytesMap);
+
+                // Dynamically update worker's live screen tile to the latest streamed frame
+                if (frameBytesMap != null && !frameBytesMap.isEmpty()) {
+                    int maxChunkFrame = -1;
+                    for (String fname : frameBytesMap.keySet()) {
+                        String digits = fname.replaceAll("[^0-9]", "");
+                        if (!digits.isEmpty()) {
+                            try {
+                                int fn = Integer.parseInt(digits);
+                                if (fn > maxChunkFrame) maxChunkFrame = fn;
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                    if (maxChunkFrame > 0) {
+                        worker.setLatestFrameNumber(maxChunkFrame);
+                        worker.setLatestFrameUrl(String.format("/output/%s/frame_%04d.png", jobId, maxChunkFrame));
+                    }
+                }
                 return; // Intermediate batch saved, wait for completion packet
             }
 

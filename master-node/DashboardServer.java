@@ -1020,11 +1020,11 @@ public class DashboardServer {
             acceptThread.setDaemon(true);
             acceptThread.start();
 
-            // Periodic Telemetry Push Broadcast (every 2 seconds)
+            // Periodic Telemetry Push Broadcast (every 500ms for real-time responsiveness)
             Thread broadcastThread = new Thread(() -> {
                 while (running) {
                     try {
-                        Thread.sleep(2000);
+                        Thread.sleep(500);
                         if (!activeClients.isEmpty()) {
                             String json = dataSupplier.get();
                             broadcast(json);
