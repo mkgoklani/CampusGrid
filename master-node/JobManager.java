@@ -118,7 +118,7 @@ public class JobManager {
             System.out.printf("[JOB-MANAGER] Job [%s] task [%s] COMPLETED (Progress: %.1f%%, Frames Covered: %b)\n",
                 jobId, taskId, job.getProgressPercentage(), framesCovered);
 
-            if (allDone && job.getStatus() != JobStatus.COMPLETED) {
+            if (allDone && job.tryStartPostProcessing()) {
                 job.setStatus(JobStatus.COMPLETED);
                 System.out.println("[JOB-MANAGER] ★★★ Job [" + jobId + "] FULLY COMPLETED ★★★");
                 if (currentActiveJob != null && currentActiveJob.getJobId().equals(jobId)) {

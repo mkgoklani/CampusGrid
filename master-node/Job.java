@@ -27,6 +27,11 @@ public class Job implements Serializable {
     private final ConcurrentHashMap<String, SubTask> subTasks = new ConcurrentHashMap<>();
     private final ConcurrentLinkedQueue<SubTask> pendingSubTasks = new ConcurrentLinkedQueue<>();
     private final AtomicInteger completedTaskCount = new AtomicInteger(0);
+    private final java.util.concurrent.atomic.AtomicBoolean postProcessingStarted = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    public boolean tryStartPostProcessing() {
+        return postProcessingStarted.compareAndSet(false, true);
+    }
 
     /**
      * Constructs a new Job.
