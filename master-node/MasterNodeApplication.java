@@ -53,6 +53,7 @@ public class MasterNodeApplication {
         // 1. Initialize State Storage & Queue Managers
         this.workerRegistry = new WorkerRegistry();
         this.jobManager = new JobManager();
+        this.jobManager.setWorkerRegistry(workerRegistry);
         this.resultCollector = new ResultCollector(jobManager, workerRegistry, Paths.get("./output"));
 
         // 2. Initialize Analytics, Reliability & ETA Estimator

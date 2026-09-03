@@ -712,10 +712,27 @@ public class DashboardServer {
                 return;
             }
             int activeCount = 0;
+            int freedCount = 0;
             for (WorkerState w : workerRegistry.getAllWorkers()) {
-                if (w.getStatus() != WorkerStatus.OFFLINE) activeCount++;
+                if (w.getStatus() != WorkerStatus.OFFLINE) {
+                    activeCount++;
+                    // Audit: If worker is marked BUSY but has no active running job, free it
+                    String jId = w.getCurrentJobId();
+                    if (w.getStatus() == WorkerStatus.BUSY) {
+                        Job job = (jId != null) ? jobManager.getAllJobs().get(jId) : null;
+                        if (job == null || job.getStatus() != JobStatus.RUNNING) {
+                            synchronized (w) {
+                                w.setStatus(WorkerStatus.IDLE);
+                                w.setCurrentJobId(null);
+                                w.setCurrentTaskId(null);
+                                w.setAssignedFrameRange(null);
+                            }
+                            freedCount++;
+                        }
+                    }
+                }
             }
-            sendJsonResponse(exchange, 200, "{\"success\":true,\"message\":\"Cluster nodes synced\",\"activeNodes\":" + activeCount + "}");
+            sendJsonResponse(exchange, 200, "{\"success\":true,\"message\":\"Cluster nodes synced and verified\",\"activeNodes\":" + activeCount + ",\"freedNodes\":" + freedCount + "}");
         }
     }
 

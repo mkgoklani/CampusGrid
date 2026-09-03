@@ -13,6 +13,11 @@ public class JobManager {
     private final ConcurrentLinkedQueue<Job> pendingJobQueue = new ConcurrentLinkedQueue<>();
     private final ConcurrentHashMap<String, Job> jobRegistry = new ConcurrentHashMap<>();
     private volatile Job currentActiveJob = null;
+    private volatile WorkerRegistry workerRegistry = null;
+
+    public void setWorkerRegistry(WorkerRegistry workerRegistry) {
+        this.workerRegistry = workerRegistry;
+    }
 
     /**
      * Submits a new job to the manager. Slices into default frame slices (25 frames)
@@ -162,6 +167,21 @@ public class JobManager {
                     currentActiveJob = null;
                 }
 
+                if (workerRegistry != null) {
+                    for (WorkerState w : workerRegistry.getAllWorkers()) {
+                        if (jobId.equals(w.getCurrentJobId())) {
+                            synchronized (w) {
+                                if (w.getStatus() == WorkerStatus.BUSY) {
+                                    w.setStatus(WorkerStatus.IDLE);
+                                }
+                                w.setCurrentJobId(null);
+                                w.setCurrentTaskId(null);
+                                w.setAssignedFrameRange(null);
+                            }
+                        }
+                    }
+                }
+
                 // Automatic Post-Processing, ZIP bundling & Video Compilation
                 new Thread(() -> {
                     boolean cleanUp = false;
@@ -183,6 +203,9 @@ public class JobManager {
                         job.setStatus(JobStatus.FAILED);
                         if (currentActiveJob != null && currentActiveJob.getJobId().equals(jobId)) {
                             currentActiveJob = null;
+                        }
+                        if (workerRegistry != null) {
+                            cancelJob(jobId, workerRegistry);
                         }
                     } else {
                         System.out.printf("[JOB-MANAGER-WARN] Task [%s] failed. Re-queuing for retry (Attempt %d/3)...\n",
