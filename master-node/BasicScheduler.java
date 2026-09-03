@@ -190,8 +190,28 @@ public class BasicScheduler implements Runnable {
                     && !runningTask.getAssignedWorkerId().equals(idleWorker.getWorkerId())) {
                     
                     WorkerState busyWorker = workerRegistry.getWorker(runningTask.getAssignedWorkerId());
+                    double busyScore = (busyWorker != null) ? ComputeCapabilityEngine.calculateScore(busyWorker) : 1.0;
 
-                    // 1. Calculate the highest un-stolen frame bound for this task
+                    // 1. Anti-Snatching: Only steal from genuine stragglers running >= 12 seconds
+                    // (unless the idle worker is a high-speed GPU with 2x+ compute capability)
+                    long elapsed = System.currentTimeMillis() - runningTask.getDispatchTimestamp();
+                    if (elapsed < 12000 && idleScore < busyScore * 2.0) {
+                        continue;
+                    }
+
+                    // 2. Anti-Snatching: Max 1 speculative steal per running parent task
+                    int existingSteals = 0;
+                    for (Job.SubTask existingSt : activeJob.getSubTasks()) {
+                        if (existingSt.isStolen() && runningTask.getAssignedWorkerId().equals(existingSt.getStolenFromWorkerId())) {
+                            existingSteals++;
+                        }
+                    }
+                    if (existingSteals >= 1 && idleScore <= busyScore) {
+                        // Prevent equal-capability CPU ping-pong re-stealing
+                        continue;
+                    }
+
+                    // 3. Calculate the highest un-stolen frame bound for this task
                     int effectiveEndFrame = runningTask.getEndFrame();
                     for (Job.SubTask existingSt : activeJob.getSubTasks()) {
                         if (existingSt.isStolen() && runningTask.getAssignedWorkerId().equals(existingSt.getStolenFromWorkerId())) {
@@ -205,14 +225,13 @@ public class BasicScheduler implements Runnable {
                     int unrenderedStart = Math.max(runningTask.getStartFrame(), currentRenderedFrame);
                     int remainingFrames = effectiveEndFrame - unrenderedStart + 1;
 
-                    // Adaptive threshold: faster idle nodes can steal smaller chunks
-                    double busyScore = (busyWorker != null) ? ComputeCapabilityEngine.calculateScore(busyWorker) : 1.0;
-                    int minStealable = (idleScore > busyScore * 1.5) ? 2 : 4;
+                    // Minimum slice size to justify speculative steal (avoid micro-slices)
+                    int minStealable = (idleScore >= busyScore * 2.0) ? 4 : 8;
 
                     if (remainingFrames >= minStealable && effectiveEndFrame >= unrenderedStart) {
                         // Proportional steal: faster idle node gets a proportional share of un-stolen remainder
                         double stealRatio = idleScore / (idleScore + busyScore);
-                        int splitCount = Math.max(1, (int)(remainingFrames * stealRatio));
+                        int splitCount = Math.max(2, (int)(remainingFrames * stealRatio));
                         int splitStart = effectiveEndFrame - splitCount + 1;
                         int splitEnd = effectiveEndFrame;
 
@@ -230,8 +249,8 @@ public class BasicScheduler implements Runnable {
                         stolenTask.setTaskPayloadBytes(runningTask.getTaskPayloadBytes());
 
                         activeJob.addStolenSubTask(stolenTask);
-                        System.out.printf("[SCHEDULER] ⚡ Dynamic Work-Steal: Worker [%s] (score=%.1f) stole Frames %s from lagging Worker [%s] (score=%.1f, %d un-stolen remaining)!\n",
-                            idleWorker.getWorkerId(), idleScore, stolenRange, runningTask.getAssignedWorkerId(), busyScore, remainingFrames);
+                        System.out.printf("[SCHEDULER] ⚡ Dynamic Work-Steal: Worker [%s] (score=%.1f) stole Frames %s from straggler Worker [%s] (score=%.1f, elapsed=%.1fs, %d remaining)\n",
+                            idleWorker.getWorkerId(), idleScore, stolenRange, runningTask.getAssignedWorkerId(), busyScore, elapsed / 1000.0, remainingFrames);
 
                         return activeJob.pollPendingSubTask();
                     }
