@@ -57,15 +57,51 @@ public class JobManager {
     }
 
     /**
+     * Submits a new job partitioned adaptively by worker compute capabilities.
+     *
+     * @param job The Job instance to submit.
+     * @param activeWorkers The currently available worker nodes.
+     */
+    public void submitJobWithWorkers(Job job, List<WorkerState> activeWorkers) {
+        if (job == null) return;
+
+        if (activeWorkers != null && !activeWorkers.isEmpty()) {
+            List<Integer> slices = ComputeCapabilityEngine.partitionFrames(job.getTotalFrames(), activeWorkers);
+            job.sliceIntoCustomRanges(slices);
+            System.out.printf("[JOB-MANAGER] Sliced Job [%s] into %d capability-weighted ranges: %s\n",
+                job.getJobId(), slices.size(), slices);
+        } else if (job.getSubTaskCount() == 0) {
+            job.sliceIntoFrameRanges(25);
+        }
+
+        job.setStatus(JobStatus.QUEUED);
+        jobRegistry.put(job.getJobId(), job);
+        pendingJobQueue.add(job);
+        System.out.println("[JOB-MANAGER] Enqueued job [" + job.getJobId() + "] with " + job.getSubTaskCount() + " sub-tasks.");
+    }
+
+    /**
      * Retrieves the next pending SubTask available across running and queued jobs.
      * Advances through the queued jobs automatically.
      *
      * @return Next available Job.SubTask, or null if no tasks are pending.
      */
     public synchronized Job.SubTask getNextPendingTask() {
+        return getNextPendingTaskForWorker(null);
+    }
+
+    /**
+     * Retrieves the next best hardware-matched SubTask for a specific worker node.
+     *
+     * @param worker The target worker node.
+     * @return Hardware-matched SubTask if available, null otherwise.
+     */
+    public synchronized Job.SubTask getNextPendingTaskForWorker(WorkerState worker) {
+        double workerScore = (worker != null) ? ComputeCapabilityEngine.calculateScore(worker) : 1.0;
+
         // 1. Check current active job for pending tasks
         if (currentActiveJob != null && currentActiveJob.getStatus() == JobStatus.RUNNING) {
-            Job.SubTask task = currentActiveJob.pollPendingSubTask();
+            Job.SubTask task = currentActiveJob.pollBestSubTaskForWorker(workerScore);
             if (task != null) {
                 task.setStatus(Job.SubTaskStatus.DISPATCHED);
                 return task;
@@ -80,7 +116,7 @@ public class JobManager {
                 currentActiveJob = nextJob;
                 System.out.println("[JOB-MANAGER] Switched active job to [" + nextJob.getJobId() + "]");
 
-                Job.SubTask task = currentActiveJob.pollPendingSubTask();
+                Job.SubTask task = currentActiveJob.pollBestSubTaskForWorker(workerScore);
                 if (task != null) {
                     task.setStatus(Job.SubTaskStatus.DISPATCHED);
                     return task;
@@ -269,6 +305,10 @@ public class JobManager {
      */
     public Map<String, Job> getAllJobs() {
         return Collections.unmodifiableMap(jobRegistry);
+    }
+
+    public synchronized Job getCurrentActiveJob() {
+        return currentActiveJob;
     }
 
     /**

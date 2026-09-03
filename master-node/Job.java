@@ -91,6 +91,65 @@ public class Job implements Serializable {
     }
 
     /**
+     * Slices the total frames into custom, spec-weighted frame ranges based on hardware capabilities.
+     *
+     * @param sliceSizes List of frame counts for each slice.
+     * @return Generated list of SubTasks.
+     */
+    public synchronized List<SubTask> sliceIntoCustomRanges(List<Integer> sliceSizes) {
+        subTasks.clear();
+        pendingSubTasks.clear();
+        completedTaskCount.set(0);
+        List<SubTask> generated = new ArrayList<>();
+        int taskSeq = 1;
+
+        String blendPath = (parameters != null && parameters.containsKey("blendFilePath")) 
+            ? parameters.get("blendFilePath").toString() : "scene.blend";
+        Object blendBytes = (parameters != null) ? parameters.get("blendFileBytes") : null;
+
+        String renderEngine = (parameters != null && parameters.containsKey("renderEngine"))
+            ? parameters.get("renderEngine").toString() : "CYCLES";
+
+        int currentStart = 1;
+        for (int i = 0; i < sliceSizes.size(); i++) {
+            if (currentStart > totalFrames) break;
+            int size = sliceSizes.get(i);
+            int currentEnd = (i == sliceSizes.size() - 1) 
+                ? totalFrames 
+                : Math.min(currentStart + size - 1, totalFrames);
+
+            String taskId = String.format("%s_T%03d", jobId, taskSeq++);
+            String frameRange = (currentStart == currentEnd) ? String.valueOf(currentStart) : (currentStart + "-" + currentEnd);
+
+            SubTask subTask = new SubTask(taskId, jobId, currentStart, currentEnd, frameRange, workloadType, renderEngine);
+            subTask.setTaskData(blendBytes != null ? blendBytes : blendPath);
+            if (blendBytes instanceof byte[] b) {
+                subTask.setTaskPayloadBytes(b);
+            }
+            subTasks.put(taskId, subTask);
+            pendingSubTasks.add(subTask);
+            generated.add(subTask);
+
+            currentStart = currentEnd + 1;
+        }
+
+        if (currentStart <= totalFrames) {
+            String taskId = String.format("%s_T%03d", jobId, taskSeq++);
+            String frameRange = (currentStart == totalFrames) ? String.valueOf(currentStart) : (currentStart + "-" + totalFrames);
+            SubTask subTask = new SubTask(taskId, jobId, currentStart, totalFrames, frameRange, workloadType, renderEngine);
+            subTask.setTaskData(blendBytes != null ? blendBytes : blendPath);
+            if (blendBytes instanceof byte[] b) {
+                subTask.setTaskPayloadBytes(b);
+            }
+            subTasks.put(taskId, subTask);
+            pendingSubTasks.add(subTask);
+            generated.add(subTask);
+        }
+
+        return generated;
+    }
+
+    /**
      * Retrieves the next pending sub-task to dispatch.
      * Skips any tasks that are already COMPLETED or DISPATCHED.
      *
@@ -105,6 +164,67 @@ public class Job implements Serializable {
             }
         }
         return null;
+    }
+
+    /**
+     * Retrieves the best hardware-matched pending sub-task for a given worker.
+     * High-spec workers (GPU score >= 2.5) are allocated the largest available slice,
+     * while lower-spec workers are allocated smaller slices to minimize execution latency.
+     *
+     * @param workerScore The ComputeCapabilityEngine score of the target worker.
+     * @return Best matched SubTask if available, null otherwise.
+     */
+    public synchronized SubTask pollBestSubTaskForWorker(double workerScore) {
+        if (pendingSubTasks.isEmpty()) return null;
+        if (pendingSubTasks.size() == 1) return pollPendingSubTask();
+
+        boolean wantLargest = (workerScore >= 2.5);
+        SubTask chosen = null;
+        int targetSize = wantLargest ? -1 : Integer.MAX_VALUE;
+
+        for (SubTask st : pendingSubTasks) {
+            if (st.getStatus() != SubTaskStatus.PENDING) continue;
+            int size = st.getEndFrame() - st.getStartFrame() + 1;
+            if (wantLargest) {
+                if (size > targetSize) {
+                    targetSize = size;
+                    chosen = st;
+                }
+            } else {
+                if (size < targetSize) {
+                    targetSize = size;
+                    chosen = st;
+                }
+            }
+        }
+
+        if (chosen != null) {
+            pendingSubTasks.remove(chosen);
+            chosen.setStatus(SubTaskStatus.DISPATCHED);
+            return chosen;
+        }
+
+        return pollPendingSubTask();
+    }
+
+    /**
+     * Checks if all frame numbers from 1 to totalFrames are covered by completed tasks.
+     */
+    public boolean isAllFramesCovered() {
+        if (totalFrames <= 0) return true;
+        boolean[] covered = new boolean[totalFrames + 1];
+        int count = 0;
+        for (SubTask st : subTasks.values()) {
+            if (st.getStatus() == SubTaskStatus.COMPLETED) {
+                for (int f = Math.max(1, st.getStartFrame()); f <= Math.min(totalFrames, st.getEndFrame()); f++) {
+                    if (!covered[f]) {
+                        covered[f] = true;
+                        count++;
+                    }
+                }
+            }
+        }
+        return count >= totalFrames;
     }
 
     /**
@@ -128,7 +248,7 @@ public class Job implements Serializable {
      * Marks a sub-task completed and checks if the entire job is done.
      *
      * @param taskId Unique identifier of the sub-task.
-     * @return true if all sub-tasks in this job are now complete, false otherwise.
+     * @return true if all sub-tasks or all frames in this job are now complete, false otherwise.
      */
     public synchronized boolean markSubTaskCompleted(String taskId) {
         SubTask task = subTasks.get(taskId);
@@ -142,44 +262,61 @@ public class Job implements Serializable {
             pendingSubTasks.remove(task);
 
             if (!wasAlreadyCompleted) {
-                int completed = completedTaskCount.incrementAndGet();
-                if (completed >= subTasks.size() && !subTasks.isEmpty()) {
-                    this.status = JobStatus.COMPLETED;
-                    this.completedTimestamp = System.currentTimeMillis();
-                    return true;
-                }
+                completedTaskCount.incrementAndGet();
             }
         }
-        if (isAllCompleted() && this.completedTimestamp <= 0) {
-            this.completedTimestamp = System.currentTimeMillis();
+
+        boolean allDone = isAllCompleted();
+        if (allDone) {
+            this.status = JobStatus.COMPLETED;
+            if (this.completedTimestamp <= 0) {
+                this.completedTimestamp = System.currentTimeMillis();
+            }
         }
-        return isAllCompleted();
+        return allDone;
     }
 
     /**
-     * Checks if all sub-tasks have finished.
+     * Checks if all sub-tasks or all frames have finished.
      */
     public boolean isAllCompleted() {
-        return !subTasks.isEmpty() && completedTaskCount.get() >= subTasks.size();
+        if (status == JobStatus.COMPLETED) return true;
+        if (!subTasks.isEmpty() && completedTaskCount.get() >= subTasks.size()) return true;
+        return isAllFramesCovered();
     }
 
     /**
-     * Computes the job progress percentage (0.0% to 100.0%).
+     * Computes the job progress percentage (0.0% to 100.0%) based on frame coverage.
      */
     public double getProgressPercentage() {
+        if (status == JobStatus.COMPLETED) return 100.0;
+        if (totalFrames > 0) {
+            int count = 0;
+            boolean[] covered = new boolean[totalFrames + 1];
+            for (SubTask st : subTasks.values()) {
+                if (st.getStatus() == SubTaskStatus.COMPLETED) {
+                    for (int f = Math.max(1, st.getStartFrame()); f <= Math.min(totalFrames, st.getEndFrame()); f++) {
+                        if (!covered[f]) {
+                            covered[f] = true;
+                            count++;
+                        }
+                    }
+                }
+            }
+            return Math.min(100.0, ((double) count / totalFrames) * 100.0);
+        }
         if (subTasks.isEmpty()) return 0.0;
-        
-        long completedCount = subTasks.values().stream()
-            .filter(t -> t.getStatus() == SubTaskStatus.COMPLETED)
-            .count();
-        
-        double inProgressSum = subTasks.values().stream()
-            .filter(t -> t.getStatus() == SubTaskStatus.DISPATCHED)
-            .mapToDouble(SubTask::getProgressPercentage)
-            .sum();
-        
-        double raw = ((completedCount * 100.0) + inProgressSum) / subTasks.size();
-        return Math.min(100.0, Math.max(0.0, raw));
+        return ((double) completedTaskCount.get() / subTasks.size()) * 100.0;
+    }
+
+    /**
+     * Registers a dynamically stolen sub-task created at runtime for load rebalancing.
+     */
+    public synchronized void addStolenSubTask(SubTask subTask) {
+        if (subTask != null) {
+            subTasks.put(subTask.getTaskId(), subTask);
+            pendingSubTasks.add(subTask);
+        }
     }
 
     public String getJobId() { return jobId; }
@@ -299,10 +436,20 @@ public class Job implements Serializable {
             return 0;
         }
 
+        private volatile boolean isStolen = false;
+        private volatile String stolenFromWorkerId = null;
+
+        public boolean isStolen() { return isStolen; }
+        public void setStolen(boolean stolen) { this.isStolen = stolen; }
+
+        public String getStolenFromWorkerId() { return stolenFromWorkerId; }
+        public void setStolenFromWorkerId(String workerId) { this.stolenFromWorkerId = workerId; }
+
         @Override
         public String toString() {
-            return String.format("SubTask[ID=%s, Range=%s, Status=%s, Worker=%s, Retries=%d, Dur=%dms]",
-                taskId, frameRange, status, assignedWorkerId != null ? assignedWorkerId : "NONE", retryCount, getExecutionDurationMs());
+            return String.format("SubTask[ID=%s, Range=%s, Status=%s, Worker=%s, Retries=%d, Dur=%dms%s]",
+                taskId, frameRange, status, assignedWorkerId != null ? assignedWorkerId : "NONE", retryCount, getExecutionDurationMs(),
+                isStolen ? " (Stolen from " + stolenFromWorkerId + ")" : "");
         }
     }
 }

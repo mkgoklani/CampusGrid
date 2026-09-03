@@ -102,6 +102,10 @@ public class WorkerRegistry {
         }
     }
 
+    public WorkerState getWorker(String workerId) {
+        return (workerId != null) ? registry.get(workerId) : null;
+    }
+
     /**
      * Safely updates the operational status of a worker node.
      * 

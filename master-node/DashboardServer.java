@@ -391,15 +391,7 @@ public class DashboardServer {
                 } catch (Exception ignored) {}
             }
 
-            // 2. Auto-balance frames per task across available nodes if requested or not specified
-            if (framesPerTask <= 0) {
-                int availableNodes = Math.max(1, workerRegistry.getAvailableWorkers().size());
-                framesPerTask = (int) Math.ceil((double) totalFrames / availableNodes);
-                System.out.printf("[DASHBOARD] Auto-balanced workload: %d frames across %d node(s) -> %d frames/task\n",
-                    totalFrames, availableNodes, framesPerTask);
-            }
-
-            // 3. Unique Sequenced default Job Name if not custom specified
+            // 2. Unique Sequenced default Job Name if not custom specified
             String customJobName = extractJsonString(body, "jobName", "").trim();
             String jobName = customJobName.isEmpty() 
                 ? String.format("Render Workload #%d (%s)", jobSeq.getAndIncrement(), blendFileName)
@@ -415,7 +407,14 @@ public class DashboardServer {
             }
 
             Job job = new Job(jobId, jobName, workloadType, totalFrames, params);
-            jobManager.submitJob(job, framesPerTask);
+
+            boolean isAutoBalance = body.contains("\"autoBalance\":true") || framesPerTask <= 0;
+            if (isAutoBalance) {
+                List<WorkerState> activeWorkers = workerRegistry.getAvailableWorkers();
+                jobManager.submitJobWithWorkers(job, activeWorkers);
+            } else {
+                jobManager.submitJob(job, framesPerTask);
+            }
 
             String response = String.format("{\"success\":true,\"jobId\":\"%s\",\"jobName\":\"%s\",\"subTasks\":%d,\"framesPerTask\":%d}",
                 jobId, escapeJson(jobName), job.getSubTaskCount(), framesPerTask);

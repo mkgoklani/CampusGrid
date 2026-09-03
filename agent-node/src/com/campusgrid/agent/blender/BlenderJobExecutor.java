@@ -129,76 +129,55 @@ public class BlenderJobExecutor {
         command.add("-b"); // headless mode
         command.add(blendFile.getAbsolutePath());
 
-        // Configure GPU / CPU compute device in Blender via Python script
+        String engine = (renderEngine != null && !renderEngine.trim().isEmpty()) ? renderEngine.trim() : "CYCLES";
+        if ("BLENDER_EEVEE".equalsIgnoreCase(engine)) {
+            String ver = BlenderInstaller.getInstallationStatus().getVersion();
+            if (ver != null && (ver.startsWith("4.2") || ver.startsWith("4.3") || ver.startsWith("4.4") || ver.startsWith("5."))) {
+                engine = "BLENDER_EEVEE_NEXT";
+            }
+        }
+
+        // Configure GPU / CPU compute device in Blender via single-line Python script (Windows safe)
         if (useGpu) {
             System.out.println("[EXECUTOR] Activating GPU Acceleration backend (METAL / CUDA / OPTIX / HIP / ONEAPI)...");
+            String pyGpu = String.format(
+                "import bpy; " +
+                "s = bpy.context.scene; " +
+                "(s and setattr(s.render, 'engine', '%s')); " +
+                "prefs = bpy.context.preferences.addons.get('cycles'); " +
+                "cprefs = prefs.preferences if prefs else None; " +
+                "(cprefs and cprefs.get_devices()); " +
+                "[(setattr(d,'use',True) if d.type in ('OPTIX','CUDA','HIP','METAL','ONEAPI') else None) for d in (cprefs.devices if cprefs else [])]; " +
+                "best_type = next((t for t in ('OPTIX','CUDA','HIP','METAL','ONEAPI') if any(d.type==t for d in (cprefs.devices if cprefs else []))), None); " +
+                "(best_type and setattr(cprefs,'compute_device_type',best_type)); " +
+                "(best_type and getattr(s, 'cycles', None) and setattr(s.cycles, 'device', 'GPU'))",
+                engine
+            );
             command.add("--python-expr");
-            command.add("import bpy\n" +
-                "try:\n" +
-                "    if hasattr(bpy.context.scene, 'cycles'):\n" +
-                "        bpy.context.scene.cycles.device = 'GPU'\n" +
-                "    cpref = bpy.context.preferences.addons.get('cycles')\n" +
-                "    if cpref:\n" +
-                "        cpref.preferences.get_devices()\n" +
-                "        for dev_type in ('METAL', 'OPTIX', 'CUDA', 'HIP', 'ONEAPI'):\n" +
-                "            found = False\n" +
-                "            for d in cpref.preferences.devices:\n" +
-                "                if d.type == dev_type:\n" +
-                "                    d.use = True\n" +
-                "                    found = True\n" +
-                "                elif d.type == 'CPU':\n" +
-                "                    d.use = False\n" +
-                "            if found:\n" +
-                "                cpref.preferences.compute_device_type = dev_type\n" +
-                "                break\n" +
-                "except Exception as e:\n" +
-                "    print('GPU Setup Notice:', e)\n");
+            command.add(pyGpu);
         } else {
             System.out.println("[EXECUTOR] Disabling GPU Acceleration — using standard multi-core CPU compute...");
+            String pyCpu = String.format(
+                "import bpy; " +
+                "s = bpy.context.scene; " +
+                "(s and setattr(s.render, 'engine', '%s')); " +
+                "(getattr(s, 'cycles', None) and setattr(s.cycles, 'device', 'CPU')); " +
+                "prefs = bpy.context.preferences.addons.get('cycles'); " +
+                "cprefs = prefs.preferences if prefs else None; " +
+                "(cprefs and setattr(cprefs,'compute_device_type','NONE'))",
+                engine
+            );
             command.add("--python-expr");
-            command.add("import bpy\n" +
-                "try:\n" +
-                "    if hasattr(bpy.context.scene, 'cycles'):\n" +
-                "        bpy.context.scene.cycles.device = 'CPU'\n" +
-                "    cpref = bpy.context.preferences.addons.get('cycles')\n" +
-                "    if cpref:\n" +
-                "        for d in cpref.preferences.devices:\n" +
-                "            if d.type == 'CPU':\n" +
-                "                d.use = True\n" +
-                "            else:\n" +
-                "                d.use = False\n" +
-                "except Exception as e:\n" +
-                "    print('CPU Setup Notice:', e)\n");
+            command.add(pyCpu);
         }
 
-        if (outputDir != null && !outputDir.trim().isEmpty()) {
-            String outPath = outputDir.trim();
-            // Blender requires directory outputs to end with a slash, otherwise it treats the last part as a filename prefix
-            if (!outPath.endsWith("/") && !outPath.endsWith("\\")) {
-                outPath += File.separator;
-            }
-            command.add("-o");
-            command.add(outPath);
-            
-            // Ensure the directory exists
-            File dir = new File(outputDir);
-            if (!dir.exists()) {
-                dir.mkdirs();
-            }
+        File outDirFile = new File((outputDir != null && !outputDir.trim().isEmpty()) ? outputDir : "./output/" + jobId);
+        if (!outDirFile.exists()) {
+            outDirFile.mkdirs();
         }
-
-        if (renderEngine != null && !renderEngine.trim().isEmpty()) {
-            String engine = renderEngine.trim();
-            // Blender 4.2+ uses BLENDER_EEVEE_NEXT
-            if ("BLENDER_EEVEE".equalsIgnoreCase(engine)) {
-                String ver = BlenderInstaller.getInstallationStatus().getVersion();
-                if (ver != null && (ver.startsWith("4.2") || ver.startsWith("4.3") || ver.startsWith("4.4") || ver.startsWith("5."))) {
-                    engine = "BLENDER_EEVEE_NEXT";
-                }
-            }
-            command.add("-E");
-            command.add(engine);
-        }
+        String outPattern = new File(outDirFile, "frame_####").getAbsolutePath();
+        command.add("-o");
+        command.add(outPattern);
 
         command.add("-s");
         command.add(String.valueOf(frameStart));
