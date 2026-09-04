@@ -5,6 +5,33 @@ title CampusGrid Distributed Worker Node [Auto-Sync]
 cd /d "%~dp0"
 set MASTER_IP=%1
 
+:: If not passed as argument, check if master_ip.txt exists
+if "%MASTER_IP%"=="" (
+    if exist "master_ip.txt" (
+        set /p MASTER_IP=<master_ip.txt
+        set MASTER_IP=!MASTER_IP: =!
+    )
+)
+
+:: If still empty, prompt the user
+if "%MASTER_IP%"=="" (
+    echo.
+    echo ===================================================
+    echo   CampusGrid Distributed Worker Node Setup
+    echo ===================================================
+    echo  Enter Master Node IP (e.g. 10.12.69.153)
+    echo  Or press ENTER to scan via LAN Auto-Discovery:
+    echo.
+    set /p USER_INPUT="Master IP (optional): "
+    if not "!USER_INPUT!"=="" (
+        set MASTER_IP=!USER_INPUT!
+        echo !USER_INPUT!> master_ip.txt
+        echo [SAVED] Master IP saved to master_ip.txt
+    )
+) else (
+    echo %MASTER_IP%> master_ip.txt
+)
+
 :LOOP
 cls
 echo ===================================================

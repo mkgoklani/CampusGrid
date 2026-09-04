@@ -36,6 +36,18 @@ public class Agent {
             if (args.length > 1) {
                 try { configuredMasterPort = Integer.parseInt(args[1].trim()); } catch (Exception ignored) {}
             }
+        } else {
+            java.io.File ipFile = new java.io.File("master_ip.txt");
+            if (ipFile.exists()) {
+                try {
+                    String saved = java.nio.file.Files.readString(ipFile.toPath()).trim();
+                    if (!saved.isEmpty() && !saved.equals("127.0.0.1")) {
+                        configuredMasterIp = saved;
+                        autoDiscover = false;
+                        System.out.printf("[CONFIG] Loaded Master IP from master_ip.txt: %s\n", configuredMasterIp);
+                    }
+                } catch (Exception ignored) {}
+            }
         }
 
         while (true) {
