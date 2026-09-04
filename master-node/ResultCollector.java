@@ -78,6 +78,11 @@ public class ResultCollector {
                     Files.write(jobDir.resolve(frameName), frameBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
                 }
             }
+            Job job = jobManager.getJob(jobId);
+            if (job != null) {
+                job.invalidateCoveredFramesCache();
+            }
+            DashboardServer.invalidateJobsJsonCache();
         } catch (Exception e) {
             System.err.println("[RESULT-COLLECTOR-ERR] Failed saving frame chunk: " + e.getMessage());
         }
@@ -106,10 +111,10 @@ public class ResultCollector {
                 System.err.println("[RESULT-COLLECTOR-ERR] Failed creating directory " + jobDir + ": " + e.getMessage());
             }
 
-            // 1. Validate and process rendered frame PNG binaries
+            // 1. Validate and process rendered frame PNG binaries in a single fused pass
             Map<String, byte[]> frames = result.getRenderedFrames();
             if (frames != null && !frames.isEmpty()) {
-                // Pre-validation pass: ensure EVERY frame has valid PNG magic bytes and complete chunks
+                int frameSaveCount = 0;
                 for (Map.Entry<String, byte[]> entry : frames.entrySet()) {
                     String frameName = entry.getKey();
                     byte[] frameBytes = entry.getValue();
@@ -130,27 +135,26 @@ public class ResultCollector {
                         freeWorker(workerId);
                         return null;
                     }
-                }
 
-                // All frames passed integrity validation: write to disk
-                int frameSaveCount = 0;
-                for (Map.Entry<String, byte[]> entry : frames.entrySet()) {
-                    String frameName = entry.getKey();
-                    byte[] frameBytes = entry.getValue();
-                    if (frameBytes != null && frameBytes.length > 0) {
-                        try {
-                            Path framePath = jobDir.resolve(frameName);
-                            Files.write(framePath, frameBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-                            savedPath = framePath;
-                            frameSaveCount++;
-                        } catch (IOException e) {
-                            System.err.printf("[RESULT-COLLECTOR-ERR] Failed saving frame %s for task %s: %s\n",
-                                frameName, taskId, e.getMessage());
-                        }
+                    try {
+                        Path framePath = jobDir.resolve(frameName);
+                        Files.write(framePath, frameBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                        savedPath = framePath;
+                        frameSaveCount++;
+                    } catch (IOException e) {
+                        System.err.printf("[RESULT-COLLECTOR-ERR] Failed saving frame %s for task %s: %s\n",
+                            frameName, taskId, e.getMessage());
                     }
                 }
-                System.out.printf("[RESULT-COLLECTOR] ✓ Saved %d verified PNG frame(s) for Task [%s] in %s\n",
-                    frameSaveCount, taskId, jobDir.toString());
+                if (frameSaveCount > 0) {
+                    System.out.printf("[RESULT-COLLECTOR] ✓ Saved %d verified PNG frame(s) for Task [%s] in %s\n",
+                        frameSaveCount, taskId, jobDir.toString());
+                    Job parentJob = jobManager.getJob(jobId);
+                    if (parentJob != null) {
+                        parentJob.invalidateCoveredFramesCache();
+                    }
+                    DashboardServer.invalidateJobsJsonCache();
+                }
             }
 
             // 2. Process generic binary output if present
@@ -180,6 +184,7 @@ public class ResultCollector {
 
             // 4. Notify JobManager of successful task completion
             jobManager.updateJobProgress(jobId, taskId, true);
+            DashboardServer.invalidateJobsJsonCache();
 
             // 5. Feed render duration to ETA estimator for remaining-time calculation
             if (etaEstimator != null) {
@@ -226,6 +231,24 @@ public class ResultCollector {
         } else {
             System.err.printf("[RESULT-COLLECTOR-WARN] ⚠ Task [%s] failed on Worker [%s]: %s\n",
                 taskId, workerId, result.getErrorMessage());
+
+            // Check if task failure was caused by operator pause or cancellation
+            boolean isCancellation = false;
+            String err = result.getErrorMessage();
+            if (err != null && (err.contains("CANCELLED") || err.contains("PAUSED") || err.contains("interrupted"))) {
+                isCancellation = true;
+            }
+            Job parentJob = jobManager.getJob(jobId);
+            if (parentJob != null && (parentJob.getStatus() == JobStatus.CANCELLED || parentJob.getStatus() == JobStatus.PAUSED)) {
+                isCancellation = true;
+            }
+
+            if (isCancellation) {
+                System.out.printf("[RESULT-COLLECTOR] Task [%s] was cancelled/paused. Worker [%s] freed without reliability penalty.\n",
+                    taskId, workerId);
+                freeWorker(workerId);
+                return null;
+            }
 
             // Record failure in Reliability Tracker
             if (reliabilityTracker != null) {

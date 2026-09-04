@@ -107,14 +107,25 @@ public class BlenderJobExecutor {
         if (!outDirFile.exists()) {
             outDirFile.mkdirs();
         } else {
-            // Purge pre-existing frames in this task directory to avoid stale frame contamination
+            // Purge pre-existing frames in target range [frameStart, frameEnd] to avoid stale frame contamination,
+            // while preserving already completed frames from earlier slices.
             File[] existing = outDirFile.listFiles();
             if (existing != null) {
                 for (File f : existing) {
                     if (f.isFile()) {
                         String name = f.getName().toLowerCase();
                         if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".exr")) {
-                            f.delete();
+                            String numStr = name.replaceAll("[^0-9]", "");
+                            if (!numStr.isEmpty()) {
+                                try {
+                                    int fNum = Integer.parseInt(numStr);
+                                    if (fNum >= frameStart && fNum <= frameEnd) {
+                                        f.delete();
+                                    }
+                                } catch (NumberFormatException ignored) {
+                                    f.delete();
+                                }
+                            }
                         }
                     }
                 }
@@ -175,7 +186,7 @@ public class BlenderJobExecutor {
         Process process = pb.start();
         activeProcesses.put(jobId, process);
 
-        List<String> renderedFilePaths = new ArrayList<>();
+        java.util.LinkedHashSet<String> renderedFilePaths = new java.util.LinkedHashSet<>();
         int completedFrames = 0;
         int lastSeenFrame = frameStart;
 
@@ -199,7 +210,7 @@ public class BlenderJobExecutor {
                 // Print stdout to local console for transparency
                 System.out.println("[BLENDER] " + line);
 
-                // Detect frame number currently processing
+                // Detect frame number currently processing if printed in stdout
                 Matcher frameMatcher = FRAME_PATTERN.matcher(line);
                 if (frameMatcher.find()) {
                     try {
@@ -217,10 +228,19 @@ public class BlenderJobExecutor {
                     try {
                         savedPath = savedFile.getCanonicalPath();
                     } catch (Exception ignored) {}
-                    if (!renderedFilePaths.contains(savedPath)) {
-                        renderedFilePaths.add(savedPath);
-                    }
+                    renderedFilePaths.add(savedPath);
                     completedFrames++;
+
+                    // Extract frame number directly from saved filename (e.g. frame_0002.png -> 2)
+                    // This guarantees accurate frame progression across all engines (Workbench, Eevee, Cycles)
+                    int currentFrame = lastSeenFrame;
+                    String numStr = savedFile.getName().replaceAll("[^0-9]", "");
+                    if (!numStr.isEmpty()) {
+                        try {
+                            currentFrame = Integer.parseInt(numStr);
+                            lastSeenFrame = currentFrame;
+                        } catch (NumberFormatException ignored) {}
+                    }
 
                     // Calculate instantaneous Render FPS
                     long currentTime = System.currentTimeMillis();
@@ -230,8 +250,8 @@ public class BlenderJobExecutor {
 
                     double percentage = Math.min(100.0, ((double) completedFrames / totalFrames) * 100.0);
                     if (reporter != null) {
-                        reporter.streamFrame(jobId, lastSeenFrame, savedFile);
-                        reporter.reportStatus(jobId, lastSeenFrame, totalFrames, percentage, renderFps, "RENDERING", blenderVer, true);
+                        reporter.streamFrame(jobId, currentFrame, savedFile);
+                        reporter.reportStatus(jobId, currentFrame, totalFrames, percentage, renderFps, "RENDERING", blenderVer, true);
                     }
                 }
             }
@@ -269,9 +289,7 @@ public class BlenderJobExecutor {
                             } catch (Exception e) {
                                 abs = f.getAbsolutePath();
                             }
-                            if (!renderedFilePaths.contains(abs)) {
-                                renderedFilePaths.add(abs);
-                            }
+                            renderedFilePaths.add(abs);
                         }
                     }
                 }
@@ -286,7 +304,7 @@ public class BlenderJobExecutor {
             reporter.reportStatus(jobId, frameEnd, totalFrames, 100.0, renderFps, "RENDERING", blenderVer, true);
         }
 
-        return renderedFilePaths;
+        return new ArrayList<>(renderedFilePaths);
     }
 
     /**
@@ -337,6 +355,7 @@ public class BlenderJobExecutor {
             int completed = f - frameStart + 1;
             double pct = (double) completed / total * 100.0;
             if (reporter != null) {
+                reporter.streamFrame(jobId, f, outFile);
                 reporter.reportStatus(jobId, f, total, pct, 24.0, "RENDERING", "SoftwareEngine-1.0", true);
             }
 

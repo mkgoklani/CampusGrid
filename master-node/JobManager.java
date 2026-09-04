@@ -359,13 +359,21 @@ public class JobManager {
             return false;
         }
 
-        // Re-queue non-completed sub-tasks
+        // Re-queue non-completed sub-tasks, checking on-disk frames to avoid re-rendering completed slices
+        int requeuedCount = 0;
         for (Job.SubTask st : job.getSubTasks()) {
             if (st.getStatus() != Job.SubTaskStatus.COMPLETED) {
-                st.setStatus(Job.SubTaskStatus.PENDING);
-                st.setAssignedWorkerId(null);
-                job.requeueSubTask(st);
+                job.requeueSubTask(st, false);
+                if (st.getStatus() == Job.SubTaskStatus.PENDING) {
+                    requeuedCount++;
+                }
             }
+        }
+
+        if (requeuedCount == 0 || job.isAllCompleted() || job.isAllFramesCovered()) {
+            job.setStatus(JobStatus.COMPLETED);
+            System.out.printf("[JOB-MANAGER] ▶ Job [%s] RESUMED: all frames already present on disk. Marked COMPLETED.\n", jobId);
+            return true;
         }
 
         job.setStatus(JobStatus.QUEUED);
@@ -373,7 +381,7 @@ public class JobManager {
             pendingJobQueue.add(job);
         }
         System.out.printf("[JOB-MANAGER] ▶ Job [%s] RESUMED by operator (%d sub-tasks queued).\n",
-            jobId, job.getSubTaskCount());
+            jobId, requeuedCount);
         return true;
     }
 

@@ -1944,6 +1944,7 @@
             try {
                 const res = await fetch('/api/jobs');
                 const jobs = await res.json();
+                cachedLoadedJobs = jobs || [];
                 renderJobs(jobs);
             } catch (e) {
                 console.error("Error fetching jobs:", e);
@@ -1962,6 +1963,12 @@
 
         function renderJobs(jobs) {
             const container = document.getElementById('job-container');
+            const scrollPositions = {};
+            document.querySelectorAll('.mosaic-filmstrip').forEach(el => {
+                if (el.id) scrollPositions[el.id] = el.scrollLeft;
+            });
+            const prevScrollTop = container ? container.scrollTop : 0;
+
             const completedList = (jobs || []).filter(j => j.status === 'COMPLETED');
             if (completedList.length > 0) {
                 latestCompletedJobId = completedList[0].jobId;
@@ -2180,6 +2187,14 @@
                 `;
                 container.appendChild(jobCard);
             });
+
+            Object.keys(scrollPositions).forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.scrollLeft = scrollPositions[id];
+            });
+            if (container && prevScrollTop > 0) {
+                container.scrollTop = prevScrollTop;
+            }
         }
 
         function scrollMosaic(id, delta) {

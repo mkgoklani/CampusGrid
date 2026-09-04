@@ -179,6 +179,13 @@ public class BasicScheduler implements Runnable {
         double idleScore = ComputeCapabilityEngine.calculateScore(idleWorker);
 
         synchronized (activeJob) {
+            java.util.Set<String> alreadyStolenVictims = new java.util.HashSet<>();
+            for (Job.SubTask st : activeJob.getSubTasks()) {
+                if (st.isStolen() && st.getStolenFromWorkerId() != null) {
+                    alreadyStolenVictims.add(st.getStolenFromWorkerId());
+                }
+            }
+
             for (Job.SubTask runningTask : activeJob.getSubTasks()) {
                 if (runningTask.getStatus() == Job.SubTaskStatus.DISPATCHED 
                     && runningTask.getAssignedWorkerId() != null 
@@ -199,13 +206,7 @@ public class BasicScheduler implements Runnable {
                     }
 
                     // 3. Max-1 Steal Guard: A parent task can only be split AT MOST ONCE
-                    int existingSteals = 0;
-                    for (Job.SubTask existingSt : activeJob.getSubTasks()) {
-                        if (existingSt.isStolen() && runningTask.getAssignedWorkerId().equals(existingSt.getStolenFromWorkerId())) {
-                            existingSteals++;
-                        }
-                    }
-                    if (existingSteals >= 1) {
+                    if (alreadyStolenVictims.contains(runningTask.getAssignedWorkerId())) {
                         continue;
                     }
 

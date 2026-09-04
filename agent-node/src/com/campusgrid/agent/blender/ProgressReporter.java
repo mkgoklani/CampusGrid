@@ -151,6 +151,19 @@ public class ProgressReporter {
         }
     }
 
+    private static volatile String cachedLocalHost = null;
+
+    private static String getCachedLocalHost() {
+        if (cachedLocalHost == null) {
+            try {
+                cachedLocalHost = InetAddress.getLocalHost().getHostAddress();
+            } catch (Exception e) {
+                cachedLocalHost = "127.0.0.1";
+            }
+        }
+        return cachedLocalHost;
+    }
+
     /**
      * Resolves the unique worker ID string dynamically from socket metadata or system hostname.
      *
@@ -164,7 +177,7 @@ public class ProgressReporter {
                 int port = conn.getSocket().getLocalPort();
                 return ip + ":" + port;
             }
-            return InetAddress.getLocalHost().getHostAddress();
+            return getCachedLocalHost();
         } catch (Exception e) {
             return "unknown-worker";
         }

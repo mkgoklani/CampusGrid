@@ -20,6 +20,7 @@ public class PayloadListener implements Runnable {
     // Asynchronous rendering task tracking
     private Thread currentRenderThread = null;
     private String currentJobId = null;
+    private final com.campusgrid.agent.blender.ProgressReporter reporter;
 
     /**
      * Constructs a PayloadListener associated with the given MasterConnection.
@@ -28,6 +29,7 @@ public class PayloadListener implements Runnable {
      */
     public PayloadListener(MasterConnection connection) {
         this.connection = connection;
+        this.reporter = new com.campusgrid.agent.blender.ProgressReporter(connection);
     }
 
     /**
@@ -317,8 +319,6 @@ public class PayloadListener implements Runnable {
 
         currentJobId = task.getJobId();
         currentRenderThread = new Thread(() -> {
-            com.campusgrid.agent.blender.ProgressReporter reporter = 
-                new com.campusgrid.agent.blender.ProgressReporter(connection);
             String blenderVer = com.campusgrid.agent.blender.BlenderInstaller.getInstallationStatus().getVersion();
             
             long startTime = System.currentTimeMillis();
@@ -360,9 +360,8 @@ public class PayloadListener implements Runnable {
 
                 long duration = System.currentTimeMillis() - startTime;
 
-                // Stream rendered PNG frame bytes in memory-safe batches (max 10 frames per chunk)
-                // Prevents JVM heap exhaustion (OutOfMemoryError) and socket disconnection on large slices (90-180 frames)
-                final int BATCH_SIZE = 10;
+                // Frames were already verified and streamed live to Master as they completed in real time.
+                // Transmit a lightweight final RenderResult with empty frame map to avoid redundant network/memory overhead.
                 java.util.List<String> validFiles = new java.util.ArrayList<>();
                 for (String filePath : renderedFiles) {
                     java.io.File f = new java.io.File(filePath);
@@ -372,65 +371,24 @@ public class PayloadListener implements Runnable {
                 }
 
                 int totalValid = validFiles.size();
-                System.out.printf("[TASK] Bundling %d frame(s) (%s) for streaming transmission to Master...\n",
-                    totalValid, task.getJobId());
+                System.out.printf("[TASK] Task slice complete: %d frame(s) rendered for Job [%s] (all live frames streamed). Sending final completion result [%s]...\n",
+                    totalValid, task.getJobId(), status);
 
-                if (totalValid == 0) {
-                    com.campusgrid.agent.blender.RenderResult result = new com.campusgrid.agent.blender.RenderResult(
-                        task.getJobId(),
-                        reporter.getWorkerId(),
-                        renderedFiles,
-                        java.util.Collections.emptyMap(),
-                        duration,
-                        status
-                    );
-                    try {
-                        connection.sendObject(result);
-                    } catch (IOException e) {
-                        System.err.println("[TASK] Failed to send empty render result: " + e.getMessage());
-                        connection.disconnect();
-                        stop();
-                        return;
-                    }
-                } else {
-                    for (int i = 0; i < totalValid; i += BATCH_SIZE) {
-                        int end = Math.min(i + BATCH_SIZE, totalValid);
-                        boolean isLastBatch = (end >= totalValid);
-                        java.util.List<String> batchSlice = new java.util.ArrayList<>(validFiles.subList(i, end));
-
-                        java.util.Map<String, byte[]> batchMap = new java.util.HashMap<>();
-                        for (String p : batchSlice) {
-                            java.io.File f = new java.io.File(p);
-                            try {
-                                batchMap.put(f.getName(), java.nio.file.Files.readAllBytes(f.toPath()));
-                            } catch (Exception e) {
-                                System.err.println("[TASK] Failed reading frame file " + p + ": " + e.getMessage());
-                            }
-                        }
-
-                        String batchStatus = isLastBatch ? status : "CHUNK";
-                        com.campusgrid.agent.blender.RenderResult chunk = new com.campusgrid.agent.blender.RenderResult(
-                            task.getJobId(),
-                            reporter.getWorkerId(),
-                            batchSlice,
-                            batchMap,
-                            duration,
-                            batchStatus
-                        );
-
-                        try {
-                            connection.sendObject(chunk);
-                            System.out.printf("[TASK] Transmitted frame batch %d-%d/%d (%s) to Master\n",
-                                i + 1, end, totalValid, batchStatus);
-                            Thread.sleep(30);
-                        } catch (Exception e) {
-                            System.err.println("[TASK] Failed transmitting batch: " + e.getMessage());
-                            connection.disconnect();
-                            stop();
-                            return;
-                        }
-                        batchMap.clear();
-                    }
+                com.campusgrid.agent.blender.RenderResult result = new com.campusgrid.agent.blender.RenderResult(
+                    task.getJobId(),
+                    reporter.getWorkerId(),
+                    renderedFiles,
+                    java.util.Collections.emptyMap(),
+                    duration,
+                    status
+                );
+                try {
+                    connection.sendObject(result);
+                } catch (IOException e) {
+                    System.err.println("[TASK] Failed to send render result: " + e.getMessage());
+                    connection.disconnect();
+                    stop();
+                    return;
                 }
             } finally {
                 com.campusgrid.agent.os.LinuxTelemetry.isExecutingTask = false;

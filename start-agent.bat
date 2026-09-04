@@ -15,7 +15,7 @@ echo ===================================================
 if exist ".git" (
     echo [SYNC] Syncing latest cluster code from GitHub [branch: nilesh]...
     git fetch origin nilesh 2>nul
-    git reset --hard origin/nilesh 2>nul
+    git pull origin nilesh 2>nul
 )
 
 :: 2. Auto-compile common-lib and agent-node if javac is available

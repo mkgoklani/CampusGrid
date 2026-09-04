@@ -150,25 +150,27 @@ public class RenderETAEstimator {
      * Returns 0.0 (no penalty) to ~2.0 (high penalty).
      */
     private double computeVarianceFactor(JobEstimate est) {
-        List<Long> durations = est.frameDurations;
-        if (durations.size() < 2) return 0.0;
-
-        // Use last 20 samples for recency
-        int startIdx = Math.max(0, durations.size() - 20);
-        double sum = 0.0;
-        int count = 0;
-        for (int i = startIdx; i < durations.size(); i++) {
-            sum += durations.get(i);
-            count++;
+        Long[] snapshot;
+        synchronized (est.frameDurations) {
+            if (est.frameDurations.size() < 2) return 0.0;
+            int len = est.frameDurations.size();
+            int startIdx = Math.max(0, len - 20);
+            snapshot = est.frameDurations.subList(startIdx, len).toArray(new Long[0]);
         }
-        double mean = sum / count;
+        if (snapshot.length < 2) return 0.0;
+
+        double sum = 0.0;
+        for (Long d : snapshot) {
+            sum += (d != null ? d : 0);
+        }
+        double mean = sum / snapshot.length;
 
         double varianceSum = 0.0;
-        for (int i = startIdx; i < durations.size(); i++) {
-            double diff = durations.get(i) - mean;
+        for (Long d : snapshot) {
+            double diff = (d != null ? d : 0) - mean;
             varianceSum += diff * diff;
         }
-        double stddev = Math.sqrt(varianceSum / count);
+        double stddev = Math.sqrt(varianceSum / snapshot.length);
 
         return (mean > 0) ? (stddev / mean) : 0.0;
     }

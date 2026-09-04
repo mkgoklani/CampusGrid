@@ -169,14 +169,57 @@ public class Job implements Serializable {
      * @param subTask The sub-task to re-queue.
      */
     public void requeueSubTask(SubTask subTask) {
+        requeueSubTask(subTask, true);
+    }
+
+    public void requeueSubTask(SubTask subTask, boolean isRetry) {
         if (subTask != null) {
+            int firstMissing = getFirstMissingFrame(subTask);
+            if (firstMissing > subTask.getEndFrame()) {
+                // All frames are already rendered on disk!
+                subTask.setStatus(SubTaskStatus.COMPLETED);
+                markSubTaskCompleted(subTask.getTaskId());
+                return;
+            }
+            if (firstMissing > subTask.getStartFrame()) {
+                System.out.printf("[JOB] ⏩ Fast-forwarding SubTask [%s] to frame %d (frames %d-%d already exist on disk)\n",
+                    subTask.getTaskId(), firstMissing, subTask.getStartFrame(), firstMissing - 1);
+                subTask.setStartFrame(firstMissing);
+            }
+
             subTask.setStatus(SubTaskStatus.PENDING);
             subTask.setAssignedWorkerId(null);
-            subTask.incrementRetryCount();
+            if (isRetry) {
+                subTask.incrementRetryCount();
+            } else {
+                subTask.resetRetryCount();
+            }
             if (!pendingSubTasks.contains(subTask)) {
                 pendingSubTasks.add(subTask);
             }
         }
+    }
+
+    /**
+     * Inspects on-disk output frames for this job and returns the first missing frame number
+     * starting sequentially from subTask.getStartFrame().
+     */
+    public int getFirstMissingFrame(SubTask subTask) {
+        if (subTask == null) return -1;
+        java.io.File outDir = new java.io.File("./output/" + jobId);
+        if (!outDir.exists() || !outDir.isDirectory()) {
+            return subTask.getStartFrame();
+        }
+        int firstMissing = subTask.getStartFrame();
+        while (firstMissing <= subTask.getEndFrame()) {
+            java.io.File frameFile = new java.io.File(outDir, String.format("frame_%04d.png", firstMissing));
+            if (frameFile.exists() && frameFile.length() > 0) {
+                firstMissing++;
+            } else {
+                break;
+            }
+        }
+        return firstMissing;
     }
 
     private volatile long startTimestamp = 0;
@@ -262,20 +305,45 @@ public class Job implements Serializable {
         return false; // Disabled by default to prevent cluster clutter
     }
 
+    private volatile Boolean cachedAllFramesCovered = null;
+    private volatile long lastAllFramesCoveredCheck = 0;
+    private static final long COVERED_CACHE_TTL_MS = 1500;
+
+    public void invalidateCoveredFramesCache() {
+        cachedAllFramesCovered = null;
+        lastAllFramesCoveredCheck = 0;
+    }
+
     /**
      * Checks if all frames from 1 to totalFrames exist as valid, non-empty rendered images on disk.
      * Guarantees sequence completeness and allows early completion without waiting for redundant speculative stolen tasks.
      */
     public boolean isAllFramesCovered() {
         if (totalFrames <= 0) return true;
+        if (isAllCompleted()) return true;
+
+        long now = System.currentTimeMillis();
+        Boolean cached = cachedAllFramesCovered;
+        if (cached != null && (now - lastAllFramesCoveredCheck) < COVERED_CACHE_TTL_MS) {
+            return cached;
+        }
+
         java.io.File outDir = new java.io.File("./output/" + jobId);
-        if (!outDir.exists() || !outDir.isDirectory()) return false;
+        if (!outDir.exists() || !outDir.isDirectory()) {
+            cachedAllFramesCovered = false;
+            lastAllFramesCoveredCheck = now;
+            return false;
+        }
 
         java.io.File[] files = outDir.listFiles((dir, name) -> {
             String lower = name.toLowerCase();
             return lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg");
         });
-        if (files == null || files.length < totalFrames) return false;
+        if (files == null || files.length < totalFrames) {
+            cachedAllFramesCovered = false;
+            lastAllFramesCoveredCheck = now;
+            return false;
+        }
 
         java.util.BitSet covered = new java.util.BitSet(totalFrames + 1);
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("(?i)(?:frame_?|task_.*_)?(\\d+)");
@@ -294,7 +362,10 @@ public class Job implements Serializable {
             }
         }
 
-        return covered.cardinality() >= totalFrames;
+        boolean result = covered.cardinality() >= totalFrames;
+        cachedAllFramesCovered = result;
+        lastAllFramesCoveredCheck = now;
+        return result;
     }
 
     public Collection<SubTask> getSubTasks() {
@@ -331,9 +402,10 @@ public class Job implements Serializable {
 
         private final String taskId;
         private final String jobId;
-        private final int startFrame;
+        private final int originalStartFrame;
+        private volatile int startFrame;
         private final int endFrame;
-        private final String frameRange;
+        private volatile String frameRange;
         private final String workloadType;
 
         private volatile SubTaskStatus status;
@@ -347,6 +419,7 @@ public class Job implements Serializable {
         public SubTask(String taskId, String jobId, int startFrame, int endFrame, String frameRange, String workloadType) {
             this.taskId = taskId;
             this.jobId = jobId;
+            this.originalStartFrame = startFrame;
             this.startFrame = startFrame;
             this.endFrame = endFrame;
             this.frameRange = frameRange;
@@ -357,9 +430,19 @@ public class Job implements Serializable {
 
         public String getTaskId() { return taskId; }
         public String getJobId() { return jobId; }
+        public int getOriginalStartFrame() { return originalStartFrame; }
         public int getStartFrame() { return startFrame; }
+        public void setStartFrame(int startFrame) {
+            this.startFrame = startFrame;
+            if (startFrame <= this.endFrame) {
+                this.frameRange = (startFrame == this.endFrame) 
+                    ? String.valueOf(startFrame) 
+                    : (startFrame + "-" + this.endFrame);
+            }
+        }
         public int getEndFrame() { return endFrame; }
         public String getFrameRange() { return frameRange; }
+        public void setFrameRange(String frameRange) { this.frameRange = frameRange; }
         public String getWorkloadType() { return workloadType; }
         
         public SubTaskStatus getStatus() { return status; }
@@ -370,6 +453,7 @@ public class Job implements Serializable {
 
         public int getRetryCount() { return retryCount; }
         public void incrementRetryCount() { this.retryCount++; }
+        public void resetRetryCount() { this.retryCount = 0; }
 
         public byte[] getTaskPayloadBytes() { 
             if (taskPayloadBytes != null) return taskPayloadBytes;

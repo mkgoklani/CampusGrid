@@ -66,7 +66,7 @@ public class Agent {
                    && connection.getPayloadListener() != null && connection.getPayloadListener().isRunning()
                    && (connection.getHeartbeatService() == null || connection.getHeartbeatService().isRunning())) {
                 try {
-                    Thread.sleep(1000);
+                    Thread.sleep(3000);
                 } catch (InterruptedException e) {
                     break;
                 }

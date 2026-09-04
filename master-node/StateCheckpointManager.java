@@ -76,12 +76,18 @@ public class StateCheckpointManager implements Runnable {
         System.out.println("[CHECKPOINT] State persistence stopped. Final checkpoint saved.");
     }
 
+    private volatile boolean dirty = true;
+
+    public void markDirty() {
+        this.dirty = true;
+    }
+
     @Override
     public void run() {
         while (running && !Thread.currentThread().isInterrupted()) {
             try {
                 Thread.sleep(intervalMs);
-                saveCheckpoint();
+                saveCheckpoint(false);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
@@ -92,10 +98,17 @@ public class StateCheckpointManager implements Runnable {
     }
 
     /**
-     * Persists current JobManager state to the checkpoint JSON file.
+     * Persists current JobManager state to the checkpoint JSON file if dirty or forced.
      * Uses atomic write (write to temp file, then rename) to prevent corruption.
      */
     public void saveCheckpoint() {
+        saveCheckpoint(true);
+    }
+
+    public synchronized void saveCheckpoint(boolean force) {
+        if (!force && !dirty) {
+            return;
+        }
         try {
             String json = serializeJobState();
             Path tempFile = checkpointDir.resolve("checkpoint_tmp.json");
@@ -103,11 +116,13 @@ public class StateCheckpointManager implements Runnable {
                 StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
             // Atomic rename to prevent partial reads
             Files.move(tempFile, checkpointFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            dirty = false;
         } catch (java.nio.file.AtomicMoveNotSupportedException e) {
             // Fallback: non-atomic write if filesystem doesn't support atomic move
             try {
                 Path tempFile = checkpointDir.resolve("checkpoint_tmp.json");
                 Files.move(tempFile, checkpointFile, StandardCopyOption.REPLACE_EXISTING);
+                dirty = false;
             } catch (IOException ignored) {}
         } catch (IOException e) {
             System.err.println("[CHECKPOINT-ERR] Failed to save checkpoint: " + e.getMessage());
@@ -286,19 +301,24 @@ public class StateCheckpointManager implements Runnable {
                 }
                 restoredJob.sliceIntoFrameRanges(framesPerTask);
 
-                // Mark sub-tasks whose frames are already rendered as COMPLETED
+                // Mark sub-tasks whose frames are already rendered as COMPLETED, or advance startFrame for partial tasks
                 int completedCount = 0;
                 for (Job.SubTask st : restoredJob.getSubTasks()) {
-                    boolean allFramesDone = true;
+                    int firstMissing = st.getStartFrame();
                     for (int f = st.getStartFrame(); f <= st.getEndFrame(); f++) {
-                        if (!completedFrames.contains(f)) {
-                            allFramesDone = false;
+                        if (completedFrames.contains(f)) {
+                            firstMissing = f + 1;
+                        } else {
                             break;
                         }
                     }
-                    if (allFramesDone) {
+                    if (firstMissing > st.getEndFrame()) {
                         restoredJob.markSubTaskCompleted(st.getTaskId());
                         completedCount++;
+                    } else if (firstMissing > st.getStartFrame()) {
+                        System.out.printf("[CHECKPOINT] ⏩ Advancing restored Task [%s] to frame %d (frames %d-%d already exist on disk)\n",
+                            st.getTaskId(), firstMissing, st.getStartFrame(), firstMissing - 1);
+                        st.setStartFrame(firstMissing);
                     }
                 }
 
@@ -314,6 +334,7 @@ public class StateCheckpointManager implements Runnable {
                     jobManager.registerJob(restoredJob);
                     System.out.printf("[CHECKPOINT] Restored %s Job [%s] \"%s\": %d/%d frames completed (Awaiting manual Resume).%n",
                         targetStatus, jobId, jobName, completedFrames.size(), totalFrames);
+                    restoredCount++;
                 } else {
                     restoredJob.setStatus(JobStatus.QUEUED);
                     jobManager.submitJob(restoredJob, framesPerTask);

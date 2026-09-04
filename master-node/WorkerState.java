@@ -17,20 +17,21 @@ public class WorkerState {
     private final ObjectOutputStream outStream;
     
     // Telemetry and Status fields (Updated concurrently)
-    private WorkerStatus status;
-    private int cpuTemperature;
-    private double cpuUsagePercent;
-    private double ramUsagePercent;
-    private String currentJobId;
-    private String currentTaskId;
-    private String assignedFrameRange;
-    private long lastHeartbeatTimestamp;
+    // Telemetry and Status fields (Updated concurrently)
+    private volatile WorkerStatus status;
+    private volatile int cpuTemperature;
+    private volatile double cpuUsagePercent;
+    private volatile double ramUsagePercent;
+    private volatile String currentJobId;
+    private volatile String currentTaskId;
+    private volatile String assignedFrameRange;
+    private volatile long lastHeartbeatTimestamp;
 
     // Platform & Blender Environment
-    private String osName = "Unknown OS";
-    private boolean blenderInstalled = false;
-    private String blenderVersion = "Unknown";
-    private double installProgress = -1.0; // -1 if not installing, 0-100% when installing
+    private volatile String osName = "Unknown OS";
+    private volatile boolean blenderInstalled = false;
+    private volatile String blenderVersion = "Unknown";
+    private volatile double installProgress = -1.0; // -1 if not installing, 0-100% when installing
 
     /**
      * Constructs a new WorkerState.
@@ -57,200 +58,200 @@ public class WorkerState {
         return ipAddress;
     }
 
-    public synchronized Socket getSocket() {
+    public Socket getSocket() {
         return socket;
     }
 
-    public synchronized ObjectOutputStream getOutStream() {
+    public ObjectOutputStream getOutStream() {
         return outStream;
     }
 
-    public synchronized WorkerStatus getStatus() {
+    public WorkerStatus getStatus() {
         return status;
     }
 
-    public synchronized void setStatus(WorkerStatus status) {
+    public void setStatus(WorkerStatus status) {
         this.status = status;
     }
 
-    public synchronized int getCpuTemperature() {
+    public int getCpuTemperature() {
         return cpuTemperature;
     }
 
-    public synchronized void setCpuTemperature(int cpuTemperature) {
+    public void setCpuTemperature(int cpuTemperature) {
         this.cpuTemperature = cpuTemperature;
     }
 
-    public synchronized double getCpuUsagePercent() {
+    public double getCpuUsagePercent() {
         return cpuUsagePercent;
     }
 
-    public synchronized void setCpuUsagePercent(double cpuUsagePercent) {
+    public void setCpuUsagePercent(double cpuUsagePercent) {
         this.cpuUsagePercent = cpuUsagePercent;
     }
 
-    public synchronized double getRamUsagePercent() {
+    public double getRamUsagePercent() {
         return ramUsagePercent;
     }
 
-    public synchronized void setRamUsagePercent(double ramUsagePercent) {
+    public void setRamUsagePercent(double ramUsagePercent) {
         this.ramUsagePercent = ramUsagePercent;
     }
 
-    public synchronized String getCurrentJobId() {
+    public String getCurrentJobId() {
         return currentJobId;
     }
 
-    public synchronized void setCurrentJobId(String currentJobId) {
+    public void setCurrentJobId(String currentJobId) {
         this.currentJobId = currentJobId;
     }
 
-    public synchronized String getCurrentTaskId() {
+    public String getCurrentTaskId() {
         return currentTaskId;
     }
 
-    public synchronized void setCurrentTaskId(String currentTaskId) {
+    public void setCurrentTaskId(String currentTaskId) {
         this.currentTaskId = currentTaskId;
     }
 
-    public synchronized String getAssignedFrameRange() {
+    public String getAssignedFrameRange() {
         return assignedFrameRange;
     }
 
-    public synchronized void setAssignedFrameRange(String assignedFrameRange) {
+    public void setAssignedFrameRange(String assignedFrameRange) {
         this.assignedFrameRange = assignedFrameRange;
     }
 
-    public synchronized long getLastHeartbeatTimestamp() {
+    public long getLastHeartbeatTimestamp() {
         return lastHeartbeatTimestamp;
     }
 
-    public synchronized void setLastHeartbeatTimestamp(long lastHeartbeatTimestamp) {
+    public void setLastHeartbeatTimestamp(long lastHeartbeatTimestamp) {
         this.lastHeartbeatTimestamp = lastHeartbeatTimestamp;
     }
 
-    public synchronized String getOsName() {
+    public String getOsName() {
         return osName;
     }
 
-    public synchronized void setOsName(String osName) {
+    public void setOsName(String osName) {
         this.osName = osName;
     }
 
-    public synchronized boolean isBlenderInstalled() {
+    public boolean isBlenderInstalled() {
         return blenderInstalled;
     }
 
-    public synchronized void setBlenderInstalled(boolean blenderInstalled) {
+    public void setBlenderInstalled(boolean blenderInstalled) {
         this.blenderInstalled = blenderInstalled;
     }
 
-    public synchronized String getBlenderVersion() {
+    public String getBlenderVersion() {
         return blenderVersion;
     }
 
-    public synchronized void setBlenderVersion(String blenderVersion) {
+    public void setBlenderVersion(String blenderVersion) {
         this.blenderVersion = blenderVersion;
     }
 
-    public synchronized double getInstallProgress() {
+    public double getInstallProgress() {
         return installProgress;
     }
 
-    public synchronized void setInstallProgress(double installProgress) {
+    public void setInstallProgress(double installProgress) {
         this.installProgress = installProgress;
     }
 
-    private String gpuName = "CPU";
-    private String cpuModel = "Multi-Core CPU";
-    private String osArch = "x86_64 (64-bit)";
-    private String agentVersion = "v2.0";
+    private volatile String gpuName = "CPU";
+    private volatile String cpuModel = "Multi-Core CPU";
+    private volatile String osArch = "x86_64 (64-bit)";
+    private volatile String agentVersion = "v2.0";
 
-    public synchronized String getGpuName() {
+    public String getGpuName() {
         return gpuName != null ? gpuName : "CPU";
     }
 
-    public synchronized void setGpuName(String gpuName) {
+    public void setGpuName(String gpuName) {
         this.gpuName = gpuName;
     }
 
-    public synchronized String getCpuModel() {
+    public String getCpuModel() {
         return cpuModel != null ? cpuModel : "Multi-Core CPU";
     }
 
-    public synchronized void setCpuModel(String cpuModel) {
+    public void setCpuModel(String cpuModel) {
         this.cpuModel = cpuModel;
     }
 
-    public synchronized String getOsArch() {
+    public String getOsArch() {
         return osArch != null ? osArch : "x86_64 (64-bit)";
     }
 
-    public synchronized void setOsArch(String osArch) {
+    public void setOsArch(String osArch) {
         this.osArch = osArch;
     }
 
-    public synchronized String getAgentVersion() {
+    public String getAgentVersion() {
         return agentVersion != null ? agentVersion : "v2.0";
     }
 
-    public synchronized void setAgentVersion(String agentVersion) {
+    public void setAgentVersion(String agentVersion) {
         this.agentVersion = agentVersion;
     }
 
-    private String latestFrameUrl = "";
-    private int latestFrameNumber = 0;
-    private double latestFps = 0.0;
+    private volatile String latestFrameUrl = "";
+    private volatile int latestFrameNumber = 0;
+    private volatile double latestFps = 0.0;
 
-    public synchronized String getLatestFrameUrl() {
+    public String getLatestFrameUrl() {
         return latestFrameUrl != null ? latestFrameUrl : "";
     }
 
-    public synchronized void setLatestFrameUrl(String latestFrameUrl) {
+    public void setLatestFrameUrl(String latestFrameUrl) {
         this.latestFrameUrl = latestFrameUrl;
     }
 
-    public synchronized int getLatestFrameNumber() {
+    public int getLatestFrameNumber() {
         return latestFrameNumber;
     }
 
-    public synchronized void setLatestFrameNumber(int latestFrameNumber) {
+    public void setLatestFrameNumber(int latestFrameNumber) {
         this.latestFrameNumber = latestFrameNumber;
     }
 
-    public synchronized double getLatestFps() {
+    public double getLatestFps() {
         return latestFps;
     }
 
-    public synchronized void setLatestFps(double latestFps) {
+    public void setLatestFps(double latestFps) {
         this.latestFps = latestFps;
     }
 
-    private double reliabilityScore = 1.0;
-    private int tasksCompleted = 0;
-    private int tasksFailed = 0;
+    private volatile double reliabilityScore = 1.0;
+    private volatile int tasksCompleted = 0;
+    private volatile int tasksFailed = 0;
 
-    public synchronized double getReliabilityScore() {
+    public double getReliabilityScore() {
         return reliabilityScore;
     }
 
-    public synchronized void setReliabilityScore(double score) {
+    public void setReliabilityScore(double score) {
         this.reliabilityScore = Math.max(0.0, Math.min(1.0, score));
     }
 
-    public synchronized int getTasksCompleted() {
+    public int getTasksCompleted() {
         return tasksCompleted;
     }
 
-    public synchronized void setTasksCompleted(int count) {
+    public void setTasksCompleted(int count) {
         this.tasksCompleted = count;
     }
 
-    public synchronized int getTasksFailed() {
+    public int getTasksFailed() {
         return tasksFailed;
     }
 
-    public synchronized void setTasksFailed(int count) {
+    public void setTasksFailed(int count) {
         this.tasksFailed = count;
     }
 

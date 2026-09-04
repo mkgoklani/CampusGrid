@@ -55,15 +55,33 @@ public class BlenderInstaller {
 
     public static volatile double currentInstallProgress = -1.0;
     public static volatile boolean isInstalling = false;
+    private static volatile Status cachedStatus = null;
+    private static volatile long lastStatusCheck = 0;
+    private static final long STATUS_CACHE_TTL = 60_000; // 60s TTL
+
+    public static void invalidateStatusCache() {
+        cachedStatus = null;
+        lastStatusCheck = 0;
+    }
 
     /**
      * Detects if Blender is installed on the system, checks its version, and returns its status.
      * Searches system PATH, standard directories, and local portable ./blender_bin paths.
+     * Caches result for 60s to avoid expensive process spawning on every heartbeat tick.
      */
     public static Status getInstallationStatus() {
+        long now = System.currentTimeMillis();
+        Status cached = cachedStatus;
+        if (cached != null && (now - lastStatusCheck) < STATUS_CACHE_TTL) {
+            return cached;
+        }
+
         String path = BlenderUtils.findExecutablePath();
         if (path == null) {
-            return new Status(false, "Unknown", null);
+            Status s = new Status(false, "Unknown", null);
+            cachedStatus = s;
+            lastStatusCheck = now;
+            return s;
         }
 
         String output = BlenderUtils.executeCommand(path, "--version");
@@ -72,13 +90,19 @@ public class BlenderInstaller {
         }
 
         if (output == null || output.isEmpty()) {
-            return new Status(false, "Unknown", path);
+            Status s = new Status(false, "Unknown", path);
+            cachedStatus = s;
+            lastStatusCheck = now;
+            return s;
         }
 
         String version = BlenderUtils.parseVersion(output);
         boolean installed = !"Unknown".equals(version);
 
-        return new Status(installed, version, path);
+        Status s = new Status(installed, version, path);
+        cachedStatus = s;
+        lastStatusCheck = now;
+        return s;
     }
 
     /**
@@ -373,6 +397,7 @@ public class BlenderInstaller {
 
             if (callback != null) callback.onProgress(95.0, "Verifying extracted Blender binary...");
             Thread.sleep(1000);
+            invalidateStatusCache();
             Status verified = getInstallationStatus();
             if (verified.isInstalled()) {
                 if (callback != null) callback.onProgress(100.0, "Blender " + verified.getVersion() + " installed successfully!");

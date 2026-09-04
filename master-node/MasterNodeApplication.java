@@ -345,7 +345,10 @@ public class MasterNodeApplication {
 
             if (currentFrame > 0 && jobId != null && !jobId.equalsIgnoreCase("N/A")) {
                 worker.setLatestFrameNumber(currentFrame);
-                worker.setLatestFrameUrl(String.format("/output/%s/frame_%04d.png", jobId, currentFrame));
+                java.io.File frameFile = new java.io.File(String.format("./output/%s/frame_%04d.png", jobId, currentFrame));
+                if (frameFile.exists() && frameFile.length() > 0) {
+                    worker.setLatestFrameUrl(String.format("/output/%s/frame_%04d.png", jobId, currentFrame));
+                }
             }
 
             // CRITICAL: SoftwareEngine-1.0 fallback is NOT native Blender

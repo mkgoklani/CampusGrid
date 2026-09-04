@@ -217,7 +217,22 @@ public class DashboardServer {
         return sb.toString();
     }
 
+    private static volatile String cachedJobsJson = null;
+    private static volatile long lastJobsJsonCacheTime = 0;
+    private static final long JOBS_CACHE_TTL_MS = 1500;
+
+    public static void invalidateJobsJsonCache() {
+        cachedJobsJson = null;
+        lastJobsJsonCacheTime = 0;
+    }
+
     private String generateJobsJson() {
+        long now = System.currentTimeMillis();
+        String cached = cachedJobsJson;
+        if (cached != null && (now - lastJobsJsonCacheTime) < JOBS_CACHE_TTL_MS) {
+            return cached;
+        }
+
         StringBuilder sb = new StringBuilder();
         sb.append("[");
         int count = 0;
@@ -381,7 +396,10 @@ public class DashboardServer {
             sb.append("}");
         }
         sb.append("]");
-        return sb.toString();
+        String result = sb.toString();
+        cachedJobsJson = result;
+        lastJobsJsonCacheTime = System.currentTimeMillis();
+        return result;
     }
 
     private static String formatDuration(long ms) {
@@ -571,6 +589,7 @@ public class DashboardServer {
                 jobManager.submitJob(job, framesPerTask);
             }
 
+            invalidateJobsJsonCache();
             String response = String.format("{\"success\":true,\"jobId\":\"%s\",\"jobName\":\"%s\",\"subTasks\":%d,\"weightedSlicing\":%b,\"framesPerTask\":%d}",
                 jobId, escapeJson(jobName), job.getSubTaskCount(), (weightedSlicing && available.size() > 1), framesPerTask);
             sendJsonResponse(exchange, 201, response);
@@ -633,6 +652,7 @@ public class DashboardServer {
                 if (checkpointManager != null) {
                     checkpointManager.saveCheckpoint();
                 }
+                invalidateJobsJsonCache();
                 sendJsonResponse(exchange, 200, "{\"success\":true,\"message\":\"Job cancelled\"}");
             } else {
                 sendJsonResponse(exchange, 400, "{\"error\":\"Missing jobId parameter\"}");
@@ -666,6 +686,7 @@ public class DashboardServer {
                 if (checkpointManager != null) {
                     checkpointManager.saveCheckpoint();
                 }
+                invalidateJobsJsonCache();
                 sendJsonResponse(exchange, 200, "{\"success\":" + paused + ",\"message\":\"Job paused\"}");
             } else {
                 sendJsonResponse(exchange, 400, "{\"error\":\"Missing jobId parameter\"}");
@@ -699,6 +720,7 @@ public class DashboardServer {
                 if (checkpointManager != null) {
                     checkpointManager.saveCheckpoint();
                 }
+                invalidateJobsJsonCache();
                 sendJsonResponse(exchange, 200, "{\"success\":" + resumed + ",\"message\":\"Job resumed\"}");
             } else {
                 sendJsonResponse(exchange, 400, "{\"error\":\"Missing jobId parameter\"}");
@@ -733,6 +755,7 @@ public class DashboardServer {
                 if (checkpointManager != null) {
                     checkpointManager.saveCheckpoint();
                 }
+                invalidateJobsJsonCache();
                 sendJsonResponse(exchange, 200, "{\"success\":" + deleted + ",\"message\":\"Job deleted\"}");
             } else {
                 sendJsonResponse(exchange, 400, "{\"error\":\"Missing jobId parameter\"}");
@@ -1095,7 +1118,7 @@ public class DashboardServer {
             }
         }
 
-        private synchronized void sendFrame(Socket socket, String text) throws IOException {
+        private void sendFrame(Socket socket, String text) throws IOException {
             byte[] rawData = text.getBytes(StandardCharsets.UTF_8);
             ByteArrayOutputStream frame = new ByteArrayOutputStream();
             frame.write(0x81); // Text frame opcode + FIN bit
@@ -1114,9 +1137,11 @@ public class DashboardServer {
             }
             frame.write(rawData);
 
-            OutputStream out = socket.getOutputStream();
-            out.write(frame.toByteArray());
-            out.flush();
+            synchronized (socket) {
+                OutputStream out = socket.getOutputStream();
+                out.write(frame.toByteArray());
+                out.flush();
+            }
         }
 
         public void stop() {
