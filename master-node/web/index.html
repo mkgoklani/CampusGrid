@@ -2367,12 +2367,17 @@
                     <td>
                         ${(worker.latestFrameUrl && worker.latestFrameUrl !== '') ? `
                             <button onclick="openNodeScreenModal('${worker.workerId}', '${escapeHtml(worker.ipAddress)}', '${worker.latestFrameUrl}', ${worker.latestFrameNumber || 1}, ${worker.latestFps || 0}, '${escapeHtml(worker.gpuName || 'CPU')}')" style="background: rgba(21, 101, 192, 0.08); border: 1px solid rgba(21, 101, 192, 0.25); color: #1565c0; border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-family: 'JetBrains Mono', monospace;">
-                                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: ${worker.status === 'BUSY' ? '#2e7d32' : '#1565c0'};"></span>
+                                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #2e7d32;"></span>
                                 🖥️ Tile #${worker.latestFrameNumber || 1}
                             </button>
+                        ` : (worker.status === 'BUSY' ? `
+                            <button onclick="openNodeScreenModal('${worker.workerId}', '${escapeHtml(worker.ipAddress)}', '', ${worker.latestFrameNumber || 1}, ${worker.latestFps || 0}, '${escapeHtml(worker.gpuName || 'CPU')}')" style="background: rgba(230, 81, 0, 0.08); border: 1px solid rgba(230, 81, 0, 0.25); color: #e65100; border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-family: 'JetBrains Mono', monospace;" title="Node is actively raytracing. Click to view telemetry & screen modal.">
+                                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #e65100;"></span>
+                                ⏳ Raytracing...
+                            </button>
                         ` : `
-                            <span style="font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">${worker.status === 'BUSY' ? '⏳ Rendering...' : 'Idle'}</span>
-                        `}
+                            <span style="font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">Idle</span>
+                        `)}
                     </td>
                     <td>
                         <div style="font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono', monospace; color: ${worker.status === 'BUSY' ? '#1565c0' : 'var(--text-muted)'};">${activeTaskStr}</div>
