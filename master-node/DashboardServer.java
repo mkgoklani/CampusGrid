@@ -336,15 +336,92 @@ public class DashboardServer {
     private class OutputFileHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+                exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+                exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Range, Content-Type");
+                exchange.sendResponseHeaders(204, -1);
+                return;
+            }
+
             String uriPath = exchange.getRequestURI().getPath(); // e.g. /output/JOB_123/JOB_123_animation.mp4
             File file = new File("." + uriPath);
+            if (!file.exists() || !file.isFile()) {
+                if (!uriPath.startsWith("/output/")) {
+                    file = new File("./output" + uriPath);
+                }
+            }
+
             if (file.exists() && file.isFile()) {
+                String query = exchange.getRequestURI().getQuery();
+                boolean isDownload = (query != null && query.contains("download"));
+
                 String mime = uriPath.endsWith(".mp4") ? "video/mp4" 
                     : (uriPath.endsWith(".png") ? "image/png" : "application/octet-stream");
-                exchange.getResponseHeaders().set("Content-Type", mime);
-                exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
-                exchange.sendResponseHeaders(200, file.length());
-                try (OutputStream os = exchange.getResponseBody(); InputStream is = new FileInputStream(file)) {
+
+                com.sun.net.httpserver.Headers headers = exchange.getResponseHeaders();
+                headers.set("Content-Type", mime);
+                headers.set("Access-Control-Allow-Origin", "*");
+                headers.set("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges");
+                headers.set("Accept-Ranges", "bytes");
+
+                if (isDownload) {
+                    headers.set("Content-Disposition", "attachment; filename=\"" + file.getName() + "\"");
+                }
+
+                long fileLength = file.length();
+                String rangeHeader = exchange.getRequestHeaders().getFirst("Range");
+
+                // If byte range requested for seeking and not downloading attachment
+                if (rangeHeader != null && rangeHeader.startsWith("bytes=") && !isDownload) {
+                    try {
+                        String rangeValue = rangeHeader.substring(6).trim();
+                        long start = 0;
+                        long end = fileLength - 1;
+
+                        if (rangeValue.contains("-")) {
+                            String[] parts = rangeValue.split("-", 2);
+                            if (!parts[0].isEmpty()) {
+                                start = Long.parseLong(parts[0].trim());
+                            }
+                            if (parts.length > 1 && !parts[1].isEmpty()) {
+                                end = Long.parseLong(parts[1].trim());
+                            }
+                        }
+
+                        if (start > end || start >= fileLength) {
+                            headers.set("Content-Range", "bytes */" + fileLength);
+                            exchange.sendResponseHeaders(416, -1);
+                            return;
+                        }
+
+                        end = Math.min(end, fileLength - 1);
+                        long contentLength = end - start + 1;
+
+                        headers.set("Content-Range", String.format("bytes %d-%d/%d", start, end, fileLength));
+                        exchange.sendResponseHeaders(206, contentLength);
+
+                        try (RandomAccessFile raf = new RandomAccessFile(file, "r");
+                             OutputStream os = exchange.getResponseBody()) {
+                            raf.seek(start);
+                            byte[] buffer = new byte[65536];
+                            long remaining = contentLength;
+                            while (remaining > 0) {
+                                int read = raf.read(buffer, 0, (int) Math.min(buffer.length, remaining));
+                                if (read == -1) break;
+                                os.write(buffer, 0, read);
+                                remaining -= read;
+                            }
+                        }
+                        return;
+                    } catch (Exception ignored) {
+                        // Fallback to standard 200 response
+                    }
+                }
+
+                // Standard 200 response
+                exchange.sendResponseHeaders(200, fileLength);
+                try (OutputStream os = exchange.getResponseBody(); InputStream is = new BufferedInputStream(new FileInputStream(file))) {
                     is.transferTo(os);
                 }
             } else {
@@ -750,7 +827,21 @@ public class DashboardServer {
                     is.transferTo(osStream);
                 }
             } else {
-                sendJsonResponse(exchange, 404, "{\"error\":\"Blender archive file not found for OS: " + os + "\"}");
+                // If local archive is not on Master, redirect to official Blender 5.1 CDN
+                String redirectUrl = "https://download.blender.org/release/Blender5.1/blender-5.1.2-windows-x64.zip";
+                if ("linux".equals(os)) {
+                    redirectUrl = "https://download.blender.org/release/Blender5.1/blender-5.1.2-linux-x64.tar.xz";
+                } else if ("macos".equals(os)) {
+                    String arch = params.getOrDefault("arch", "").toLowerCase();
+                    boolean isArm = arch.contains("arm") || arch.contains("aarch64");
+                    redirectUrl = isArm 
+                        ? "https://download.blender.org/release/Blender5.1/blender-5.1.2-macos-arm64.dmg"
+                        : "https://download.blender.org/release/Blender5.1/blender-5.1.2-macos-x64.dmg";
+                }
+                System.out.println("[DASHBOARD] No local archive on Master for OS '" + os + "'. Redirecting worker to official CDN: " + redirectUrl);
+                exchange.getResponseHeaders().set("Location", redirectUrl);
+                exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+                exchange.sendResponseHeaders(302, -1);
             }
         }
         

@@ -137,9 +137,10 @@ public class FrameStitcher {
         Path videoPath = jobDir.resolve(videoFileName);
         
         boolean compiled = false;
-        if (isFFmpegInstalled() && !tempFiles.isEmpty()) {
+        String ffmpegBin = ensureFFmpegInstalled();
+        if (ffmpegBin != null && !tempFiles.isEmpty()) {
             List<String> command = List.of(
-                "ffmpeg", "-y", "-framerate", String.valueOf(fps),
+                ffmpegBin, "-y", "-framerate", String.valueOf(fps),
                 "-i", "temp_frame_%04d.png", "-c:v", "libx264", "-pix_fmt", "yuv420p",
                 videoFileName
             );
@@ -259,15 +260,16 @@ public class FrameStitcher {
      * Invokes local FFmpeg via ProcessBuilder to encode image sequence into MP4.
      */
     public boolean compileToVideo(Path jobDir, int fps, Path outputVideoPath) {
-        if (!isFFmpegInstalled()) {
-            System.out.println("[FRAME-STITCHER-WARN] FFmpeg is not installed on this host. Skipping MP4 encoding.");
+        String ffmpegBin = ensureFFmpegInstalled();
+        if (ffmpegBin == null) {
+            System.out.println("[FRAME-STITCHER-WARN] FFmpeg is not installed on this host and auto-installation failed. Skipping MP4 encoding.");
             return false;
         }
 
-        System.out.printf("[FRAME-STITCHER] Invoking FFmpeg (Framerate: %d FPS)...\n", fps);
+        System.out.printf("[FRAME-STITCHER] Invoking FFmpeg at '%s' (Framerate: %d FPS)...\n", ffmpegBin, fps);
 
         List<String> command = List.of(
-            "ffmpeg",
+            ffmpegBin,
             "-y",                               // Overwrite output if exists
             "-framerate", String.valueOf(fps),  // Frame rate
             "-i", "frame_%04d.png",             // Input pattern
@@ -301,15 +303,18 @@ public class FrameStitcher {
     }
 
     /**
-     * Checks if FFmpeg binary is available on the system PATH.
+     * Checks if FFmpeg binary is available on the system PATH or local folders.
      */
     public static boolean isFFmpegInstalled() {
-        try {
-            Process process = new ProcessBuilder("ffmpeg", "-version").start();
-            return process.waitFor() == 0;
-        } catch (Exception e) {
-            return false;
-        }
+        return FFmpegInstaller.isInstalled();
+    }
+
+    /**
+     * Automatically ensures FFmpeg is installed, downloading and extracting it if missing.
+     * @return absolute path to ffmpeg executable, or null if installation failed.
+     */
+    public static String ensureFFmpegInstalled() {
+        return FFmpegInstaller.ensureInstalled();
     }
 
     // ========================================================================

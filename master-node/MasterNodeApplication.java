@@ -93,6 +93,22 @@ public class MasterNodeApplication {
         // 5. Register JVM Shutdown Hook for Graceful Teardown
         Runtime.getRuntime().addShutdownHook(new Thread(this::stop, "Master-ShutdownHook"));
 
+        // 6. Asynchronously ensure FFmpeg is installed so it's ready for animation stitching
+        Thread ffmpegInitThread = new Thread(() -> {
+            try {
+                if (!FFmpegInstaller.isInstalled()) {
+                    System.out.println("[BOOTSTRAP] FFmpeg not found on Master host. Auto-installing in background...");
+                    FFmpegInstaller.ensureInstalled();
+                } else {
+                    System.out.println("[BOOTSTRAP] ✔ FFmpeg is ready for video stitching: " + FFmpegInstaller.getExecutablePath());
+                }
+            } catch (Exception e) {
+                System.err.println("[BOOTSTRAP-WARN] FFmpeg initialization warning: " + e.getMessage());
+            }
+        }, "Master-FFmpeg-Init");
+        ffmpegInitThread.setDaemon(true);
+        ffmpegInitThread.start();
+
         System.out.println("[BOOTSTRAP] All 7 Master Node modules initialized and running successfully.");
         System.out.println();
     }

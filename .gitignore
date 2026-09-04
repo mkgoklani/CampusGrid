@@ -36,3 +36,4 @@ out/
 agent.jar
 *.blend
 blender_archives/
+blender_bin/
